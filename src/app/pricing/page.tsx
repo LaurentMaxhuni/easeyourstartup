@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 const FEATURES = [
   "Three active projects",
   "Eight new campaigns per billing period",
-  "Five regenerations per channel output",
-  "High resolution PNG and campaign ZIP exports",
-  "Recurring rescans and campaign history",
-  "Supporter launch rooms without a watermark",
+  "Editable channel copy and launch visuals",
+  "High resolution PNG and launch-kit exports",
+  "Approved claim sources bundled with every kit",
+  "Founding beta support for unusual launch flows",
 ];
 
 export default function PricingPage() {
@@ -106,7 +106,9 @@ export default function PricingPage() {
             <div className="mt-8 grid gap-8 text-sm leading-6 text-muted md:grid-cols-2">
               <p>
                 A campaign counts only after generation completes successfully.
-                Failed jobs and normal edits never use quota.
+                While one is running, its slot is reserved so two tabs cannot
+                overrun your plan. Failed jobs and normal edits never use
+                quota.
               </p>
               <p>
                 Cancel through the customer portal at any time. Existing

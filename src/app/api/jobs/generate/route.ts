@@ -49,25 +49,15 @@ export async function POST(request: Request) {
     `;
     if (!project) throw new Error("Project not found.");
 
-    const periodStart = new Date();
-    periodStart.setUTCDate(1);
+    const now = new Date();
+    const periodStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const periodEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
     const periodKey = periodStart.toISOString().slice(0, 10);
-    const [usage] = await context.database`
-      select completed_campaigns
-      from public.usage_periods
-      where workspace_id = ${context.workspaceId}
-        and period_start = ${periodKey}
-      limit 1
-    `;
-    if (
-      (usage?.completed_campaigns ?? 0) >=
-      context.limits.campaignsPerPeriod
-    ) {
-      return NextResponse.json(
-        { error: "Campaign quota reached for this billing period." },
-        { status: 403 },
-      );
-    }
+    const periodEndKey = periodEnd.toISOString().slice(0, 10);
 
     const campaign = input.campaign as GenerateCampaignInput;
     const suppliedKey = request.headers.get("idempotency-key");
@@ -95,33 +85,58 @@ export async function POST(request: Request) {
       );
     }
 
-    const [created] = await context.database`
-      insert into public.campaigns (
-        workspace_id,
-        project_id,
-        kind,
-        title,
-        status,
-        generation_input,
-        selected_angle,
-        launch_date
-      )
-      values (
-        ${context.workspaceId},
-        ${input.projectId},
-        ${campaign.kind},
-        ${campaign.updateDetails.slice(0, 180)},
-        'queued',
-        ${JSON.stringify(campaign)}::jsonb,
-        ${campaign.angle ? JSON.stringify(campaign.angle) : null}::jsonb,
-        ${campaign.launchDate || null}
-      )
-      returning id
-    `;
-    if (!created) throw new Error("Campaign could not be created.");
-
     const jobId = randomUUID();
     const [job] = await context.database`
+      with reserved as (
+        insert into public.usage_periods (
+          workspace_id,
+          period_start,
+          period_end,
+          completed_campaigns,
+          reserved_campaigns
+        )
+        values (
+          ${context.workspaceId},
+          ${periodKey},
+          ${periodEndKey},
+          0,
+          1
+        )
+        on conflict (workspace_id, period_start)
+        do update set
+          reserved_campaigns = public.usage_periods.reserved_campaigns + 1,
+          updated_at = now()
+        where
+          public.usage_periods.completed_campaigns +
+          public.usage_periods.reserved_campaigns <
+          ${context.limits.campaignsPerPeriod}
+        returning workspace_id
+      ),
+      created_campaign as (
+        insert into public.campaigns (
+          workspace_id,
+          project_id,
+          kind,
+          title,
+          status,
+          generation_input,
+          selected_angle,
+          launch_date,
+          usage_reserved
+        )
+        select
+          ${context.workspaceId},
+          ${input.projectId},
+          ${campaign.kind},
+          ${campaign.updateDetails.slice(0, 180)},
+          'queued',
+          ${JSON.stringify(campaign)}::jsonb,
+          ${campaign.angle ? JSON.stringify(campaign.angle) : null}::jsonb,
+          ${campaign.launchDate || null},
+          true
+        from reserved
+        returning id
+      )
       insert into public.jobs (
         id,
         workspace_id,
@@ -132,30 +147,51 @@ export async function POST(request: Request) {
         progress,
         idempotency_key
       )
-      values (
+      select
         ${jobId},
         ${context.workspaceId},
         ${input.projectId},
-        ${created.id},
+        created_campaign.id,
         'generate',
         'queued',
         0,
         ${idempotencyKey}
-      )
-      returning id, status, progress
+      from created_campaign
+      returning id, status, progress, campaign_id
     `;
-    if (!job) throw new Error("Generation job could not be queued.");
+    if (!job || typeof job.campaign_id !== "string") {
+      return NextResponse.json(
+        { error: "Campaign quota reached for this billing period." },
+        { status: 403 },
+      );
+    }
+    const campaignId = job.campaign_id;
 
-    await inngest.send({
-      name: "campaign/generation.requested",
-      data: {
-        jobId: job.id,
-        workspaceId: context.workspaceId,
-        campaignId: created.id,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "campaign/generation.requested",
+        data: {
+          jobId: job.id,
+          workspaceId: context.workspaceId,
+          campaignId,
+        },
+      });
+    } catch (error) {
+      await context.database`
+        select public.release_campaign_usage_reservation(
+          ${context.workspaceId},
+          ${campaignId}
+        )
+      `;
+      await context.database`
+        update public.jobs
+        set status = 'failed', error_message = 'The campaign job could not be sent.', updated_at = now()
+        where id = ${job.id} and workspace_id = ${context.workspaceId}
+      `;
+      throw error;
+    }
     return NextResponse.json(
-      { job, campaignId: created.id },
+      { job, campaignId },
       { status: 202 },
     );
   } catch (error) {

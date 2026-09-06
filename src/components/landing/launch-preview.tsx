@@ -22,6 +22,7 @@ export function LaunchPreview() {
             src="/images/studio-capture.png"
             alt="The real EaseYourStartup campaign studio"
             fill
+            loading="eager"
             className="object-cover object-left-top"
             sizes="(max-width: 768px) 92vw, 34vw"
           />

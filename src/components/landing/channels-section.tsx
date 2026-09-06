@@ -8,15 +8,15 @@ export function ChannelsSection() {
         <Reveal className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
           <div>
             <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
-              One update, nine native stories
+              Start where founders publish
             </p>
             <h2 className="mt-5 max-w-3xl text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
-              Written for the room you are entering.
+              Start with the channels that move a launch.
             </h2>
           </div>
           <p className="max-w-sm text-sm leading-6 text-muted">
-            We change the structure and tone for each platform. We do not just
-            trim the same caption nine times.
+            Begin with X, LinkedIn, Product Hunt, and email. Add other channels
+            when the launch needs them.
           </p>
         </Reveal>
         <div className="mt-16 border-y border-line">

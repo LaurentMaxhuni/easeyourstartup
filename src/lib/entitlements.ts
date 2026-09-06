@@ -25,6 +25,34 @@ export function canConsumeCampaign(
     PLAN_LIMITS[plan].campaignsPerPeriod;
 }
 
+export function canReserveCampaign(
+  plan: Plan,
+  successfullyCompletedCampaigns: number,
+  reservedCampaigns: number,
+) {
+  return (
+    successfullyCompletedCampaigns + reservedCampaigns <
+    PLAN_LIMITS[plan].campaignsPerPeriod
+  );
+}
+
+export function getRemainingCampaigns(
+  plan: Plan,
+  successfullyCompletedCampaigns: number,
+  reservedCampaigns = 0,
+) {
+  return Math.max(
+    0,
+    PLAN_LIMITS[plan].campaignsPerPeriod -
+      Math.max(0, successfullyCompletedCampaigns) -
+      Math.max(0, reservedCampaigns),
+  );
+}
+
+export function canExportLaunchKit(plan: Plan) {
+  return PLAN_LIMITS[plan].highResolutionExports;
+}
+
 export function shouldCountUsage(jobStatus: string) {
   return jobStatus === "completed";
 }

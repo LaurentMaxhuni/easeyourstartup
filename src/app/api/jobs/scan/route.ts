@@ -39,32 +39,49 @@ export async function POST(request: Request) {
     let projectId = input.projectId;
 
     if (!projectId) {
-      const [projectCount] = await context.database`
-        select count(*)::int as count
-        from public.projects
-        where workspace_id = ${context.workspaceId}
-          and status = 'active'
+      const [project] = await context.database`
+        with available_slot as (
+          select slots.slot::integer as active_slot
+          from pg_catalog.generate_series(1, ${context.limits.activeProjects}) as slots(slot)
+          where not exists (
+            select 1
+            from public.projects as active_project
+            where active_project.workspace_id = ${context.workspaceId}
+              and active_project.status = 'active'
+              and active_project.active_slot = slots.slot
+          )
+          order by slots.slot
+          limit 1
+        )
+        insert into public.projects (workspace_id, name, public_url, active_slot)
+        select
+          ${context.workspaceId},
+          ${input.projectName},
+          ${safeUrl},
+          available_slot.active_slot
+        from available_slot
+        on conflict (workspace_id, active_slot)
+          where status = 'active' and active_slot is not null
+          do nothing
+        returning id
       `;
-      if (Number(projectCount?.count ?? 0) >= context.limits.activeProjects) {
+      if (!project) {
         return NextResponse.json(
           { error: "Active project limit reached." },
           { status: 403 },
         );
       }
-      const [project] = await context.database`
-        insert into public.projects (workspace_id, name, public_url)
-        values (${context.workspaceId}, ${input.projectName}, ${safeUrl})
-        returning id
-      `;
-      if (!project) throw new Error("Project could not be created.");
       projectId = project.id;
     } else {
       const [project] = await context.database`
-        select id
-        from public.projects
+        update public.projects
+        set
+          name = ${input.projectName},
+          public_url = ${safeUrl},
+          updated_at = now()
         where id = ${projectId}
           and workspace_id = ${context.workspaceId}
-        limit 1
+        returning id
       `;
       if (!project) throw new Error("Project not found.");
     }

@@ -6,10 +6,10 @@ import { Reveal } from "@/components/reveal";
 const PRO_FEATURES = [
   "Three active projects",
   "Eight campaigns per billing period",
-  "Five regenerations per channel",
-  "High resolution exports and campaign ZIPs",
-  "Recurring rescans and campaign history",
-  "Public supporter launch rooms",
+  "Editable channel copy and launch visuals",
+  "High resolution PNG and launch-kit exports",
+  "Source evidence in every exported kit",
+  "Founding beta support",
 ];
 
 export function PricingSection() {

@@ -3,6 +3,10 @@ import { generateCampaignSchema } from "@/lib/contracts";
 import { generateCampaign } from "@/lib/server/campaign-generator";
 import { createDatabase, requireDatabase } from "@/lib/server/database";
 import { scanWebsite } from "@/lib/server/scanner";
+import {
+  serializeGenerateJobResult,
+  serializeScanJobResult,
+} from "@/lib/job-results";
 
 function database() {
   return requireDatabase();
@@ -96,7 +100,7 @@ export const scanProject = inngest.createFunction(
         set
           status = 'completed',
           progress = 100,
-          result = ${JSON.stringify({ warnings: result.warnings })}::jsonb,
+          result = ${serializeScanJobResult(result)}::jsonb,
           updated_at = now()
         where id = ${jobId} and workspace_id = ${workspaceId}
       `;
@@ -113,6 +117,12 @@ export const generateCampaignAssets = inngest.createFunction(
     onFailure: async ({ event }) => {
       const database = createDatabase();
       if (!database) return;
+      await database`
+        select public.release_campaign_usage_reservation(
+          ${event.data.event.data.workspaceId},
+          ${event.data.event.data.campaignId}
+        )
+      `;
       await database`
         update public.jobs
         set
@@ -185,12 +195,9 @@ export const generateCampaignAssets = inngest.createFunction(
         database`
           update public.jobs
           set
-            status = 'completed',
-            progress = 100,
-            result = ${JSON.stringify({
-              mode: generated.mode,
-              channelCount: generated.outputs.length,
-            })}::jsonb,
+          status = 'completed',
+          progress = 100,
+          result = ${serializeGenerateJobResult(generated)}::jsonb,
             updated_at = now()
           where id = ${jobId} and workspace_id = ${workspaceId}
         `,

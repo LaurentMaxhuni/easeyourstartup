@@ -3,12 +3,17 @@ import {
   creativeCodeBundleSchema,
   creativeCompositionSchema,
   creativeDesignResultSchema,
+  generateJobResultSchema,
   generateCampaignSchema,
+  scanJobResultSchema,
+  studioStateSchema,
 } from "@/lib/contracts";
 import {
   DEMO_ANGLES,
   DEMO_BRAND,
   DEMO_COMPOSITION,
+  DEMO_OUTPUTS,
+  DEMO_SCAN,
 } from "@/lib/demo-data";
 
 describe("application contracts", () => {
@@ -161,5 +166,63 @@ describe("application contracts", () => {
     });
 
     expect(composition.codeBundle).toEqual(code);
+  });
+
+  it("validates a completed durable scan result", () => {
+    expect(scanJobResultSchema.parse({ scan: DEMO_SCAN }).scan.profile.projectName).toBe(
+      "EaseYourStartup",
+    );
+  });
+
+  it("validates the full durable campaign result needed by the studio", () => {
+    const result = generateJobResultSchema.parse({
+      generation: {
+        angles: DEMO_ANGLES,
+        outputs: DEMO_OUTPUTS,
+        creativeDirections: [
+          {
+            id: "demo-creative",
+            label: "Product proof",
+            layout: "browser",
+            icon: "rocket-launch",
+            graphic: "orbit",
+            imageMode: "single",
+            eyebrow: "EaseYourStartup",
+            headline: "Turn every ship into a campaign.",
+            subheadline: "Launch the product update you already shipped.",
+            body: "Source-backed copy and real screenshots in one package.",
+            cta: "Build your launch",
+            footer: "Source-backed launch studio",
+          },
+        ],
+        mode: "ai",
+      },
+    });
+
+    expect(result.generation.outputs).toHaveLength(3);
+  });
+
+  it("keeps existing saved studios compatible while adding a durable project id", () => {
+    const state = studioStateSchema.parse({
+      step: "brand",
+      scan: DEMO_SCAN,
+      brand: DEMO_BRAND,
+      draft: {
+        kind: "launch",
+        goal: "Prepare the first launch campaign for solo SaaS founders.",
+        updateDetails: "The launch studio is ready for founder beta users.",
+        audience: "Solo SaaS founders",
+        launchDate: "",
+        cta: "Build your launch campaign",
+        angle: DEMO_ANGLES[0],
+        channels: ["x"],
+      },
+      generation: null,
+      selectedCreativeId: "",
+      outputs: [],
+      composition: DEMO_COMPOSITION,
+    });
+
+    expect(state.projectId).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import type {
   CreativeDirection,
   CreativeMockupDevice,
 } from "@/lib/contracts";
+import type { LaunchKitReadiness } from "@/lib/launch-kit";
 
 export function CreativeWorkspace({
   composition,
@@ -24,6 +25,10 @@ export function CreativeWorkspace({
   uploadError,
   exportStatus,
   exportError,
+  plan,
+  canExportLaunchKit,
+  campaignsRemaining,
+  launchKitReadiness,
   creativeDirections,
   selectedCreativeId,
   onCompositionChange,
@@ -49,6 +54,10 @@ export function CreativeWorkspace({
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  plan: "free" | "pro";
+  canExportLaunchKit: boolean;
+  campaignsRemaining: number | null;
+  launchKitReadiness: LaunchKitReadiness;
   creativeDirections: CreativeDirection[];
   selectedCreativeId: string;
   onCompositionChange: (composition: CreativeComposition) => void;
@@ -81,6 +90,10 @@ export function CreativeWorkspace({
       uploadError={uploadError}
       exportStatus={exportStatus}
       exportError={exportError}
+      plan={plan}
+      canExportLaunchKit={canExportLaunchKit}
+      campaignsRemaining={campaignsRemaining}
+      launchKitReadiness={launchKitReadiness}
       onChange={onCompositionChange}
       onOutputsChange={onOutputsChange}
       onSelectCreativeDirection={onSelectCreativeDirection}

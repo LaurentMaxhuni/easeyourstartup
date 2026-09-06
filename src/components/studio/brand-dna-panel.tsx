@@ -20,12 +20,14 @@ export function BrandDnaPanel({
   scan,
   brand,
   onChange,
+  onClaimsApproved,
   onBack,
   onContinue,
 }: {
   scan: ScanResult;
   brand: BrandProfile;
   onChange: (brand: BrandProfile) => void;
+  onClaimsApproved?: (approvedClaimCount: number) => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -37,12 +39,19 @@ export function BrandDnaPanel({
     id: string,
     approvalState: "approved" | "rejected",
   ) {
+    const nextClaims = brand.claims.map((claim) =>
+      claim.id === id ? { ...claim, approvalState } : claim,
+    );
     onChange({
       ...brand,
-      claims: brand.claims.map((claim) =>
-        claim.id === id ? { ...claim, approvalState } : claim,
-      ),
+      claims: nextClaims,
     });
+    const previous = brand.claims.find((claim) => claim.id === id);
+    if (approvalState === "approved" && previous?.approvalState !== "approved") {
+      onClaimsApproved?.(
+        nextClaims.filter((claim) => claim.approvalState === "approved").length,
+      );
+    }
   }
 
   return (

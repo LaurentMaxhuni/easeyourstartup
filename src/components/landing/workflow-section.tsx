@@ -23,8 +23,8 @@ const STEPS = [
     icon: Megaphone,
   },
   {
-    title: "Export or rally support",
-    body: "Download the campaign or publish a supporter room with approved assets.",
+    title: "Review and export",
+    body: "Check the source evidence, download one organized launch kit, and publish on your own schedule.",
     icon: Export,
   },
 ] as const;
@@ -36,10 +36,10 @@ export function WorkflowSection() {
         <div className="grid gap-14 lg:grid-cols-[.8fr_1.2fr]">
           <Reveal>
             <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
-              A five minute first campaign
+              A 15-minute launch kit
             </p>
             <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
-              A launch workflow, not another blank chat.
+              A launch kit built from your product, not a blank chat.
             </h2>
           </Reveal>
           <div className="border-t border-line">

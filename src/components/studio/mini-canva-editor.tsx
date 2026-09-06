@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowClockwise,
@@ -47,6 +48,7 @@ import {
   creativeIconSchema,
   creativeImageModeSchema,
   type ChannelOutput,
+  type BrandClaim,
   type CreativeCodeBundle,
   type CreativeComposition,
   type CreativeDirection,
@@ -57,6 +59,7 @@ import {
   type CreativeRewriteInput,
   type CreativeMockupDevice,
 } from "@/lib/contracts";
+import type { LaunchKitReadiness } from "@/lib/launch-kit";
 import {
   buildSandboxedPreviewDocument,
   isSafeCreativeCodeBundle,
@@ -160,6 +163,7 @@ export type CreativeAiContext = {
   projectName: string;
   context: string;
   approvedFacts: string[];
+  approvedClaims: BrandClaim[];
 };
 
 function elementLabel(element: CreativeElement) {
@@ -564,6 +568,10 @@ export function MiniCanvaEditor({
   uploadError,
   exportStatus,
   exportError,
+  plan,
+  canExportLaunchKit,
+  campaignsRemaining,
+  launchKitReadiness,
   onChange,
   onOutputsChange,
   onSelectCreativeDirection,
@@ -589,6 +597,10 @@ export function MiniCanvaEditor({
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  plan: "free" | "pro";
+  canExportLaunchKit: boolean;
+  campaignsRemaining: number | null;
+  launchKitReadiness: LaunchKitReadiness;
   onChange: (composition: CreativeComposition) => void;
   onOutputsChange: (outputs: ChannelOutput[]) => void;
   onSelectCreativeDirection: (id: string) => void;
@@ -1223,6 +1235,7 @@ export function MiniCanvaEditor({
       return (
         <ChannelOutputs
           outputs={outputs}
+          claims={aiContext.approvedClaims}
           onChange={onOutputsChange}
           compact
         />
@@ -1288,9 +1301,33 @@ export function MiniCanvaEditor({
       return (
         <div className="space-y-4">
           <PanelHeading
-            title="Export"
-            note="Download the current canvas and campaign files."
+            title="Launch kit review"
+            note="Review the campaign package before you publish."
           />
+          <div className="rounded-control border border-line bg-canvas p-3 text-[11px] leading-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold">
+                {launchKitReadiness.ready ? "Ready to publish" : "Founder review needed"}
+              </p>
+              <Badge>{plan === "pro" ? "Pro" : "Free preview"}</Badge>
+            </div>
+            <p className="mt-2 text-muted">
+              {launchKitReadiness.outputCount} channel draft{launchKitReadiness.outputCount === 1 ? "" : "s"} · {launchKitReadiness.approvedClaimCount} approved fact{launchKitReadiness.approvedClaimCount === 1 ? "" : "s"}
+            </p>
+            <p className="mt-1 text-muted">
+              {campaignsRemaining === null
+                ? "Checking campaign allowance…"
+                : `${campaignsRemaining} campaign slot${campaignsRemaining === 1 ? "" : "s"} left this month`}
+            </p>
+            {launchKitReadiness.warnings.length > 0 && (
+              <ul className="mt-3 space-y-1 border-t border-line pt-3 text-muted">
+                {launchKitReadiness.warnings.slice(0, 3).map((warning) => (
+                  <li key={warning}>• {warning}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {canExportLaunchKit ? (
           <div className="space-y-2">
             <Button
               type="button"
@@ -1313,6 +1350,14 @@ export function MiniCanvaEditor({
               Download ZIP
             </Button>
           </div>
+          ) : (
+            <div className="rounded-control border border-accent/30 bg-accent/10 p-3 text-xs leading-5 text-muted">
+              Full-resolution visuals and the organized launch kit are available on Pro.
+              <Link href="/pricing" className="mt-2 block font-semibold text-accent underline underline-offset-4">
+                Upgrade to export the launch kit
+              </Link>
+            </div>
+          )}
           {exportStatus === "loading" && (
             <p className="text-xs text-muted">Preparing your export...</p>
           )}
@@ -1668,6 +1713,11 @@ export function MiniCanvaEditor({
                   {visibleElements.map((element) => (
                     <LayerVisual key={element.id} element={element} composition={composition} />
                   ))}
+                  {!canExportLaunchKit && (
+                    <div className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded bg-[#171917]/85 px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase tracking-[0.12em] text-[#f4f3ef]">
+                      Free preview
+                    </div>
+                  )}
                 </div>
                 <div className="absolute inset-0">
                   {overlayElements.map((element) => (

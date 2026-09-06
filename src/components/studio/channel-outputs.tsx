@@ -4,16 +4,18 @@ import { useState } from "react";
 import { Check, Copy, WarningCircle } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ChannelOutput } from "@/lib/contracts";
+import type { BrandClaim, ChannelOutput } from "@/lib/contracts";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 
 export function ChannelOutputs({
   outputs,
+  claims,
   onChange,
   compact = false,
 }: {
   outputs: ChannelOutput[];
+  claims: BrandClaim[];
   onChange: (outputs: ChannelOutput[]) => void;
   compact?: boolean;
 }) {
@@ -22,6 +24,11 @@ export function ChannelOutputs({
   const [copyError, setCopyError] = useState("");
   const output = outputs.find((item) => item.channel === active) ?? outputs[0];
   const activeChannel = output?.channel;
+  const approvedClaimsById = new Map(
+    claims
+      .filter((claim) => claim.approvalState === "approved")
+      .map((claim) => [claim.id, claim]),
+  );
 
   if (!output) return null;
 
@@ -107,13 +114,32 @@ export function ChannelOutputs({
       <p className="mt-2 text-right font-sans text-[10px] uppercase tracking-[0.1em] text-muted">
         {output.primaryCopy.length} characters
       </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {output.linkedClaimIds.map((claimId) => (
-          <Badge key={claimId} className="normal-case tracking-normal">
-            Claim {claimId.slice(0, 8)}
-          </Badge>
-        ))}
-      </div>
+      {output.linkedClaimIds.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <p className="font-sans text-[10px] uppercase tracking-[0.1em] text-muted">
+            Approved source evidence
+          </p>
+          {output.linkedClaimIds.map((claimId) => {
+            const claim = approvedClaimsById.get(claimId);
+            return claim ? (
+              <a
+                key={claimId}
+                href={claim.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-control border border-line bg-canvas p-2 text-[11px] leading-5 text-muted transition-colors hover:border-accent hover:text-ink"
+              >
+                <span className="block font-semibold text-ink">{claim.text}</span>
+                <span className="mt-1 block truncate">{new URL(claim.sourceUrl).hostname}</span>
+              </a>
+            ) : (
+              <Badge key={claimId} className="normal-case tracking-normal">
+                Source approval needed for claim {claimId.slice(0, 8)}
+              </Badge>
+            );
+          })}
+        </div>
+      )}
       {output.warnings.map((warning) => (
         <p
           key={warning}

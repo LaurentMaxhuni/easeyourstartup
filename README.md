@@ -3,8 +3,7 @@
 EaseYourStartup is a revenue-first launch campaign SaaS for solo founders.
 It scans a public product site, creates an editable and source-linked Brand DNA
 profile, generates channel-native launch copy, keeps real screenshots inside
-editable visual templates, exports a campaign package, and can publish approved
-assets in a supporter room.
+editable visual templates, and exports a source-backed launch kit.
 
 The working promise is: **Turn every ship into a campaign.**
 
@@ -27,13 +26,18 @@ The working promise is: **Turn every ship into a campaign.**
   stripping, and SVG rejection
 - Browser, phone, launch card, and split visual templates at 1:1, 4:5, 16:9,
   and 1.91:1
-- Watermarked PNG preview and campaign ZIP export
+- Free watermarked visual previews, with unwatermarked PNG and full launch-kit
+  exports on Pro
+- Pro launch-kit exports with separate channel files, approved source evidence,
+  a launch brief, and a creative PNG
 - Stripe Checkout, customer portal, signature-verified webhooks, and replay
   protection
 - Neon Postgres schema with workspace scoping and atomic usage consumption
 - Neon Auth email/password and Google sign-in with server-side session validation
 - Inngest workflows for resumable scan and generation jobs
 - Authenticated job APIs for queueing scans and campaigns and polling progress
+- Atomic campaign-slot reservations so concurrent generation requests respect
+  workspace plan limits
 - HMAC-signed internal render pages for deterministic Browserless exports
 - System light and dark themes, keyboard focus, responsive layouts, and
   reduced-motion support
@@ -108,6 +112,7 @@ Run the application migrations after Neon Auth is enabled:
 ```bash
 psql "$DATABASE_URL" -f migrations/0001_initial_schema.sql
 psql "$DATABASE_URL" -f migrations/0002_studio_states.sql
+psql "$DATABASE_URL" -f migrations/0003_campaign_usage_reservations.sql
 ```
 
 Enable the email/password and Google providers in the Neon Auth settings.

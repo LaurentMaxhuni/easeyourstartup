@@ -23,18 +23,18 @@ export default function HomePage() {
               </p>
               <h1 className="mt-5 max-w-3xl text-[clamp(2.5rem,4.8vw,4.2rem)] font-semibold leading-[.95] tracking-[-0.07em]">
                 <span className="block">Paste your URL.</span>
-                <span className="block">Launch everywhere.</span>
+                <span className="block">Leave with a launch kit.</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-7 text-muted">
-                Scan your site, approve your facts, and turn every ship into a
-                complete campaign.
+                Approve what you can say, turn your update into channel-ready
+                copy and visuals, then download the package to publish.
               </p>
               <HeroScanForm />
               <Link
-                href="/login?next=%2Fshare%2Fdemo-launch"
+                href="/login?next=%2Fstudio%3Fdemo%3D1"
                 className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-ink"
               >
-                See a live supporter room
+                Try a demo launch scan
                 <ArrowRight size={17} />
               </Link>
               <div className="mt-9 grid max-w-xl grid-cols-3 gap-3 border-t border-line pt-4 text-[11px] leading-4 text-muted">
@@ -48,7 +48,7 @@ export default function HomePage() {
                 </div>
                 <div>
                   <span className="block font-sans text-accent">03</span>
-                  <span className="mt-1 block">Copy ready to export</span>
+                  <span className="mt-1 block">Launch kit ready to publish</span>
                 </div>
               </div>
             </Reveal>

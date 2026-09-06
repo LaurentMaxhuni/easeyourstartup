@@ -15,6 +15,7 @@ import type {
   CreativeMockupDevice,
   CreativeRewriteInput,
 } from "@/lib/contracts";
+import type { LaunchKitReadiness } from "@/lib/launch-kit";
 
 export type VisualStudioProps = {
   composition: CreativeComposition;
@@ -29,6 +30,10 @@ export type VisualStudioProps = {
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  plan: "free" | "pro";
+  canExportLaunchKit: boolean;
+  campaignsRemaining: number | null;
+  launchKitReadiness: LaunchKitReadiness;
   onChange: (composition: CreativeComposition) => void;
   onOutputsChange: (outputs: ChannelOutput[]) => void;
   onSelectCreativeDirection: (id: string) => void;
@@ -67,6 +72,10 @@ export function VisualStudio({
   uploadError,
   exportStatus,
   exportError,
+  plan,
+  canExportLaunchKit,
+  campaignsRemaining,
+  launchKitReadiness,
   onChange,
   onOutputsChange,
   onSelectCreativeDirection,
@@ -101,6 +110,10 @@ export function VisualStudio({
         uploadError={uploadError}
         exportStatus={exportStatus}
         exportError={exportError}
+        plan={plan}
+        canExportLaunchKit={canExportLaunchKit}
+        campaignsRemaining={campaignsRemaining}
+        launchKitReadiness={launchKitReadiness}
         onChange={onChange}
         onOutputsChange={onOutputsChange}
         onSelectCreativeDirection={onSelectCreativeDirection}

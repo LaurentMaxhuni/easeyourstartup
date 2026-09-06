@@ -316,6 +316,18 @@ export const generationResultSchema = z.object({
 
 export type GenerationResult = z.infer<typeof generationResultSchema>;
 
+export const scanJobResultSchema = z.object({
+  scan: scanResultSchema,
+});
+
+export type ScanJobResult = z.infer<typeof scanJobResultSchema>;
+
+export const generateJobResultSchema = z.object({
+  generation: generationResultSchema,
+});
+
+export type GenerateJobResult = z.infer<typeof generateJobResultSchema>;
+
 export const screenshotCropSchema = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
@@ -445,6 +457,7 @@ export type StudioDraft = z.infer<typeof studioDraftSchema>;
 
 export const studioStateSchema = z.object({
   step: studioStepSchema,
+  projectId: z.uuid().nullable().default(null),
   scan: scanResultSchema.nullable(),
   brand: brandProfileSchema.nullable(),
   draft: studioDraftSchema,
