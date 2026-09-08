@@ -6,10 +6,12 @@ import {
   createDeterministicCreativeDesign,
   generateDeterministicCampaign,
   getOpenAIProviderConfig,
+  parseAiCampaignResult,
   normalizeGenerationPayload,
   normalizeCreativeDesignPayload,
   parseStructuredJson,
 } from "@/lib/server/campaign-generator";
+import * as campaignGenerator from "@/lib/server/campaign-generator";
 import { DEMO_ANGLES, DEMO_BRAND, DEMO_COMPOSITION } from "@/lib/demo-data";
 
 describe("source-backed campaign generation", () => {
@@ -409,6 +411,59 @@ describe("source-backed campaign generation", () => {
 });
 
 describe("OpenAI-compatible provider configuration", () => {
+  it.each([
+    ["malformed JSON", '{"items":[1 2]}'],
+    ["empty content", null],
+  ] as const)(
+    "retries once with a JSON correction when chat output is %s",
+    async (_failure, firstContent) => {
+      const create = vi
+        .fn()
+        .mockResolvedValueOnce({
+          choices: [{ message: { content: firstContent } }],
+        })
+        .mockResolvedValueOnce({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        });
+      const requestChatJson = (
+        campaignGenerator as unknown as {
+          requestChatJson: (
+            setup: {
+              client: unknown;
+              model: string;
+              providerName: "openrouter";
+            },
+            messages: Array<{ role: "system" | "user"; content: string }>,
+            maxCompletionTokens: number,
+          ) => Promise<unknown>;
+        }
+      ).requestChatJson;
+
+      const result = await requestChatJson(
+        {
+          client: { chat: { completions: { create } } },
+          model: "openrouter/free",
+          providerName: "openrouter",
+        },
+        [{ role: "system", content: "Return JSON." }],
+        200,
+      );
+
+      expect(result).toEqual({ ok: true });
+      expect(create.mock.calls[0][0]).toMatchObject({
+        plugins: [{ id: "response-healing" }],
+      });
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(create.mock.calls[1][0]).toMatchObject({
+        reasoning: { effort: "none" },
+      });
+      expect(create.mock.calls[1][0].messages.at(-1)).toMatchObject({
+        role: "user",
+        content: expect.stringMatching(/valid JSON/i),
+      });
+    },
+  );
+
   it("parses JSON returned by chat providers even when fenced", () => {
     expect(parseStructuredJson("```json\n{\"text\":\"Clear launch copy\"}\n```"))
       .toEqual({ text: "Clear launch copy" });
@@ -515,6 +570,36 @@ describe("OpenAI-compatible provider configuration", () => {
     );
     expect(result.outputs[0].alternateHooks).toEqual(["A model-written hook"]);
     expect(result.outputs[0].linkedClaimIds).toEqual([]);
+  });
+
+  it("normalizes missing linked claim arrays before validating an AI result", () => {
+    const fallback = generateDeterministicCampaign({
+      brand: DEMO_BRAND,
+      kind: "launch",
+      goal: "Launch to founders who ship every week",
+      updateDetails: "The first campaign workflow is now available.",
+      audience: "Solo SaaS founders",
+      launchDate: "",
+      cta: "Try it",
+      angle: DEMO_ANGLES[0],
+      channels: ["x", "linkedin", "product_hunt", "reddit", "email", "threads"],
+    });
+    const partialOutputs = fallback.outputs.map((output, index) =>
+      index < 5 ? output : { ...output, linkedClaimIds: undefined },
+    );
+
+    const result = parseAiCampaignResult(
+      {
+        angles: fallback.angles,
+        outputs: partialOutputs,
+        creativeDirections: fallback.creativeDirections,
+      },
+      fallback,
+      "openrouter",
+    );
+
+    expect(result.mode).toBe("ai");
+    expect(result.outputs[5].linkedClaimIds).toEqual([]);
   });
 
   it("drops unapproved claim links while retaining model copy", () => {

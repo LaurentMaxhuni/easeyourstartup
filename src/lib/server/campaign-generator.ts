@@ -301,12 +301,17 @@ export function parseStructuredJson(content: string | null | undefined) {
 type GroqChatRequest = ChatCompletionCreateParamsNonStreaming & {
   // Groq exposes this reasoning option, but it is not part of the OpenAI SDK type.
   reasoning_format?: "hidden" | "raw" | "parsed";
+  // OpenRouter exposes response healing, but it is not part of the OpenAI SDK type.
+  plugins?: Array<{ id: "response-healing" }>;
+  // OpenRouter exposes this reasoning configuration, but it is not part of the OpenAI SDK type.
+  reasoning?: { effort: "none" };
 };
 
 function chatRequest(
   setup: { model: string; providerName: AiProvider },
   messages: ChatCompletionCreateParamsNonStreaming["messages"],
   maxCompletionTokens: number,
+  options: { disableReasoning?: boolean } = {},
 ): GroqChatRequest {
   const request: GroqChatRequest = {
     model: setup.model,
@@ -321,6 +326,12 @@ function chatRequest(
   // budget on visible reasoning; GPT-OSS does not accept that value.
   if (setup.providerName === "groq") {
     request.reasoning_format = "hidden";
+  }
+  if (setup.providerName === "openrouter") {
+    request.plugins = [{ id: "response-healing" }];
+    if (options.disableReasoning) {
+      request.reasoning = { effort: "none" };
+    }
   }
   if (/^qwen\//i.test(setup.model)) {
     request.reasoning_effort = "none";
@@ -360,7 +371,19 @@ type ChatProviderSetup = {
   providerName: AiProvider;
 };
 
-async function requestChatJson<T = unknown>(
+const JSON_CORRECTION_PROMPT =
+  "Your previous response was not valid JSON. Regenerate the complete response now as exactly one valid JSON object in the message content. Do not use a reasoning channel. Use double-quoted keys and string values, escape quotes and newlines inside strings, and do not include markdown, comments, or any text outside the JSON object.";
+
+function isStructuredJsonFailure(error: unknown) {
+  return (
+    error instanceof SyntaxError ||
+    (error instanceof Error &&
+      (error.message === "No structured output returned." ||
+        error.message === "No JSON object returned."))
+  );
+}
+
+export async function requestChatJson<T = unknown>(
   setup: ChatProviderSetup,
   messages: ChatCompletionCreateParamsNonStreaming["messages"],
   maxCompletionTokens: number,
@@ -381,26 +404,42 @@ async function requestChatJson<T = unknown>(
   }
 
   let lastError: unknown;
+  let jsonRetryUsed = false;
   for (const model of models) {
-    try {
-      const completionBudget = providerCompletionBudget(
-        setup,
-        messages,
-        maxCompletionTokens,
-      );
-      const response = await setup.client.chat.completions.create(
-        chatRequest(
-          { model, providerName: setup.providerName },
-          messages,
-          completionBudget,
-        ),
-      );
-      return transform(parseStructuredJson(response.choices[0]?.message?.content));
-    } catch (error) {
-      lastError = error;
-      console.error(
-        `[chat-provider] request failed (${setup.providerName}/${model}): ${publicProviderError(error)}`,
-      );
+    let attemptMessages = messages;
+    while (true) {
+      try {
+        const completionBudget = providerCompletionBudget(
+          setup,
+          attemptMessages,
+          maxCompletionTokens,
+        );
+        const response = await setup.client.chat.completions.create(
+          chatRequest(
+            { model, providerName: setup.providerName },
+            attemptMessages,
+            completionBudget,
+            { disableReasoning: attemptMessages !== messages },
+          ),
+        );
+        return transform(
+          parseStructuredJson(response.choices[0]?.message?.content),
+        );
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `[chat-provider] request failed (${setup.providerName}/${model}): ${publicProviderError(error)}`,
+        );
+        if (!jsonRetryUsed && isStructuredJsonFailure(error)) {
+          jsonRetryUsed = true;
+          attemptMessages = [
+            ...messages,
+            { role: "user", content: JSON_CORRECTION_PROMPT },
+          ];
+          continue;
+        }
+        break;
+      }
     }
   }
 
@@ -1139,6 +1178,18 @@ export function normalizeGenerationPayload(
   };
 }
 
+export function parseAiCampaignResult(
+  value: unknown,
+  fallback: ReturnType<typeof generateDeterministicCampaign>,
+  provider: AiProvider,
+): GenerationResult {
+  return generationResultSchema.parse({
+    ...normalizeGenerationPayload(value, fallback),
+    mode: "ai",
+    provider,
+  });
+}
+
 export function normalizeCreativeDesignPayload(
   value: unknown,
   composition: CreativeComposition,
@@ -1819,12 +1870,9 @@ export async function generateCampaign(
       { role: "system" as const, content: systemPrompt },
       { role: "user" as const, content: userPrompt },
     ];
+    const fallback = generateDeterministicCampaign(input);
     const parseAiResult = (value: unknown) =>
-      generationResultSchema.parse({
-        ...asRecord(value),
-        mode: "ai",
-        provider: setup.providerName,
-      });
+      parseAiCampaignResult(value, fallback, setup.providerName);
     const parsed =
       setup.provider === "chat"
         ? await requestChatJson(setup, messages, 5_000, parseAiResult)
