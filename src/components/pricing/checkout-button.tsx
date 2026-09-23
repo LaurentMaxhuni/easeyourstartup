@@ -17,7 +17,7 @@ export function CheckoutButton({
     setStatus("loading");
     setMessage("");
     try {
-      const response = await fetch("/api/stripe/checkout", {
+      const response = await fetch("/api/paddle/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -26,15 +26,19 @@ export function CheckoutButton({
         url?: string;
         error?: string;
         loginUrl?: string;
+        manageUrl?: string;
       };
       if (response.status === 401) {
         window.location.href = data.loginUrl ?? "/login?next=/pricing";
         return;
       }
+      if (response.status === 409 && data.manageUrl) {
+        window.location.href = data.manageUrl;
+        return;
+      }
       if (!response.ok || !data.url) {
         throw new Error(
-          data.error ||
-            "Billing is not connected yet. Join the founder beta instead.",
+          data.error || "Billing is unavailable. Please try again later.",
         );
       }
       window.location.href = data.url;

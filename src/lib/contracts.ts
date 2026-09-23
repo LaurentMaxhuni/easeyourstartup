@@ -48,6 +48,20 @@ export const brandClaimSchema = z.object({
 
 export type BrandClaim = z.infer<typeof brandClaimSchema>;
 
+export const brandVisualSystemSchema = z.object({
+  backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  foregroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  radius: z.number().min(0).max(32),
+  spacing: z.number().min(4).max(40),
+  headingFont: z.string().min(1).max(100),
+  bodyFont: z.string().min(1).max(100),
+  density: z.enum(["compact", "comfortable", "airy"]),
+  usesGradient: z.boolean(),
+});
+
+export type BrandVisualSystem = z.infer<typeof brandVisualSystemSchema>;
+
 export const brandProfileSchema = z.object({
   projectName: z.string().min(1).max(120),
   tagline: z.string().max(240),
@@ -60,6 +74,7 @@ export const brandProfileSchema = z.object({
   logoUrl: z.url().nullable(),
   faviconUrl: z.url().nullable(),
   imageUrl: z.url().nullable().optional(),
+  visualSystem: brandVisualSystemSchema.optional(),
 });
 
 export type BrandProfile = z.infer<typeof brandProfileSchema>;
@@ -92,9 +107,22 @@ export const scanResultSchema = z.object({
   mobileCaptureUrl: z.string().nullable(),
   warnings: z.array(z.string().max(280)),
   mode: z.enum(["live", "demo"]),
+  curation: z
+    .object({
+      mode: z.enum(["ai", "rules"]),
+      candidateCount: z.number().int().nonnegative(),
+      keptCount: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 
 export type ScanResult = z.infer<typeof scanResultSchema>;
+
+export const claimCurationResultSchema = z.object({
+  keptClaimIds: z.array(z.string().min(1).max(80)).max(30),
+});
+
+export type ClaimCurationResult = z.infer<typeof claimCurationResultSchema>;
 
 export const narrativeAngleSchema = z.object({
   id: z.string().min(1).max(64),
@@ -310,7 +338,7 @@ export const generationResultSchema = z.object({
   angles: z.array(narrativeAngleSchema).min(1).max(3),
   outputs: z.array(channelOutputSchema).min(1).max(9),
   creativeDirections: z.array(creativeDirectionSchema).min(1).max(3),
-  mode: z.literal("ai"),
+  mode: z.enum(["ai", "deterministic"]),
   provider: z.enum(["groq", "openrouter", "openai", "compatible"]).optional(),
 });
 
@@ -352,6 +380,11 @@ export const creativeCompositionSchema = z.object({
     foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     fontFamily: z.string().max(100),
+    radius: z.number().min(0).max(32).optional(),
+    spacing: z.number().min(4).max(40).optional(),
+    headingFontFamily: z.string().max(100).optional(),
+    bodyFontFamily: z.string().max(100).optional(),
+    usesGradient: z.boolean().optional(),
   }),
   text: z.object({
     eyebrow: z.string().max(80),
@@ -398,6 +431,11 @@ export const creativeDesignResultSchema = z.object({
     foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     fontFamily: z.string().max(100),
+    radius: z.number().min(0).max(32).optional(),
+    spacing: z.number().min(4).max(40).optional(),
+    headingFontFamily: z.string().max(100).optional(),
+    bodyFontFamily: z.string().max(100).optional(),
+    usesGradient: z.boolean().optional(),
   }),
   text: z.object({
     eyebrow: z.string().max(80),
@@ -458,6 +496,9 @@ export type StudioDraft = z.infer<typeof studioDraftSchema>;
 export const studioStateSchema = z.object({
   step: studioStepSchema,
   projectId: z.uuid().nullable().default(null),
+  campaignId: z.uuid().nullable().default(null),
+  jobId: z.uuid().nullable().default(null),
+  jobType: z.enum(["scan", "generate", "regenerate", "export"]).nullable().default(null),
   scan: scanResultSchema.nullable(),
   brand: brandProfileSchema.nullable(),
   draft: studioDraftSchema,

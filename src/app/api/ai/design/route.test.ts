@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEMO_COMPOSITION } from "@/lib/demo-data";
 
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/auth/server", () => ({
+  AuthenticationRequiredError: class AuthenticationRequiredError extends Error {
+    status = 401;
+  },
+}));
+
 const mocks = vi.hoisted(() => ({
   assertSameOrigin: vi.fn(),
   designCreativeComposition: vi.fn(),
-  getAuthenticatedUser: vi.fn(),
   rateLimit: vi.fn(),
   getRequestIdentity: vi.fn(),
   readJsonBody: vi.fn(),
+  requireWorkspaceContext: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/server", () => ({
-  getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
 vi.mock("@/lib/server/campaign-generator", () => ({
   designCreativeComposition: mocks.designCreativeComposition,
 }));
@@ -24,16 +28,29 @@ vi.mock("@/lib/server/request-security", () => ({
   assertSameOrigin: mocks.assertSameOrigin,
   readJsonBody: mocks.readJsonBody,
 }));
+vi.mock("@/lib/server/workspace-access", () => ({
+  requireWorkspaceContext: mocks.requireWorkspaceContext,
+}));
 
 import { POST } from "@/app/api/ai/design/route";
 
 describe("POST /api/ai/design", () => {
+  const projectId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const campaignId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getAuthenticatedUser.mockResolvedValue({ user: { id: "user-1" } });
-    mocks.getRequestIdentity.mockReturnValue("test-request");
-    mocks.rateLimit.mockReturnValue({ allowed: true });
+    mocks.getRequestIdentity.mockReturnValue("workspace:test");
+    mocks.rateLimit.mockResolvedValue({ allowed: true });
+    mocks.requireWorkspaceContext.mockResolvedValue({
+      workspaceId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      user: { id: "user-1" },
+      limits: { activeProjects: 3 },
+      database: vi.fn().mockResolvedValue([{ id: projectId }]),
+    });
     mocks.readJsonBody.mockResolvedValue({
+      projectId,
+      campaignId,
       projectName: "EaseYourStartup",
       context: "A source-backed launch campaign studio.",
       approvedFacts: ["The editor is source-backed."],
@@ -58,7 +75,7 @@ describe("POST /api/ai/design", () => {
     expect(response.status).toBe(502);
     expect(body.mode).toBeUndefined();
     expect(body.code).toBeUndefined();
-    expect(body.error).toMatch(/provider unavailable/i);
+    expect(body.error).toMatch(/failed temporarily/i);
   });
 
   it("returns the provider's validated design and code bundle together", async () => {
@@ -87,5 +104,19 @@ describe("POST /api/ai/design", () => {
     expect(body.mode).toBe("ai");
     expect(body.code).toEqual(providerCode);
     expect(body.provider).toBe("openrouter");
+  });
+
+  it("rejects requests for projects outside the active workspace scope", async () => {
+    mocks.requireWorkspaceContext.mockResolvedValue({
+      workspaceId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      user: { id: "user-1" },
+      limits: { activeProjects: 3 },
+      database: vi.fn().mockResolvedValue([]),
+    });
+
+    const response = await POST(new Request("http://example.test/api/ai/design", { method: "POST" }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.designCreativeComposition).not.toHaveBeenCalled();
   });
 });

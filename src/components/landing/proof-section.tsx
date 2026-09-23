@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ArrowUpRight, LinkSimple } from "@phosphor-icons/react/dist/ssr";
+import { LinkSimple } from "@phosphor-icons/react/dist/ssr";
 import { Reveal } from "@/components/reveal";
 
 export function ProofSection() {
@@ -25,24 +25,18 @@ export function ProofSection() {
             </h2>
             <p className="mt-6 max-w-xl text-base leading-7 text-muted">
               Scanned copy is untrusted evidence, never an instruction. You
-              approve the facts before they reach a caption.
+              get the useful source facts after automatic curation, before they
+              reach a caption.
             </p>
             <div className="mt-10 rounded-container border border-line bg-surface-raised p-5">
               <div className="flex items-center gap-2 font-sans text-[11px] uppercase tracking-[0.14em] text-muted">
                 <LinkSimple size={16} />
-                Approved claim
+                Kept source fact
               </div>
               <p className="mt-4 text-lg font-semibold leading-7">
                 Creates platform-specific copy from your website and update
                 details.
               </p>
-              <a
-                href="/login?next=%2Fstudio%3Fdemo%3D1"
-                className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-accent"
-              >
-                View source mapping
-                <ArrowUpRight size={16} />
-              </a>
             </div>
           </Reveal>
         </div>

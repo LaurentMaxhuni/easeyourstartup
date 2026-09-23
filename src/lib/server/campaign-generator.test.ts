@@ -4,17 +4,74 @@ vi.mock("server-only", () => ({}));
 
 import {
   createDeterministicCreativeDesign,
+  autoCurateClaims,
   generateDeterministicCampaign,
   getOpenAIProviderConfig,
+  isAiGenerationEnabled,
   parseAiCampaignResult,
   normalizeGenerationPayload,
   normalizeCreativeDesignPayload,
   parseStructuredJson,
 } from "@/lib/server/campaign-generator";
 import * as campaignGenerator from "@/lib/server/campaign-generator";
-import { DEMO_ANGLES, DEMO_BRAND, DEMO_COMPOSITION } from "@/lib/demo-data";
+import { claimCurationResultSchema } from "@/lib/contracts";
+import {
+  DEMO_ANGLES,
+  DEMO_BRAND,
+  DEMO_COMPOSITION,
+  DEMO_SCAN,
+} from "@/lib/demo-data";
 
 describe("source-backed campaign generation", () => {
+  it("honors the operator AI-generation kill switch", async () => {
+    vi.stubEnv("AI_GENERATION_ENABLED", "false");
+    try {
+      expect(isAiGenerationEnabled()).toBe(false);
+      await expect(campaignGenerator.generateCampaign({
+        brand: DEMO_BRAND,
+        kind: "launch",
+        goal: "Launch the campaign workflow to solo founders",
+        updateDetails: "The campaign workflow is now available.",
+        audience: "Solo SaaS founders",
+        launchDate: "",
+        cta: "Try it",
+        angle: DEMO_ANGLES[0],
+        channels: ["x"],
+      })).rejects.toThrow(/temporarily disabled/i);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("curates duplicate and low-signal scan snippets without user decisions", () => {
+    const scan = {
+      ...DEMO_SCAN,
+      profile: {
+        ...DEMO_SCAN.profile,
+        claims: [
+          DEMO_SCAN.profile.claims[0],
+          { ...DEMO_SCAN.profile.claims[0], id: "duplicate" },
+          {
+            ...DEMO_SCAN.profile.claims[1],
+            id: "cookie",
+            text: "Read our cookie policy before continuing.",
+          },
+        ],
+      },
+    };
+
+    const curated = autoCurateClaims(scan);
+
+    expect(curated.profile.claims.map((claim) => claim.id)).toEqual([
+      DEMO_SCAN.profile.claims[0].id,
+    ]);
+    expect(curated.curation).toMatchObject({
+      mode: "rules",
+      candidateCount: 3,
+      keptCount: 1,
+    });
+  });
+
   it("links only approved claims", () => {
     const brand = {
       ...DEMO_BRAND,
@@ -43,13 +100,13 @@ describe("source-backed campaign generation", () => {
     }
   });
 
-  it("warns when generation uses no approved website claims", () => {
+  it("warns when generation uses no curated website facts", () => {
     const result = generateDeterministicCampaign({
       brand: {
         ...DEMO_BRAND,
         claims: DEMO_BRAND.claims.map((claim) => ({
           ...claim,
-          approvalState: "pending" as const,
+          approvalState: "rejected" as const,
         })),
       },
       kind: "launch",
@@ -63,7 +120,7 @@ describe("source-backed campaign generation", () => {
     });
 
     expect(result.outputs[0].linkedClaimIds).toEqual([]);
-    expect(result.outputs[0].warnings[0]).toMatch(/No approved/);
+    expect(result.outputs[0].warnings[0]).toMatch(/No curated/);
   });
 
   it("adapts structure for each channel", () => {
@@ -230,7 +287,7 @@ describe("source-backed campaign generation", () => {
     expect(textRoles).toEqual(expect.arrayContaining(["headline", "cta"]));
   });
 
-  it("normalizes rich layers while keeping effects inside the allowlist", () => {
+  it("normalizes rich layers without inventing a gradient treatment", () => {
     const result = normalizeCreativeDesignPayload(
       {
         templateId: "editorial",
@@ -289,9 +346,9 @@ describe("source-backed campaign generation", () => {
     );
 
     expect(result.elements.map((element) => element.kind)).toEqual(
-      expect.arrayContaining(["gradient", "image", "icon", "text"]),
+      expect.arrayContaining(["image", "icon", "text"]),
     );
-    expect(result.elements.find((element) => element.kind === "gradient")?.effect).toBe("drift");
+    expect(result.elements.some((element) => element.kind === "gradient")).toBe(false);
     expect(result.elements.find((element) => element.kind === "icon")?.effectTrigger).toBe("hover");
   });
 
@@ -342,7 +399,7 @@ describe("source-backed campaign generation", () => {
     const image = result.elements.find((element) => element.kind === "image");
     const gradient = result.elements.find((element) => element.kind === "gradient");
 
-    expect(gradient).toMatchObject({ x: 0, y: 0, width: 100, height: 100 });
+    expect(gradient).toBeUndefined();
     expect(headline).toMatchObject({ x: 8, y: 15, width: 84 });
     expect(headline?.fontSize).toBeLessThanOrEqual(5.2);
     expect(image).toMatchObject({ x: 36, y: 64, width: 60, height: 27 });
@@ -381,7 +438,7 @@ describe("source-backed campaign generation", () => {
       );
 
       expect(result.elements.length).toBeGreaterThanOrEqual(8);
-      expect(result.elements[0].kind).toBe("gradient");
+      expect(result.elements[0].kind).toBe("shape");
       expect(result.elements.some((element) => element.kind === "icon")).toBe(true);
       expect(result.elements.some((element) => element.kind === "shape")).toBe(true);
       expect(result.elements.filter((element) => element.kind === "image")).toHaveLength(
@@ -402,7 +459,7 @@ describe("source-backed campaign generation", () => {
     const image = result.elements.find((element) => element.kind === "image");
 
     expect(result.elements.length).toBeGreaterThanOrEqual(8);
-    expect(result.elements[0].kind).toBe("gradient");
+    expect(result.elements[0].kind).toBe("shape");
     expect(result.elements.some((element) => element.kind === "image")).toBe(true);
     expect(result.elements.some((element) => element.kind === "text")).toBe(true);
     expect(cta?.color).toBe("#171917");
@@ -467,6 +524,51 @@ describe("OpenAI-compatible provider configuration", () => {
   it("parses JSON returned by chat providers even when fenced", () => {
     expect(parseStructuredJson("```json\n{\"text\":\"Clear launch copy\"}\n```"))
       .toEqual({ text: "Clear launch copy" });
+  });
+
+  it("uses strict JSON schema routing for OpenRouter structured requests", async () => {
+    const create = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: '{"keptClaimIds":["claim-1"]}' } }],
+    });
+    const requestChatJson = (
+      campaignGenerator as unknown as {
+        requestChatJson: (
+          setup: {
+            client: unknown;
+            model: string;
+            providerName: "openrouter";
+          },
+          messages: Array<{ role: "system" | "user"; content: string }>,
+          maxCompletionTokens: number,
+          transform?: (value: unknown) => unknown,
+          options?: { responseSchema?: unknown; schemaName?: string },
+        ) => Promise<unknown>;
+      }
+    ).requestChatJson;
+
+    const result = await requestChatJson(
+      {
+        client: { chat: { completions: { create } } },
+        model: "openrouter/free",
+        providerName: "openrouter",
+      },
+      [{ role: "system", content: "Return the kept claim ids." }],
+      200,
+      (value) => claimCurationResultSchema.parse(value),
+      {
+        responseSchema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+      },
+    );
+
+    expect(result).toEqual({ keptClaimIds: ["claim-1"] });
+    expect(create.mock.calls[0][0]).toMatchObject({
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "claim_curation", strict: true },
+      },
+      provider: { require_parameters: true, allow_fallbacks: true },
+    });
   });
 
   it("auto-routes a Groq key to Groq with a supported default model", () => {
@@ -572,7 +674,7 @@ describe("OpenAI-compatible provider configuration", () => {
     expect(result.outputs[0].linkedClaimIds).toEqual([]);
   });
 
-  it("normalizes missing linked claim arrays before validating an AI result", () => {
+  it("rejects malformed channel output instead of filling it with a local draft", () => {
     const fallback = generateDeterministicCampaign({
       brand: DEMO_BRAND,
       kind: "launch",
@@ -588,18 +690,16 @@ describe("OpenAI-compatible provider configuration", () => {
       index < 5 ? output : { ...output, linkedClaimIds: undefined },
     );
 
-    const result = parseAiCampaignResult(
+    expect(() => parseAiCampaignResult(
       {
+        mode: "ai",
         angles: fallback.angles,
         outputs: partialOutputs,
         creativeDirections: fallback.creativeDirections,
       },
-      fallback,
+      fallback.outputs.map((output) => output.channel),
       "openrouter",
-    );
-
-    expect(result.mode).toBe("ai");
-    expect(result.outputs[5].linkedClaimIds).toEqual([]);
+    )).toThrow();
   });
 
   it("drops unapproved claim links while retaining model copy", () => {
@@ -633,7 +733,7 @@ describe("OpenAI-compatible provider configuration", () => {
     expect(result.outputs[0].linkedClaimIds).toEqual([]);
   });
 
-  it("keeps partial AI payloads usable and labels the local fields", () => {
+  it("rejects missing AI channel outputs instead of reporting completed generation", () => {
     const fallback = generateDeterministicCampaign({
       brand: DEMO_BRAND,
       kind: "launch",
@@ -646,16 +746,15 @@ describe("OpenAI-compatible provider configuration", () => {
       channels: ["x"],
     });
 
-    const result = normalizeGenerationPayload(
+    expect(() => parseAiCampaignResult(
       {
+        mode: "ai",
         angles: fallback.angles,
         creativeDirections: fallback.creativeDirections,
         outputs: [],
       },
-      fallback,
-    );
-
-    expect(result.outputs).toEqual(fallback.outputs);
-    expect(result.fallbackReason).toMatch(/partial structured response/i);
+      ["x"],
+      "openrouter",
+    )).toThrow();
   });
 });

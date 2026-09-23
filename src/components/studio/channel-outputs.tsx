@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, Copy, WarningCircle } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { BrandClaim, ChannelOutput } from "@/lib/contracts";
@@ -12,21 +12,32 @@ export function ChannelOutputs({
   outputs,
   claims,
   onChange,
+  onRegenerate,
+  regenerationRemaining,
+  regenerationBusyChannel,
+  plan = "free",
   compact = false,
 }: {
   outputs: ChannelOutput[];
   claims: BrandClaim[];
   onChange: (outputs: ChannelOutput[]) => void;
+  onRegenerate?: (channel: ChannelOutput["channel"]) => Promise<void>;
+  regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
+  regenerationBusyChannel?: ChannelOutput["channel"] | null;
+  plan?: "free" | "pro";
   compact?: boolean;
 }) {
   const [active, setActive] = useState(outputs[0]?.channel);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
+  const [regenerationError, setRegenerationError] = useState("");
   const output = outputs.find((item) => item.channel === active) ?? outputs[0];
   const activeChannel = output?.channel;
-  const approvedClaimsById = new Map(
+  const regenerationsRemaining = output ? regenerationRemaining?.[output.channel] : undefined;
+  const regenerationBusy = Boolean(output && regenerationBusyChannel === output.channel);
+  const sourceClaimsById = new Map(
     claims
-      .filter((claim) => claim.approvalState === "approved")
+      .filter((claim) => claim.approvalState !== "rejected")
       .map((claim) => [claim.id, claim]),
   );
 
@@ -70,10 +81,33 @@ export function ChannelOutputs({
             Every line stays editable.
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={copy}>
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onRegenerate && (
+            <div className="text-right">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  if (!window.confirm(`Replace the ${CHANNEL_LABELS[output.channel]} draft with a newly generated version?`)) return;
+                  setRegenerationError("");
+                  try { await onRegenerate(output.channel); }
+                  catch (error) { setRegenerationError(error instanceof Error ? error.message : "Channel regeneration failed."); }
+                }}
+                disabled={regenerationBusy || plan !== "pro" || regenerationsRemaining === 0}
+              >
+                {regenerationBusy ? <ArrowClockwise className="animate-spin" size={16} /> : <ArrowClockwise size={16} />}
+                {regenerationBusy ? "Regenerating" : "Regenerate"}
+              </Button>
+              <span className="mt-1 block text-[10px] text-muted">
+                {plan === "pro" ? `${regenerationsRemaining ?? "…"} of 5 left for this channel` : "Included with Pro"}
+              </span>
+            </div>
+          )}
+          <Button variant="secondary" size="sm" onClick={copy}>
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
       </div>
       <div
         role="tablist"
@@ -117,10 +151,10 @@ export function ChannelOutputs({
       {output.linkedClaimIds.length > 0 && (
         <div className="mt-3 space-y-2">
           <p className="font-sans text-[10px] uppercase tracking-[0.1em] text-muted">
-            Approved source evidence
+            Source evidence
           </p>
           {output.linkedClaimIds.map((claimId) => {
-            const claim = approvedClaimsById.get(claimId);
+            const claim = sourceClaimsById.get(claimId);
             return claim ? (
               <a
                 key={claimId}
@@ -134,7 +168,7 @@ export function ChannelOutputs({
               </a>
             ) : (
               <Badge key={claimId} className="normal-case tracking-normal">
-                Source approval needed for claim {claimId.slice(0, 8)}
+                Source fact unavailable for {claimId.slice(0, 8)}
               </Badge>
             );
           })}
@@ -153,6 +187,9 @@ export function ChannelOutputs({
         <p role="alert" className="mt-3 text-xs leading-5 text-danger">
           {copyError}
         </p>
+      )}
+      {regenerationError && (
+        <p role="alert" className="mt-3 text-xs leading-5 text-danger">{regenerationError}</p>
       )}
     </section>
   );

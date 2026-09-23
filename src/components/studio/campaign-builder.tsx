@@ -28,6 +28,7 @@ export function CampaignBuilder({
   angles,
   status,
   error,
+  isAuthenticated,
   onChange,
   onBack,
   onGenerate,
@@ -36,6 +37,7 @@ export function CampaignBuilder({
   angles: NarrativeAngle[];
   status: "idle" | "loading" | "error";
   error: string;
+  isAuthenticated: boolean;
   onChange: (draft: CampaignDraft) => void;
   onBack: () => void;
   onGenerate: () => Promise<void>;
@@ -72,7 +74,7 @@ export function CampaignBuilder({
           </h1>
           <p className="mt-5 max-w-md text-sm leading-6 text-muted">
             Give the campaign one clear job. The generated copy and visuals
-            will stay within the facts you approved.
+            will stay within the source facts the scan kept.
           </p>
           <div className="mt-8 rounded-container border border-line bg-surface p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
@@ -200,7 +202,7 @@ export function CampaignBuilder({
               <div>
                 <h2 className="text-lg font-semibold">Choose the angle</h2>
                 <p className="mt-1 text-xs text-muted">
-                  This changes the story structure, not the approved facts.
+                  This changes the story structure, not the source facts.
                 </p>
               </div>
             </div>
@@ -275,10 +277,14 @@ export function CampaignBuilder({
           <StudioActionBar
             backLabel="Back to facts"
             onBack={onBack}
-            nextLabel="Create posts"
+            nextLabel={isAuthenticated ? "Create posts" : "Sign in to create posts"}
             nextType="submit"
             loading={status === "loading"}
-            helper="You can edit every caption and visual after generation."
+            helper={
+              isAuthenticated
+                ? "You can edit every caption and visual after generation."
+                : "Sign in is required before opening the launch studio."
+            }
           />
         </div>
       </div>

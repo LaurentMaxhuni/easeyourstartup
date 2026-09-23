@@ -9,28 +9,27 @@ The working promise is: **Turn every ship into a campaign.**
 
 ## What works in this repository
 
-- URL-first landing page, pricing, email/password and Google sign-in, launch studio, and
-  authenticated supporter room
+- URL-first landing page, pricing, email/password and Google sign-in, and launch studio
 - SSRF-aware scanning with validation before the first request and every
   redirect
 - Same-domain crawl of the homepage plus up to five linked pages
-- Editable Brand DNA and claim approval ledger with source URLs
+- Automatically curated Brand DNA with source URLs and source-backed facts
 - Initial launch, feature update, milestone, waitlist, promotion, and custom
   campaign briefs
 - Channel-specific copy for X, LinkedIn, Product Hunt, Reddit, Hacker News,
   Instagram, Threads, Facebook, and email
-- Structured OpenAI Responses API output when configured, including whole-canvas
-  AI design for editable layouts, layers, styling, and approved image assets
-- Deterministic source-backed fallback when OpenAI is not configured
+- Structured provider output when configured, including whole-canvas AI design
+  for editable layouts, layers, styling, and selected image assets
+- Provider failures preserve saved work and return a recoverable error
 - Raster screenshot upload with MIME limits, decode and re-encode, metadata
   stripping, and SVG rejection
 - Browser, phone, launch card, and split visual templates at 1:1, 4:5, 16:9,
   and 1.91:1
 - Free watermarked visual previews, with unwatermarked PNG and full launch-kit
   exports on Pro
-- Pro launch-kit exports with separate channel files, approved source evidence,
+- Pro launch-kit exports with separate channel files, source evidence,
   a launch brief, and a creative PNG
-- Stripe Checkout, customer portal, signature-verified webhooks, and replay
+- Paddle Checkout, customer portal, signature-verified webhooks, and replay
   protection
 - Neon Postgres schema with workspace scoping and atomic usage consumption
 - Neon Auth email/password and Google sign-in with server-side session validation
@@ -38,14 +37,13 @@ The working promise is: **Turn every ship into a campaign.**
 - Authenticated job APIs for queueing scans and campaigns and polling progress
 - Atomic campaign-slot reservations so concurrent generation requests respect
   workspace plan limits
-- HMAC-signed internal render pages for deterministic Browserless exports
+- Short-lived, random database tokens for deterministic Browserless exports
 - System light and dark themes, keyboard focus, responsive layouts, and
   reduced-motion support
 
-The app has a deterministic demo fallback for AI and browser capture, but
-authentication is required for the demo, live scan, generation, images, and
-exports. Live AI, browser capture, database persistence, billing, and durable
-jobs activate when their environment variables are present.
+The paid launch flow requires configured AI, scan, background-job, database,
+and billing services. Provider failures are surfaced and saved work remains
+available for retry. Deterministic example data is retained as test fixture data.
 
 ## Local setup
 
@@ -63,20 +61,25 @@ jobs activate when their environment variables are present.
    pnpm dev
    ```
 
-5. Open `http://localhost:3000`, choose **Free scan**, and sign in with email
-   and password or Google. The studio and scan APIs require an authenticated
-   session.
+5. Open `http://localhost:3000`, sign in with email/password or Google, then
+   scan a public product URL. Open **Dashboard** to see the saved project.
 
 ## Service configuration
 
 ### OpenAI
 
-Set an AI provider key. The studio requires a successful provider response and
-never substitutes a local campaign or canvas when AI fails. `OPENAI_MODEL`
-defaults to `gpt-5.6-terra`. Generation uses a structured output contract.
-OpenAI uses the Responses API; Groq- and OpenRouter-compatible providers use
-Chat Completions JSON mode. Only approved website claims and the
+Set an AI provider key for campaign copy and creative direction. If the provider
+is unavailable or returns malformed output, the campaign is reported as failed,
+the previous saved output remains intact, and its quota reservation is released.
+`OPENAI_MODEL` defaults to
+`gpt-5.6-terra`. Generation uses strict structured output contracts. OpenAI
+uses the Responses API; Groq- and OpenRouter-compatible providers use
+Chat Completions JSON schema plus response healing. Only automatically curated
+website facts and the
 founder-provided update are allowed as factual sources.
+Set `AI_GENERATION_ENABLED=false` to pause campaign generation, AI design, and
+AI rewrites across the app. Website scans continue with local factual curation
+while the switch is off.
 For Groq, you can use the Groq key in `OPENAI_API_KEY`; a `gsk_` key is
 auto-routed to Groq, or set `OPENAI_BASE_URL=https://api.groq.com/openai/v1`
 explicitly. When no model is supplied for Groq, the app uses
@@ -89,7 +92,7 @@ a router over its currently available free models; free access still has
 provider rate limits and availability can change. The visual editor's **AI design** tool calls
 `POST /api/ai/design` to generate a validated, editable composition plus
 separate HTML, CSS, and JavaScript. It can choose the layout, layers, colors,
-crop, graphic treatment, and copy while mapping image layers back to approved
+crop, graphic treatment, and copy while mapping image layers back to selected
 uploaded assets. Generated code is editable and previewed only inside a
 sandboxed, network-isolated iframe. The focused **AI rewrite** tool calls
 `POST /api/ai/rewrite` for one selected text layer.
@@ -98,7 +101,16 @@ sandboxed, network-isolated iframe. The focused **AI rewrite** tool calls
 
 Set `BROWSERLESS_API_URL` and `BROWSERLESS_API_KEY`. Captures use managed
 browser sessions after the URL has passed the local public-destination checks.
-Production deployments should also enable provider-level network egress rules.
+Production deployments must enable provider-level network egress rules to block
+non-public IP destinations after redirects and DNS changes; Browserless request
+filters and response checks provide an additional layer.
+
+### Private object storage
+
+Configure an S3-compatible bucket with private access and set `S3_ENDPOINT`,
+`S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`.
+Uploaded images are resized to WebP and served through authenticated workspace
+routes; they are not returned as base64 snapshots.
 
 ### Neon Postgres + Neon Auth
 
@@ -107,42 +119,94 @@ Create a Neon project, enable Neon Auth on the target branch, and set
 `NEON_AUTH_COOKIE_SECRET` from `.env.example`. The cookie secret must be at
 least 32 characters long.
 
-Run the application migrations after Neon Auth is enabled:
+Run application migrations after Neon Auth is enabled. The runner records
+applied files in `public.app_schema_migrations`, applies pending files in order,
+and detects migrations already present in a database that used the older manual
+instructions. Use a migration-capable database role for this operator command;
+the application runtime needs only its normal data permissions.
 
 ```bash
-psql "$DATABASE_URL" -f migrations/0001_initial_schema.sql
-psql "$DATABASE_URL" -f migrations/0002_studio_states.sql
-psql "$DATABASE_URL" -f migrations/0003_campaign_usage_reservations.sql
+pnpm db:migrate
 ```
 
-Enable the email/password and Google providers in the Neon Auth settings.
+For local feature QA, set `EASEYOURSTARTUP_TEST_MODE=true` and grant an
+account temporary Pro access with:
+
+```bash
+pnpm test:grant-pro -- founder@example.com 7
+```
+
+The operator command grants that account's existing workspace for 1–30 days
+(seven by default). Test grants are available only when the app URL is localhost,
+test mode is explicitly enabled, and the server is not running in production.
+They never create Paddle subscriptions or charges.
+
+Enable the email/password and Google providers in the Neon Auth settings, plus
+the `delete-user` endpoint so account deletion can complete after its billing
+and background-job safety checks pass. Configure and verify email templates and
+OAuth callbacks before inviting customers.
 Neon Auth owns the `neon_auth` schema; the migration references `neon_auth."user"` and keeps
 product data in `public`. The first authenticated server request provisions a
 default workspace and membership for that user. Workspace authorization is
 enforced in the server-side queries before any user-scoped data is returned.
 
-### Stripe
+### Paddle Billing
 
-Create one recurring price and set `STRIPE_PRO_PRICE_ID`,
-`STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. Send subscription events to:
+Create one recurring Paddle product and price. Set `PADDLE_ENVIRONMENT` to
+`sandbox` or `production`, then configure `PADDLE_PRO_PRICE_ID`,
+`PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, and the matching public client token
+in `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`. Set `NEXT_PUBLIC_PADDLE_ENVIRONMENT`
+to the same environment. The default Paddle payment link must use `/checkout`,
+which loads Paddle.js and opens the transaction passed in the payment URL.
+Send subscription events to:
 
 ```text
-/api/stripe/webhook
+/api/paddle/webhook
 ```
 
 Recommended events:
 
-- `checkout.session.completed`
-- `customer.subscription.created`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.payment_failed`
+- `transaction.completed`
+- `subscription.created`
+- `subscription.updated`
+- `subscription.activated`
+- `subscription.trialing`
+- `subscription.past_due`
+- `subscription.paused`
+- `subscription.canceled`
+
+Paddle Billing does not automatically migrate existing Stripe customers. Any
+existing Stripe subscription is retained as legacy data and must be replaced
+by a new Paddle subscription.
+
+For the founding offer, create a separate recurring $19 price and set
+`PADDLE_FOUNDING_PRICE_ID`. After approving a founder, assign a numbered slot
+to their workspace with the operator command:
+
+```bash
+pnpm founding:assign <workspace-uuid>
+```
+
+The command returns the existing assignment for that workspace, assigns at
+most one of the ten slots, and reports when all slots are allocated. A
+founding slot is counted once its subscription activates; cancellation ends
+eligibility for later purchases.
+
+Pro and founding entitlements are granted only when the webhook price ID matches
+one of the configured Paddle price IDs. Use Paddle sandbox prices and a separate
+sandbox webhook secret for staging; production credentials and prices must not
+be shared with staging.
 
 ### Inngest
 
 Set the Inngest event and signing keys. The Next.js handler is available at
 `/api/inngest`. Scan and campaign generation functions use idempotent steps and
-persist progress in `jobs`.
+persist progress in `jobs`. The scheduled private-object cleanup retries
+deletions queued when a customer removes an asset or project. Scan,
+generation, channel-regeneration, and export jobs are inserted with a transactional
+outbox event; the scheduled dispatcher retries delivery with a stable event ID
+and releases reserved usage if an event cannot be delivered after repeated
+attempts.
 
 Authenticated production clients can queue work with:
 
@@ -156,9 +220,8 @@ Send an `Idempotency-Key` header when the client has a stable operation ID.
 
 ### Deterministic server rendering
 
-Set `RENDER_SIGNING_SECRET` to at least 32 random bytes. The render-token API
-requires an authenticated user and issues a five-minute HMAC-signed internal
-render URL. Browserless can capture that page at the exact output dimensions.
+Exports render an immutable saved campaign revision through a short-lived,
+random database token. The composition itself is never embedded in a URL.
 
 ## Commands
 
@@ -168,7 +231,13 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm launch:check
 ```
+
+Set `DEPLOYMENT_ENVIRONMENT` to `staging` or `production` in the deployment
+environment and run `pnpm launch:check` before enabling paid usage. It verifies
+that required integrations exist, secrets meet minimum lengths, public origins
+use HTTPS, and staging uses Paddle sandbox while production uses live Paddle.
 
 ## Security notes
 
@@ -181,12 +250,11 @@ pnpm build
   instructions.
 - Uploads accept PNG, JPEG, and WebP only and are decoded and re-encoded with
   Sharp.
-- Billing webhooks verify the raw request body and Stripe signature.
+- Billing webhooks verify the raw request body and Paddle signature.
 - Workspace authorization is backed by server-side Neon queries rather than
   client state.
-- The included in-memory rate limiter is suitable for local and single-instance
-  previews. Replace it with a shared store such as Redis before horizontally
-  scaling production traffic.
+- Production rate limits are stored in Postgres and fail closed when the shared
+  limiter is unavailable; local development can use the process-local fallback.
 
 ## Product boundary
 

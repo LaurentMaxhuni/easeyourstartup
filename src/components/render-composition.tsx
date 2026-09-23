@@ -28,7 +28,11 @@ function RenderDeviceFrame({
 }) {
   const aspectRatio =
     device === "desktop" ? "16 / 10" : device === "tablet" ? "3 / 4" : "9 / 19";
-  const borderRadius = device === "desktop" ? 8 : device === "tablet" ? 22 : 42;
+  const sourceRadius = composition.tokens.radius ?? 8;
+  const borderRadius =
+    device === "desktop"
+      ? sourceRadius
+      : Math.max(24, Math.min(48, sourceRadius * 3));
   const borderWidth = device === "desktop" ? 8 : device === "tablet" ? 8 : 10;
   const label =
     device === "desktop"
@@ -56,9 +60,9 @@ function RenderDeviceFrame({
           width: "100%",
           height: "100%",
           overflow: "hidden",
-          border: borderWidth + "px solid #171917",
+          border: borderWidth + "px solid " + composition.tokens.foreground,
           borderRadius,
-          background: "#171917",
+          background: composition.tokens.foreground,
           boxShadow: "0 16px 34px rgba(23,25,23,.28)",
         }}
       >
@@ -72,8 +76,8 @@ function RenderDeviceFrame({
               width: "32%",
               height: "2.5%",
               transform: "translateX(-50%)",
-              borderRadius: 999,
-              background: "#171917",
+              borderRadius: "50%",
+              background: composition.tokens.foreground,
             }}
           />
         )}
@@ -102,7 +106,7 @@ function RenderDeviceFrame({
               width: "18%",
               height: "11%",
               transform: "translateX(-50%)",
-              background: "#171917",
+              background: composition.tokens.foreground,
             }}
           />
           <div
@@ -113,8 +117,8 @@ function RenderDeviceFrame({
               width: "34%",
               height: "5%",
               transform: "translateX(-50%)",
-              borderRadius: 999,
-              background: "#171917",
+              borderRadius: "50%",
+              background: composition.tokens.foreground,
             }}
           />
         </>
@@ -202,6 +206,9 @@ function RenderLayeredElement({
   if (element.hidden) return null;
   const effectClass = creativeLayerEffectClass(element);
   const shadow = creativeLayerShadow(element, composition.tokens.accent);
+  const bodyFont = composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily;
+  const headingFont = composition.tokens.headingFontFamily ?? composition.tokens.fontFamily;
+  const sourceRadius = composition.tokens.radius ?? 8;
   const fontSize = Math.max(
     8,
     ((element.fontSize ?? 1.5) / 100) * composition.output.width,
@@ -240,17 +247,22 @@ function RenderLayeredElement({
                 element.textRole === "cta"
                   ? composition.tokens.foreground
                   : "transparent",
-              fontFamily: "var(--font-outfit), Arial, sans-serif",
+              fontFamily:
+                element.textRole === "headline" ? headingFont : bodyFont,
               fontSize,
               fontWeight: element.fontWeight ?? 450,
               lineHeight: element.textRole === "headline" ? 0.96 : 1.2,
               textAlign: element.align ?? "left",
               borderRadius:
                 element.textRole === "cta"
-                  ? `${element.radius ?? 8}px`
+                  ? `${element.radius ?? sourceRadius}px`
                   : undefined,
               letterSpacing:
-                element.textRole === "eyebrow" ? "0.12em" : "-0.025em",
+                element.textRole === "eyebrow"
+                  ? "0.08em"
+                  : element.textRole === "headline"
+                    ? "-0.035em"
+                    : "normal",
               textTransform:
                 element.textRole === "eyebrow" ? "uppercase" : undefined,
               display: element.textRole === "cta" ? "flex" : undefined,
@@ -276,7 +288,7 @@ function RenderLayeredElement({
               width: "100%",
               height: "100%",
               overflow: "hidden",
-              borderRadius: `${element.radius ?? 7}px`,
+              borderRadius: `${element.radius ?? sourceRadius}px`,
             }}
           >
             <Image
@@ -303,8 +315,8 @@ function RenderLayeredElement({
               background: element.fill ?? composition.tokens.foreground,
               borderRadius:
                 element.shape === "circle"
-                  ? 999
-                  : `${element.radius ?? 8}px`,
+                  ? "50%"
+                  : `${element.radius ?? sourceRadius}px`,
             }}
           />
         )}
@@ -328,7 +340,7 @@ function RenderLayeredElement({
               justifyContent: "center",
               color: element.color ?? composition.tokens.accent,
               background: element.fill ?? "transparent",
-              borderRadius: 999,
+              borderRadius: "50%",
             }}
           >
             <CreativeIconGlyph
@@ -381,7 +393,7 @@ function RenderLayeredComposition({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 999,
+            borderRadius: "50%",
             background: composition.tokens.foreground,
             color: composition.tokens.accent,
           }}
@@ -420,6 +432,10 @@ export function RenderComposition({
   const phone = composition.templateId === "phone";
   const devices = composition.imageMode === "devices";
   const borderWidth = Math.max(5, composition.output.width * 0.006);
+  const sourceRadius = composition.tokens.radius ?? 8;
+  const sourceSpacing = composition.tokens.spacing ?? 16;
+  const bodyFont = composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily;
+  const headingFont = composition.tokens.headingFontFamily ?? composition.tokens.fontFamily;
   const deviceContentWidth = composition.output.width * 0.86;
   const deviceTypography = {
     eyebrow: Math.max(8, deviceContentWidth * 0.02),
@@ -444,11 +460,11 @@ export function RenderComposition({
         color: composition.tokens.foreground,
         position: "relative",
         overflow: "hidden",
-        fontFamily: "Arial, sans-serif",
+        fontFamily: bodyFont,
         display: "flex",
         flexDirection: devices ? "column" : split ? "row" : "column",
-        gap: devices ? "3%" : undefined,
-        padding: "7%",
+        gap: devices ? `${Math.max(2, sourceSpacing / 8)}%` : undefined,
+        padding: `${Math.max(5, Math.min(10, sourceSpacing / 2))}%`,
         textAlign: quote ? "center" : "left",
       }}
     >
@@ -486,7 +502,7 @@ export function RenderComposition({
               style={{
                 width: devices ? deviceTypography.icon : 34,
                 height: devices ? deviceTypography.icon : 34,
-                borderRadius: 999,
+                borderRadius: "50%",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -523,7 +539,8 @@ export function RenderComposition({
                 ? deviceTypography.headline
                 : Math.max(42, composition.output.width * 0.065),
               lineHeight: 0.95,
-              letterSpacing: "-0.055em",
+              letterSpacing: "-0.035em",
+              fontFamily: headingFont,
             }}
           >
             {composition.text.headline}
@@ -560,14 +577,14 @@ export function RenderComposition({
             display: "flex",
             alignItems: "flex-end",
             justifyContent: quote ? "center" : "space-between",
-            gap: 16,
+            gap: sourceSpacing,
             width: "100%",
             marginTop: devices ? "5%" : "7%",
           }}
         >
           <span
             style={{
-              borderRadius: 10,
+            borderRadius: sourceRadius,
               padding: devices
                 ? deviceTypography.ctaVerticalPadding +
                   "px " +
@@ -614,9 +631,9 @@ export function RenderComposition({
             border:
               composition.templateId === "launch-card" ||
               composition.templateId === "quote"
-                ? "1px solid rgba(255,255,255,.35)"
-                : borderWidth + "px solid #171917",
-            borderRadius: phone ? 54 : 12,
+                ? `1px solid color-mix(in srgb, ${composition.tokens.foreground} 35%, transparent)`
+                : borderWidth + "px solid " + composition.tokens.foreground,
+            borderRadius: phone ? Math.max(24, sourceRadius * 3) : sourceRadius,
             width: split ? "56%" : phone ? "44%" : "100%",
             alignSelf: phone ? "center" : "stretch",
           }}
@@ -629,7 +646,7 @@ export function RenderComposition({
                 zIndex: 2,
                 height: "5%",
                 minHeight: 18,
-                background: "#171917",
+                background: composition.tokens.foreground,
               }}
             />
           )}
@@ -655,10 +672,10 @@ export function RenderComposition({
           right: "7%",
           bottom: "4%",
           zIndex: 3,
-          borderRadius: 6,
+          borderRadius: Math.max(4, sourceRadius / 2),
           padding: "6px 8px",
-          background: "#171917",
-          color: "#f4f3ef",
+          background: composition.tokens.foreground,
+          color: composition.tokens.background,
           fontSize: 10,
           letterSpacing: "0.12em",
           textTransform: "uppercase",

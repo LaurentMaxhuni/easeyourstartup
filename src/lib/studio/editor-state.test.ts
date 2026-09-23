@@ -17,7 +17,7 @@ describe("mini Canva editor state", () => {
     const elements = createDefaultEditorElements(DEMO_COMPOSITION);
 
     expect(elements.some((element) => element.kind === "image")).toBe(true);
-    expect(elements.some((element) => element.kind === "gradient")).toBe(true);
+    expect(elements.some((element) => element.kind === "gradient")).toBe(false);
     expect(elements.some((element) => element.kind === "icon")).toBe(true);
     expect(elements.some((element) => element.kind === "shape")).toBe(true);
     expect(

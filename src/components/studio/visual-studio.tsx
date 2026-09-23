@@ -20,6 +20,9 @@ import type { LaunchKitReadiness } from "@/lib/launch-kit";
 export type VisualStudioProps = {
   composition: CreativeComposition;
   outputs: ChannelOutput[];
+  onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
+  regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
+  regenerationBusyChannel?: ChannelOutput["channel"] | null;
   generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
@@ -30,9 +33,11 @@ export type VisualStudioProps = {
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  exportDownloadUrl: string | null;
   plan: "free" | "pro";
   canExportLaunchKit: boolean;
   campaignsRemaining: number | null;
+  usagePeriodEndsAt: string | null;
   launchKitReadiness: LaunchKitReadiness;
   onChange: (composition: CreativeComposition) => void;
   onOutputsChange: (outputs: ChannelOutput[]) => void;
@@ -62,6 +67,9 @@ export type VisualStudioProps = {
 export function VisualStudio({
   composition,
   outputs,
+  onRegenerateChannel,
+  regenerationRemaining,
+  regenerationBusyChannel,
   generationProvider,
   autoDesignStatus,
   autoDesignWarning,
@@ -72,9 +80,11 @@ export function VisualStudio({
   uploadError,
   exportStatus,
   exportError,
+  exportDownloadUrl,
   plan,
   canExportLaunchKit,
   campaignsRemaining,
+  usagePeriodEndsAt,
   launchKitReadiness,
   onChange,
   onOutputsChange,
@@ -100,6 +110,9 @@ export function VisualStudio({
       <MiniCanvaEditor
         composition={composition}
         outputs={outputs}
+        onRegenerateChannel={onRegenerateChannel}
+        regenerationRemaining={regenerationRemaining}
+        regenerationBusyChannel={regenerationBusyChannel}
         generationProvider={generationProvider}
         autoDesignStatus={autoDesignStatus}
         autoDesignWarning={autoDesignWarning}
@@ -110,9 +123,11 @@ export function VisualStudio({
         uploadError={uploadError}
         exportStatus={exportStatus}
         exportError={exportError}
+        exportDownloadUrl={exportDownloadUrl}
         plan={plan}
         canExportLaunchKit={canExportLaunchKit}
         campaignsRemaining={campaignsRemaining}
+        usagePeriodEndsAt={usagePeriodEndsAt}
         launchKitReadiness={launchKitReadiness}
         onChange={onChange}
         onOutputsChange={onOutputsChange}

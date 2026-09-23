@@ -1,9 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
 @import "tailwindcss";
 
 @theme inline {
   --font-sans: var(--font-outfit);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-display: var(--font-outfit);
+  --font-mono: "Cascadia Mono", "SFMono-Regular", monospace;
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
@@ -13,13 +13,14 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-danger: var(--danger);
-  --radius-container: 12px;
-  --radius-control: 10px;
+  --radius-container: 10px;
+  --radius-control: 8px;
 }
 
 :root {
   color-scheme: light;
-  --font-outfit: "Outfit", "Arial", sans-serif;
+  --font-body: var(--font-outfit, "Segoe UI", sans-serif);
+  --font-display-family: var(--font-outfit, "Segoe UI", sans-serif);
   --canvas: #f4f3ef;
   --surface: #ebeae4;
   --surface-raised: #faf9f5;
@@ -75,7 +76,7 @@ body {
   min-height: 100vh;
   background: var(--canvas);
   color: var(--ink);
-  font-family: var(--font-outfit);
+  font-family: var(--font-body);
   text-rendering: optimizeLegibility;
   text-wrap: pretty;
 }
@@ -135,9 +136,7 @@ summary:focus-visible {
 }
 
 .hero-surface {
-  background:
-    radial-gradient(circle at 78% 48%, var(--accent-halo), transparent 32rem),
-    var(--canvas);
+  background: var(--canvas);
 }
 
 .noise {

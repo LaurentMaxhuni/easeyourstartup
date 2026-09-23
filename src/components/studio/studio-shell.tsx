@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   creativeCodeBundleSchema,
   creativeDesignResultSchema,
@@ -20,7 +20,7 @@ import type {
   GenerationResult,
   ScanResult,
 } from "@/lib/contracts";
-import { DEMO_ANGLES, DEMO_COMPOSITION } from "@/lib/demo-data";
+import { DEMO_COMPOSITION } from "@/lib/demo-data";
 import { BrandDnaPanel } from "@/components/studio/brand-dna-panel";
 import {
   CampaignBuilder,
@@ -36,20 +36,146 @@ import {
 import { StudioHeader } from "@/components/studio/studio-header";
 import { toExportableImageUrl } from "@/lib/studio-export";
 import { applyCreativeDesign } from "@/lib/studio/editor-state";
-import { buildLaunchKitFiles, getLaunchKitReadiness } from "@/lib/launch-kit";
+import { createDeterministicCreativeCodeBundle as createFallbackCodeBundle } from "@/lib/creative-code";
+import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 
 const EMPTY_DRAFT: CampaignDraft = {
-  kind: "feature_update",
-  goal: "Get more founders to try the new launch workflow",
-  updateDetails:
-    "We are launching a source-backed campaign builder that uses approved website claims and real product screenshots.",
-  audience: "Solo SaaS founders",
+  kind: "launch",
+  goal: "",
+  updateDetails: "",
+  audience: "",
   launchDate: "",
-  cta: "Try the free launch scan",
-  angle: DEMO_ANGLES[0],
+  cta: "",
+  angle: {
+    id: "customer-outcome",
+    title: "Lead with the customer outcome",
+    summary: "Connect the update to a clear benefit while staying within the approved product facts.",
+  },
   channels: ["x", "linkedin", "product_hunt"],
 };
+const DEFAULT_ANGLES = [EMPTY_DRAFT.angle];
+
+const EMPTY_CANVAS_IMAGE = "/images/canvas-placeholder.svg";
+const LEGACY_DEMO_IMAGES = new Set([
+  "/images/studio-capture.png",
+  "/images/studio-capture-mobile.png",
+  "/images/founder-launch-studio.png",
+]);
+
+function blankComposition(): CreativeComposition {
+  return {
+    ...DEMO_COMPOSITION,
+    id: "new-campaign-canvas",
+    screenshotUrl: EMPTY_CANVAS_IMAGE,
+    mockups: { desktop: EMPTY_CANVAS_IMAGE, tablet: EMPTY_CANVAS_IMAGE, phone: EMPTY_CANVAS_IMAGE },
+    elements: undefined,
+    codeBundle: undefined,
+    codeSource: undefined,
+    text: {
+      eyebrow: "",
+      headline: "Your launch story",
+      subheadline: "",
+      body: "",
+      cta: "",
+      footer: "",
+    },
+  };
+}
+
+function storedAssetId(value: string) {
+  try {
+    const path = new URL(value, "https://easeyourstartup.invalid").pathname;
+    const match = path.match(/^\/api\/assets\/([0-9a-f-]{36})$/i);
+    return match?.[1]?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeProjectImage(source: string, projectId: string) {
+  let captureUrl = source;
+  if (captureUrl.startsWith("/api/capture?")) {
+    const parsed = new URL(captureUrl, window.location.origin);
+    if (!parsed.searchParams.has("projectId")) parsed.searchParams.set("projectId", projectId);
+    captureUrl = parsed.pathname + parsed.search;
+  }
+  const captured = await fetch(captureUrl, { cache: "no-store" });
+  if (!captured.ok) throw new Error("Screenshot could not be loaded.");
+  const blob = await captured.blob();
+  if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(blob.type) || blob.size === 0 || blob.size > 10 * 1024 * 1024) {
+    throw new Error("Screenshot must be a PNG, JPEG, or WebP image under 10 MB.");
+  }
+  const extension = blob.type === "image/png" ? "png" : blob.type === "image/jpeg" ? "jpg" : "webp";
+  const form = new FormData();
+  form.append("file", new File([blob], `product-screenshot.${extension}`, { type: blob.type }));
+  form.append("projectId", projectId);
+  const upload = await fetch("/api/uploads", { method: "POST", body: form });
+  const result = await upload.json() as { url?: string; error?: string };
+  if (!upload.ok || !result.url) throw new Error(result.error || "Screenshot could not be saved.");
+  return result.url;
+}
+
+async function migrateEditorImages(state: StudioState) {
+  if (!state.projectId) return { state, failed: false };
+  const composition = state.composition;
+  const sources = [
+    composition.screenshotUrl,
+    composition.mockups.desktop,
+    composition.mockups.tablet,
+    composition.mockups.phone,
+    ...(composition.elements ?? []).flatMap((element) => element.kind === "image" && element.src ? [element.src] : []),
+  ];
+  const replacements = new Map<string, string>();
+  let failed = false;
+  const actualSource = state.scan?.desktopCaptureUrl || state.brand?.imageUrl || state.brand?.logoUrl || "";
+  for (const source of new Set(sources)) {
+    if (!source || storedAssetId(source) || source === EMPTY_CANVAS_IMAGE) continue;
+    let legacyDemo = false;
+    try {
+      legacyDemo = LEGACY_DEMO_IMAGES.has(new URL(source, "https://easeyourstartup.invalid").pathname);
+    } catch {
+      // Malformed legacy image references remain visible and can be replaced manually.
+    }
+    if (legacyDemo && state.scan?.mode === "live" && !actualSource) {
+      replacements.set(source, EMPTY_CANVAS_IMAGE);
+      continue;
+    }
+    const target = legacyDemo && state.scan?.mode === "live"
+      ? toExportableImageUrl(actualSource, EMPTY_CANVAS_IMAGE)
+      : /^https?:\/\//i.test(source) ? toExportableImageUrl(source, EMPTY_CANVAS_IMAGE) : source;
+    if (target === EMPTY_CANVAS_IMAGE) {
+      replacements.set(source, target);
+      continue;
+    }
+    try {
+      replacements.set(source, await storeProjectImage(target, state.projectId));
+    } catch {
+      failed = true;
+      if (legacyDemo && state.scan?.mode === "live") replacements.set(source, EMPTY_CANVAS_IMAGE);
+    }
+  }
+  if (replacements.size === 0) return { state, failed };
+  const replace = (source: string) => replacements.get(source) ?? source;
+  return {
+    failed,
+    state: {
+      ...state,
+      composition: {
+        ...composition,
+        screenshotUrl: replace(composition.screenshotUrl),
+        mockups: {
+          desktop: replace(composition.mockups.desktop),
+          tablet: replace(composition.mockups.tablet),
+          phone: replace(composition.mockups.phone),
+        },
+        elements: composition.elements?.map((element) => element.kind === "image" && element.src
+          ? { ...element, src: replace(element.src) }
+          : element),
+      },
+    },
+  };
+}
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
@@ -85,6 +211,7 @@ type StudioEventProperties = {
   warningCount?: number;
   durationMs?: number;
   mode?: "durable" | "direct" | "demo";
+  format?: "png" | "zip";
 };
 type DurableJob = {
   id: string;
@@ -92,6 +219,13 @@ type DurableJob = {
   progress: number;
   result?: unknown;
   error_message?: string | null;
+};
+type RecoverableJob = {
+  id: string;
+  kind: "scan" | "generate" | "export";
+  projectId: string;
+  campaignId: string | null;
+  regenerationChannel: string | null;
 };
 
 function parseStoredStudioState(value: string | null): StudioState | null {
@@ -102,19 +236,6 @@ function parseStoredStudioState(value: string | null): StudioState | null {
     return result.success ? result.data : null;
   } catch {
     return null;
-  }
-}
-
-function downloadDataUrl(dataUrl: string, filename: string) {
-  const anchor = document.createElement("a");
-  anchor.href = dataUrl;
-  anchor.download = filename;
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  try {
-    anchor.click();
-  } finally {
-    anchor.remove();
   }
 }
 
@@ -160,6 +281,15 @@ async function waitForCompletedJob(jobId: string) {
   throw new Error("The job is taking longer than expected. Your progress is saved; try reopening the studio shortly.");
 }
 
+async function postWithNetworkRetry(url: string, init: RequestInit) {
+  try {
+    return await fetch(url, init);
+  } catch {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 400));
+    return fetch(url, init);
+  }
+}
+
 function applyCreativeDirection(
   composition: CreativeComposition,
   direction: CreativeDirection,
@@ -185,19 +315,29 @@ function applyCreativeDirection(
   };
 }
 
-export function StudioShell() {
+export function StudioShell({ initialAuthenticated = true }: { initialAuthenticated?: boolean }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const startFresh = searchParams.get("new") === "1";
+  const newCampaign = searchParams.get("newCampaign") === "1";
+  const requestedProjectId = searchParams.get("projectId");
+  const requestedCampaignId = searchParams.get("campaignId");
   const autoStarted = useRef(false);
   const hydrating = useRef(true);
-  const storageKey = useRef<string | null>(null);
-  const saveRequest = useRef<AbortController | null>(null);
+  const storageKey = useRef<string | null>("easeyourstartup:guest-studio");
+  const saveRevision = useRef<number | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pollingJobId = useRef<string | null>(null);
+  const applyScanResultRef = useRef<(data: ScanResult, nextProjectId: string | null) => void>(() => {});
   const autoDesignRequest = useRef(0);
   const entitlementRequest = useRef(0);
   const captureRef = useRef<HTMLDivElement | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<StudioStep>("scan");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobType, setJobType] = useState<"scan" | "generate" | "regenerate" | "export" | null>(null);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [brand, setBrand] = useState<BrandProfile | null>(null);
   const [draft, setDraft] = useState<CampaignDraft>(EMPTY_DRAFT);
@@ -208,7 +348,7 @@ export function StudioShell() {
     useState<AutoDesignStatus>("idle");
   const [autoDesignWarning, setAutoDesignWarning] = useState("");
   const [composition, setComposition] =
-    useState<CreativeComposition>(DEMO_COMPOSITION);
+    useState<CreativeComposition>(blankComposition);
   const [scanStatus, setScanStatus] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
@@ -223,6 +363,9 @@ export function StudioShell() {
   const [uploadError, setUploadError] = useState("");
   const [exportStatus, setExportStatus] = useState<"idle" | "loading">("idle");
   const [exportError, setExportError] = useState("");
+  const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
+  const exportStartedAt = useRef<number | null>(null);
+  const exportOperation = useRef<{ signature: string; id: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<StudioSaveStatus>("idle");
   const [saveError, setSaveError] = useState("");
   const [plan, setPlan] = useState<StudioPlan>("free");
@@ -230,13 +373,19 @@ export function StudioShell() {
   const [campaignsRemaining, setCampaignsRemaining] = useState<number | null>(
     null,
   );
+  const [usagePeriodEndsAt, setUsagePeriodEndsAt] = useState<string | null>(null);
   const [entitlementRefreshVersion, setEntitlementRefreshVersion] =
     useState(0);
+  const [regenerationRemaining, setRegenerationRemaining] = useState<Partial<Record<ChannelOutput["channel"], number>>>({});
+  const [regenerationBusyChannel, setRegenerationBusyChannel] = useState<ChannelOutput["channel"] | null>(null);
 
   const buildStudioState = useCallback((): StudioState => {
     return studioStateSchema.parse({
       step,
       projectId,
+      campaignId,
+      jobId,
+      jobType,
       scan,
       brand,
       draft,
@@ -245,58 +394,61 @@ export function StudioShell() {
       outputs,
       composition,
     });
-  }, [brand, composition, draft, generation, outputs, projectId, scan, selectedCreativeId, step]);
+  }, [brand, campaignId, composition, draft, generation, jobId, jobType, outputs, projectId, scan, selectedCreativeId, step]);
 
   const persistStudioState = useCallback(
-    async (options: { manual?: boolean } = {}) => {
+    async (options: { manual?: boolean; state?: StudioState } = {}) => {
       let state: StudioState;
       try {
-        state = buildStudioState();
+        state = options.state ?? buildStudioState();
       } catch {
         setSaveStatus("error");
         setSaveError("This editor state could not be validated for saving.");
-        return;
+        return false;
       }
 
       if (storageKey.current) {
         try {
-          window.localStorage.setItem(storageKey.current, JSON.stringify(state));
+          const localKey = `${storageKey.current}:${state.projectId ?? "new"}:${state.campaignId ?? "draft"}`;
+          window.localStorage.setItem(localKey, JSON.stringify(state));
         } catch {
           // The database save below is still useful when browser storage is blocked.
         }
       }
 
-      saveRequest.current?.abort();
-      const controller = new AbortController();
-      saveRequest.current = controller;
       if (options.manual) {
         setSaveStatus("saving");
         setSaveError("");
       }
 
-      try {
+      const save = saveQueue.current.then(async () => {
         const response = await fetch("/api/studio/state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(state),
-          signal: controller.signal,
+          body: JSON.stringify({ state, expectedRevision: saveRevision.current }),
         });
-        if (!response.ok) {
-          throw new Error("Database persistence is unavailable.");
-        }
+        const result = await response.json() as { error?: string; revision?: number };
+        if (!response.ok) throw new Error(result.error || "Database persistence is unavailable.");
+        if (typeof result.revision === "number") saveRevision.current = result.revision;
         setSaveStatus("saved");
         setSaveError("");
+      });
+      saveQueue.current = save.catch(() => undefined);
+      try {
+        await save;
+        return true;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (storageKey.current) {
+        if (error instanceof Error && error.message.includes("changed in another tab")) {
+          setSaveStatus("error");
+          setSaveError(error.message);
+        } else if (storageKey.current) {
           setSaveStatus("local");
           setSaveError("Saved on this device. Account sync is unavailable.");
         } else {
           setSaveStatus("error");
           setSaveError("The account save service could not be reached.");
         }
-      } finally {
-        if (saveRequest.current === controller) saveRequest.current = null;
+        return false;
       }
     },
     [buildStudioState],
@@ -304,13 +456,20 @@ export function StudioShell() {
 
   useEffect(() => {
     let cancelled = false;
-    if (startFresh) hydrating.current = true;
+    hydrating.current = true;
+    saveRevision.current = null;
 
     async function hydrateStudioState() {
       let savedState: StudioState | null = null;
+      let activeJob: RecoverableJob | null = null;
+      let hasProjectBrand = false;
       let persistence: "database" | "local" = "local";
+      const guestStorageKey = storageKey.current;
       try {
-        const response = await fetch("/api/studio/state", {
+        const query = new URLSearchParams();
+        if (requestedProjectId) query.set("projectId", requestedProjectId);
+        if (requestedCampaignId) query.set("campaignId", requestedCampaignId);
+        const response = await fetch(`/api/studio/state${query.size ? `?${query}` : ""}`, {
           cache: "no-store",
         });
         if (response.ok) {
@@ -318,14 +477,38 @@ export function StudioShell() {
             state?: unknown;
             storageKey?: string;
             persistence?: "database" | "local";
+            revision?: number | null;
+            activeJob?: unknown;
           };
+          saveRevision.current = typeof data.revision === "number" ? data.revision : null;
           persistence = data.persistence === "database" ? "database" : "local";
-          if (typeof data.storageKey === "string" && data.storageKey.length <= 120) {
-            storageKey.current = data.storageKey;
-          }
           savedState = studioStateSchema.safeParse(data.state).success
             ? studioStateSchema.parse(data.state)
             : null;
+          if (data.activeJob && typeof data.activeJob === "object") {
+            const candidate = data.activeJob as Partial<RecoverableJob>;
+            if (
+              typeof candidate.id === "string" &&
+              typeof candidate.projectId === "string" &&
+              (candidate.kind === "scan" || candidate.kind === "generate" || candidate.kind === "export")
+            ) {
+              activeJob = {
+                id: candidate.id,
+                kind: candidate.kind,
+                projectId: candidate.projectId,
+                campaignId: typeof candidate.campaignId === "string" ? candidate.campaignId : null,
+                regenerationChannel: typeof candidate.regenerationChannel === "string" ? candidate.regenerationChannel : null,
+              };
+            }
+          }
+          if (!savedState && guestStorageKey) {
+            savedState = parseStoredStudioState(
+              window.localStorage.getItem(`${guestStorageKey}:${requestedProjectId ?? "new"}:${requestedCampaignId ?? "draft"}`),
+            );
+          }
+          if (typeof data.storageKey === "string" && data.storageKey.length <= 120) {
+            storageKey.current = data.storageKey;
+          }
         }
       } catch {
         // A local snapshot can still restore the editor when the API is unavailable.
@@ -334,16 +517,38 @@ export function StudioShell() {
       if (!startFresh && !savedState && storageKey.current) {
         try {
           savedState = parseStoredStudioState(
-            window.localStorage.getItem(storageKey.current),
+            window.localStorage.getItem(`${storageKey.current}:${requestedProjectId ?? "new"}:${requestedCampaignId ?? "draft"}`),
           );
         } catch {
           savedState = null;
         }
       }
 
-      if (!cancelled && startFresh) {
+      if (activeJob && savedState && savedState.projectId !== activeJob.projectId) {
+        savedState = null;
+        saveRevision.current = null;
+      }
+      if (activeJob && savedState) {
+        savedState = studioStateSchema.parse({
+          ...savedState,
+          projectId: activeJob.projectId,
+          campaignId: activeJob.campaignId ?? savedState.campaignId,
+          jobId: activeJob.id,
+          jobType: activeJob.kind === "generate"
+            ? activeJob.regenerationChannel ? "regenerate" : "generate"
+            : activeJob.kind,
+        });
+      }
+
+      if (!cancelled && startFresh && !activeJob) {
         setStep("scan");
         setProjectId(null);
+        setCampaignId(null);
+        setJobId(null);
+        setJobType(null);
+        setExportDownloadUrl(null);
+        setExportError("");
+        saveRevision.current = null;
         setScan(null);
         setBrand(null);
         setDraft(EMPTY_DRAFT);
@@ -352,7 +557,7 @@ export function StudioShell() {
         setOutputs([]);
         setAutoDesignStatus("idle");
         setAutoDesignWarning("");
-        setComposition(DEMO_COMPOSITION);
+        setComposition(blankComposition());
         setScanStatus("idle");
         setScanError("");
         setGenerateStatus("idle");
@@ -360,10 +565,25 @@ export function StudioShell() {
         setSaveStatus("idle");
         setSaveError("");
       } else if (!cancelled && savedState) {
+        hasProjectBrand = Boolean(savedState.brand);
         setStep(savedState.step);
         setProjectId(savedState.projectId);
+        setCampaignId(savedState.campaignId);
+        setJobId(savedState.jobId);
+        setJobType(savedState.jobType);
         setScan(savedState.scan);
-        setBrand(savedState.brand);
+        setBrand(
+          savedState.brand
+            ? {
+                ...savedState.brand,
+                claims: savedState.brand.claims.map((claim) => ({
+                  ...claim,
+                  approvalState:
+                    claim.approvalState === "rejected" ? "rejected" : "approved",
+                })),
+              }
+            : null,
+        );
         setDraft(savedState.draft);
         setGeneration(savedState.generation);
         setSelectedCreativeId(savedState.selectedCreativeId);
@@ -371,11 +591,82 @@ export function StudioShell() {
         setAutoDesignStatus("idle");
         setAutoDesignWarning("");
         setComposition(savedState.composition);
+        void migrateEditorImages(savedState).then((migrated) => {
+          if (cancelled) return;
+          if (migrated.state.composition !== savedState.composition) {
+            setComposition(migrated.state.composition);
+          }
+          if (migrated.failed) {
+            setExportError("A saved screenshot still needs to be uploaded before export. Your existing work remains available.");
+          }
+        });
         setSaveStatus(persistence === "database" ? "saved" : "local");
         setSaveError("");
+      } else if (!cancelled && activeJob) {
+        setProjectId(activeJob.projectId);
+        setCampaignId(activeJob.campaignId);
+        setJobId(activeJob.id);
+        setJobType(activeJob.kind === "generate"
+          ? activeJob.regenerationChannel ? "regenerate" : "generate"
+          : activeJob.kind);
+        setStep(activeJob.kind === "scan" ? "scan" : activeJob.kind === "generate" ? "campaign" : "creative");
+        const recoveredUrl = new URLSearchParams({ projectId: activeJob.projectId });
+        if (activeJob.campaignId) recoveredUrl.set("campaignId", activeJob.campaignId);
+        window.history.replaceState(null, "", `/studio?${recoveredUrl}`);
+        if (activeJob.kind === "generate") {
+          try {
+            const projectResponse = await fetch(`/api/projects/${activeJob.projectId}`, { cache: "no-store" });
+            if (projectResponse.ok) {
+              const project = await projectResponse.json() as { scan?: ScanResult };
+              if (project.scan) {
+                hasProjectBrand = true;
+                setScan(project.scan);
+                setBrand(project.scan.profile);
+              }
+            }
+          } catch {
+            // The generation job remains recoverable when project details can be reloaded.
+          }
+        }
+      } else if (!cancelled && requestedProjectId) {
+        setProjectId(requestedProjectId);
+        setCampaignId(requestedCampaignId);
+        saveRevision.current = null;
+        try {
+          const projectResponse = await fetch(`/api/projects/${requestedProjectId}`, { cache: "no-store" });
+          if (projectResponse.ok) {
+            const project = await projectResponse.json() as { scan?: ScanResult };
+            if (project.scan) {
+              hasProjectBrand = true;
+              setScan(project.scan);
+              setBrand(project.scan.profile);
+              setStep("brand");
+            }
+          }
+        } catch {
+          // Keep the selected project so the customer can retry after reconnecting.
+        }
+      }
+
+      if (!cancelled && newCampaign && requestedProjectId) {
+        setProjectId(requestedProjectId);
+        setCampaignId(null);
+        setJobId(null);
+        setJobType(null);
+        setDraft(EMPTY_DRAFT);
+        setGeneration(null);
+        setSelectedCreativeId("");
+        setOutputs([]);
+        setComposition(blankComposition());
+        setStep(hasProjectBrand ? "campaign" : "scan");
+        setGenerateStatus("idle");
+        setGenerateError("");
       }
 
       if (!cancelled) {
+        if (newCampaign && requestedProjectId) {
+          window.history.replaceState(null, "", `/studio?projectId=${encodeURIComponent(requestedProjectId)}`);
+        }
         hydrating.current = false;
         setHydrated(true);
       }
@@ -385,7 +676,86 @@ export function StudioShell() {
     return () => {
       cancelled = true;
     };
-  }, [startFresh]);
+  }, [newCampaign, requestedCampaignId, requestedProjectId, startFresh]);
+
+  useEffect(() => {
+    if (!hydrated || !jobId || pollingJobId.current === jobId) return;
+    let cancelled = false;
+    pollingJobId.current = jobId;
+    void waitForCompletedJob(jobId)
+      .then((result) => {
+        if (cancelled) return;
+        if (jobType === "export") {
+          setExportDownloadUrl(`/api/exports/${jobId}/download`);
+          setExportStatus("idle");
+          setExportError("");
+          let payload: { format?: unknown } | null = result && typeof result === "object"
+            ? result as { format?: unknown }
+            : null;
+          if (typeof result === "string") {
+            try { payload = JSON.parse(result) as { format?: unknown }; } catch { payload = null; }
+          }
+          const format = payload && (payload.format === "png" || payload.format === "zip") ? payload.format : undefined;
+          trackStudioEvent("export_completed", {
+            format,
+            durationMs: Date.now() - (exportStartedAt.current ?? Date.now()),
+          });
+          setJobId(null);
+          setJobType(null);
+          return;
+        }
+        if (jobType === "scan") {
+          const scanResult = parseDurableJobResult(result, scanJobResultSchema).scan;
+          applyScanResultRef.current(scanResult, projectId);
+          setJobId(null);
+          setJobType(null);
+          setGenerateStatus("idle");
+          setGenerateError("");
+          return;
+        }
+        const generation = parseDurableJobResult(result, generateJobResultSchema).generation;
+        if (jobType === "regenerate") {
+          const replacement = generation.outputs[0];
+          if (!replacement) throw new Error("The channel regeneration returned no copy.");
+          setOutputs((current) => current.map((output) => output.channel === replacement.channel ? replacement : output));
+          setGeneration((current) => current ? {
+            ...current,
+            outputs: current.outputs.map((output) => output.channel === replacement.channel ? replacement : output),
+          } : current);
+        } else {
+          setGeneration(generation);
+          setOutputs(generation.outputs);
+        }
+        setJobId(null);
+        setJobType(null);
+        setGenerateStatus("idle");
+        setGenerateError("");
+        setStep("creative");
+        setEntitlementRefreshVersion((version) => version + 1);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (jobType === "export") {
+          setExportStatus("idle");
+          setExportError(error instanceof Error ? error.message : "Campaign export failed.");
+          trackStudioEvent("export_failed", { durationMs: Date.now() - (exportStartedAt.current ?? Date.now()) });
+        } else if (jobType === "scan") {
+          setScanStatus("error");
+          setScanError(error instanceof Error ? error.message : "The saved scan did not finish.");
+        } else {
+          setGenerateStatus("error");
+          setGenerateError(error instanceof Error ? error.message : "Campaign generation failed.");
+        }
+        if (!(error instanceof Error) || !error.message.includes("taking longer")) {
+          setJobId(null);
+          setJobType(null);
+        }
+      })
+      .finally(() => {
+        if (pollingJobId.current === jobId) pollingJobId.current = null;
+      });
+    return () => { cancelled = true; };
+  }, [hydrated, jobId, jobType, projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,6 +771,7 @@ export function StudioShell() {
           plan?: StudioPlan;
           canExportLaunchKit?: boolean;
           campaignsRemaining?: number;
+          usagePeriodEndsAt?: string;
         };
         if (cancelled || requestId !== entitlementRequest.current) return;
         if (data.plan === "free" || data.plan === "pro") {
@@ -414,6 +785,7 @@ export function StudioShell() {
         ) {
           setCampaignsRemaining(data.campaignsRemaining);
         }
+        if (typeof data.usagePeriodEndsAt === "string") setUsagePeriodEndsAt(data.usagePeriodEndsAt);
       } catch {
         // A failed lookup intentionally leaves the safer free preview state in place.
       }
@@ -427,17 +799,39 @@ export function StudioShell() {
   }, [entitlementRefreshVersion]);
 
   useEffect(() => {
+    if (!campaignId) return;
+    let cancelled = false;
+    async function loadRegenerationAllowance() {
+      try {
+        const response = await fetch(`/api/campaigns/${campaignId}/regenerate`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json() as { remaining?: Partial<Record<ChannelOutput["channel"], number>> };
+        if (!cancelled) setRegenerationRemaining(data.remaining ?? {});
+      } catch {
+        // API calls still enforce the authoritative allowance if this display is unavailable.
+      }
+    }
+    void loadRegenerationAllowance();
+    return () => { cancelled = true; };
+  }, [campaignId, entitlementRefreshVersion]);
+
+  useEffect(() => {
     if (!hydrated || hydrating.current) return;
-    if (startFresh && !scan && !brand && !generation) return;
+    if (startFresh && !scan && !brand && !generation && !jobId) return;
     const timer = window.setTimeout(() => {
       void persistStudioState();
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [brand, generation, hydrated, persistStudioState, scan, startFresh]);
+  }, [brand, campaignId, composition, draft, generation, hydrated, jobId, jobType, outputs, persistStudioState, projectId, scan, selectedCreativeId, startFresh, step]);
 
   const applyScanResult = useCallback((data: ScanResult, nextProjectId: string | null) => {
     setProjectId(nextProjectId);
-    setScan(data);
+    const withProjectCaptures = nextProjectId ? {
+      ...data,
+      desktopCaptureUrl: data.desktopCaptureUrl ? `${data.desktopCaptureUrl}&projectId=${encodeURIComponent(nextProjectId)}` : null,
+      mobileCaptureUrl: data.mobileCaptureUrl ? `${data.mobileCaptureUrl}&projectId=${encodeURIComponent(nextProjectId)}` : null,
+    } : data;
+    setScan(withProjectCaptures);
     setBrand(data.profile);
     setGeneration(null);
     setOutputs([]);
@@ -448,8 +842,8 @@ export function StudioShell() {
       cta: data.profile.cta || current.cta,
     }));
     const scanImage = toExportableImageUrl(
-      data.desktopCaptureUrl ?? data.profile.imageUrl ?? data.profile.logoUrl,
-      "/images/founder-launch-studio.png",
+      withProjectCaptures.desktopCaptureUrl ?? data.profile.imageUrl ?? data.profile.logoUrl,
+      EMPTY_CANVAS_IMAGE,
     );
     setComposition((current) => ({
       ...current,
@@ -464,7 +858,33 @@ export function StudioShell() {
       },
       tokens: {
         ...current.tokens,
-        background: data.profile.colors[0] ?? current.tokens.background,
+        background:
+          data.profile.visualSystem?.backgroundColor ??
+          data.profile.colors[0] ??
+          current.tokens.background,
+        foreground:
+          data.profile.visualSystem?.foregroundColor ?? current.tokens.foreground,
+        accent:
+          data.profile.visualSystem?.accentColor ??
+          data.profile.colors[1] ??
+          current.tokens.accent,
+        fontFamily:
+          data.profile.visualSystem?.bodyFont ??
+          data.profile.fonts[0] ??
+          current.tokens.fontFamily,
+        headingFontFamily:
+          data.profile.visualSystem?.headingFont ??
+          data.profile.fonts[1] ??
+          data.profile.fonts[0] ??
+          current.tokens.headingFontFamily,
+        bodyFontFamily:
+          data.profile.visualSystem?.bodyFont ??
+          data.profile.fonts[0] ??
+          current.tokens.bodyFontFamily,
+        radius: data.profile.visualSystem?.radius ?? current.tokens.radius ?? 8,
+        spacing: data.profile.visualSystem?.spacing ?? current.tokens.spacing ?? 16,
+        usesGradient:
+          data.profile.visualSystem?.usesGradient ?? current.tokens.usesGradient ?? false,
       },
       text: {
         ...current.text,
@@ -473,16 +893,55 @@ export function StudioShell() {
         cta: data.profile.cta || current.text.cta,
       },
     }));
+    const imageCandidates = Array.from(new Set([
+      withProjectCaptures.desktopCaptureUrl ? scanImage : "",
+      data.profile.imageUrl ? toExportableImageUrl(data.profile.imageUrl, EMPTY_CANVAS_IMAGE) : "",
+      data.profile.logoUrl ? toExportableImageUrl(data.profile.logoUrl, EMPTY_CANVAS_IMAGE) : "",
+    ].filter((source) => source && source !== EMPTY_CANVAS_IMAGE)));
+    if (nextProjectId && imageCandidates.length > 0 && !storedAssetId(scanImage)) {
+      setUploadStatus("loading");
+      setUploadError("");
+      void (async () => {
+        let storedUrl: string | null = null;
+        for (const candidate of imageCandidates) {
+          try {
+            storedUrl = await storeProjectImage(candidate, nextProjectId);
+            break;
+          } catch {
+            // Try the source image if the managed browser capture is unavailable.
+          }
+        }
+        if (storedUrl) {
+          setComposition((current) => current.screenshotUrl !== scanImage ? current : ({
+            ...current,
+            screenshotUrl: storedUrl,
+            mockups: { desktop: storedUrl, tablet: storedUrl, phone: storedUrl },
+          }));
+          setUploadStatus("idle");
+        } else {
+          setComposition((current) => current.screenshotUrl !== scanImage ? current : ({
+            ...current,
+            screenshotUrl: EMPTY_CANVAS_IMAGE,
+            mockups: { desktop: EMPTY_CANVAS_IMAGE, tablet: EMPTY_CANVAS_IMAGE, phone: EMPTY_CANVAS_IMAGE },
+          }));
+          setUploadStatus("error");
+          setUploadError("A product screenshot could not be captured or saved. Upload one before exporting.");
+        }
+      })();
+    }
     setScanStatus("success");
     setStep("brand");
     if (startFresh) {
-      window.history.replaceState(null, "", "/studio");
+      window.history.replaceState(null, "", nextProjectId
+        ? `/studio?projectId=${encodeURIComponent(nextProjectId)}`
+        : "/studio");
     }
   }, [startFresh]);
+  applyScanResultRef.current = applyScanResult;
 
-  const runScan = useCallback(async (url?: string, demo = false) => {
-    const normalized = demo ? undefined : normalizeUrl(url ?? "");
-    if (!demo && !normalized) {
+  const runScan = useCallback(async (url?: string) => {
+    const normalized = normalizeUrl(url ?? "");
+    if (!normalized) {
       setScanStatus("error");
       setScanError("Enter a valid public HTTP or HTTPS website.");
       return;
@@ -491,15 +950,19 @@ export function StudioShell() {
     setScanStatus("loading");
     setScanError("");
     const startedAt = Date.now();
-    trackStudioEvent("scan_started", { mode: demo ? "demo" : "durable" });
+    trackStudioEvent("scan_started", {
+      mode: initialAuthenticated ? "durable" : "direct",
+    });
+    let activeJobId: string | null = null;
     try {
       let data: ScanResult;
       let resolvedProjectId: string | null = null;
-      let mode: "durable" | "direct" | "demo" = demo ? "demo" : "durable";
-      if (!demo && normalized) {
-        const response = await fetch("/api/jobs/scan", {
+      let mode: "durable" | "direct" = "direct";
+      if (normalized && initialAuthenticated) {
+        const operationId = crypto.randomUUID();
+        const response = await postWithNetworkRetry("/api/jobs/scan", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Idempotency-Key": operationId },
           body: JSON.stringify({
             url: normalized,
             projectName: projectNameForUrl(normalized),
@@ -515,9 +978,23 @@ export function StudioShell() {
           if (!queued.job?.id || !queued.projectId) {
             throw new Error("The scan job did not return its workspace details.");
           }
+          activeJobId = queued.job.id;
+          resolvedProjectId = queued.projectId;
+          pollingJobId.current = activeJobId;
+          setProjectId(queued.projectId);
+          setJobId(activeJobId);
+          setJobType("scan");
+          window.history.replaceState(null, "", `/studio?projectId=${encodeURIComponent(queued.projectId)}`);
+          const recoveryState = studioStateSchema.parse({
+            ...buildStudioState(),
+            projectId: queued.projectId,
+            jobId: activeJobId,
+            jobType: "scan",
+            step: "scan",
+          });
+          await persistStudioState({ state: recoveryState });
           const result = await waitForCompletedJob(queued.job.id);
           data = parseDurableJobResult(result, scanJobResultSchema).scan;
-          resolvedProjectId = queued.projectId;
         } else if (
           response.status === 503 &&
           queued.error === "Durable jobs are not configured."
@@ -525,11 +1002,19 @@ export function StudioShell() {
           const directResponse = await fetch("/api/scan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: normalized }),
+            body: JSON.stringify({
+              url: normalized,
+              projectName: projectNameForUrl(normalized),
+              projectId: projectId ?? undefined,
+            }),
           });
-          const direct = (await directResponse.json()) as ScanResult & { error?: string };
+          const direct = (await directResponse.json()) as ScanResult & {
+            error?: string;
+            projectId?: string;
+          };
           if (!directResponse.ok) throw new Error(direct.error || "Scan failed.");
           data = direct;
+          resolvedProjectId = direct.projectId ?? null;
           mode = "direct";
         } else {
           throw new Error(jobError(queued, "Scan failed."));
@@ -538,40 +1023,56 @@ export function StudioShell() {
         const response = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ demo: true }),
+          body: JSON.stringify({
+            url: normalized,
+            projectName: projectNameForUrl(normalized),
+            projectId: projectId ?? undefined,
+          }),
         });
-        const direct = (await response.json()) as ScanResult & { error?: string };
+        const direct = (await response.json()) as ScanResult & {
+          error?: string;
+          projectId?: string;
+        };
         if (!response.ok) throw new Error(direct.error || "Scan failed.");
         data = direct;
+        resolvedProjectId = direct.projectId ?? null;
       }
       applyScanResult(data, resolvedProjectId);
+      setJobId(null);
+      setJobType(null);
       trackStudioEvent("scan_completed", {
         mode,
         sourcePageCount: data.pages.length,
         approvedClaimCount: data.profile.claims.filter(
-          (claim) => claim.approvalState === "approved",
+          (claim) => claim.approvalState !== "rejected",
         ).length,
         warningCount: data.warnings.length,
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
       setScanStatus("error");
-      setScanError(error instanceof Error ? error.message : "Scan failed.");
+      const message = error instanceof Error ? error.message : "Scan failed.";
+      setScanError(message);
+      if (activeJobId && !message.includes("taking longer")) {
+        setJobId(null);
+        setJobType(null);
+      }
       trackStudioEvent("scan_failed", {
-        mode: demo ? "demo" : projectId ? "durable" : "direct",
+        mode: projectId ? "durable" : "direct",
         durationMs: Date.now() - startedAt,
       });
+    } finally {
+      if (pollingJobId.current === activeJobId) pollingJobId.current = null;
     }
-  }, [applyScanResult, projectId]);
+  }, [applyScanResult, buildStudioState, initialAuthenticated, persistStudioState, projectId]);
 
   useEffect(() => {
     if (!hydrated || autoStarted.current) return;
-    const demo = searchParams.get("demo") === "1";
     const url = searchParams.get("url");
-    if (demo || url) {
+    if (url) {
       autoStarted.current = true;
       const timer = window.setTimeout(
-        () => void runScan(url ?? undefined, demo),
+        () => void runScan(url),
         0,
       );
       return () => window.clearTimeout(timer);
@@ -582,8 +1083,11 @@ export function StudioShell() {
     baseComposition: CreativeComposition,
     profile: BrandProfile,
     campaignDraft: CampaignDraft,
+    requestedRequestId?: number,
+    targetCampaignId: string | null = campaignId,
   ) {
-    const requestId = ++autoDesignRequest.current;
+    const requestId = requestedRequestId ?? autoDesignRequest.current + 1;
+    autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
     const result = await designCreativeComposition(
       {
         projectName: profile.projectName,
@@ -596,13 +1100,14 @@ export function StudioShell() {
           .filter(Boolean)
           .join("\n"),
         approvedFacts: profile.claims
-          .filter((claim) => claim.approvalState === "approved")
+          .filter((claim) => claim.approvalState !== "rejected")
           .map((claim) => claim.text),
         instruction:
-          "Design the full launch canvas for this campaign and generate the editable HTML, CSS, and JavaScript preview now. Make the composition feel distinct from the starting template while keeping the approved product facts and screenshot assets.",
+          "Design the full launch canvas for this campaign and generate the editable HTML, CSS, and JavaScript preview now. Make the composition feel distinct from the starting template while keeping the curated product facts and screenshot assets.",
         composition: baseComposition,
       },
       requestId,
+      targetCampaignId,
     );
     if (requestId !== autoDesignRequest.current) return;
     setComposition((current) => ({
@@ -624,6 +1129,13 @@ export function StudioShell() {
       setGenerateError("Select at least one channel.");
       return;
     }
+    if (!initialAuthenticated) {
+      setGenerateStatus("idle");
+      setGenerateError("");
+      await persistStudioState({ manual: true });
+      router.push(`/login?next=${encodeURIComponent("/studio")}`);
+      return;
+    }
 
     setGenerateStatus("loading");
     setGenerateError("");
@@ -634,7 +1146,7 @@ export function StudioShell() {
     trackStudioEvent("generation_started", {
       channelCount: draft.channels.length,
       approvedClaimCount: brand.claims.filter(
-        (claim) => claim.approvalState === "approved",
+        (claim) => claim.approvalState !== "rejected",
       ).length,
       mode: projectId ? "durable" : "direct",
     });
@@ -651,55 +1163,44 @@ export function StudioShell() {
         channels: draft.channels,
       };
       let data: GenerationResult;
-      let mode: "durable" | "direct" = projectId ? "durable" : "direct";
+      let generatedCampaignId: string | null = campaignId;
+      const mode: "durable" | "direct" = projectId ? "durable" : "direct";
       if (projectId) {
-        const response = await fetch("/api/jobs/generate", {
+        const operationId = crypto.randomUUID();
+        const response = await postWithNetworkRetry("/api/jobs/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Idempotency-Key": operationId },
           body: JSON.stringify({ projectId, campaign }),
         });
         const queued = (await response.json()) as {
           job?: DurableJob;
+          campaignId?: string;
           error?: string;
         };
         if (response.ok) {
           if (!queued.job?.id) {
             throw new Error("The campaign job did not return an id.");
           }
+          if (!queued.campaignId) throw new Error("The campaign job did not return its campaign id.");
+          pollingJobId.current = queued.job.id;
+          saveRevision.current = null;
+          setCampaignId(queued.campaignId);
+          generatedCampaignId = queued.campaignId;
+          setJobId(queued.job.id);
+          setJobType("generate");
           const result = await waitForCompletedJob(queued.job.id);
           data = parseDurableJobResult(result, generateJobResultSchema).generation;
-        } else if (
-          response.status === 503 &&
-          queued.error === "Durable jobs are not configured."
-        ) {
-          const directResponse = await fetch("/api/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(campaign),
-          });
-          const direct = (await directResponse.json()) as GenerationResult & { error?: string };
-          if (!directResponse.ok) {
-            throw new Error(direct.error || "Campaign generation failed.");
-          }
-          data = direct;
-          mode = "direct";
         } else {
           throw new Error(jobError(queued, "Campaign generation failed."));
         }
       } else {
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(campaign),
-        });
-        const direct = (await response.json()) as GenerationResult & { error?: string };
-        if (!response.ok) {
-          throw new Error(direct.error || "Campaign generation failed.");
-        }
-        data = direct;
+        throw new Error("Save this project before generating a campaign.");
       }
       setGeneration(data);
       setOutputs(data.outputs);
+      setJobId(null);
+      setJobType(null);
+      pollingJobId.current = null;
       if (mode === "durable") {
         setEntitlementRefreshVersion((version) => version + 1);
       }
@@ -720,17 +1221,26 @@ export function StudioShell() {
         };
       }
       setComposition(nextComposition);
-      // Do not enter the editor until the provider has returned the complete
-      // AI-authored canvas and code bundle. A failed design must never expose
-      // the starting template as if it were generated output.
-      await runAutomaticDesign(nextComposition, brand, draft);
+      try {
+        await runAutomaticDesign(nextComposition, brand, draft, undefined, generatedCampaignId);
+      } catch {
+        setComposition({
+          ...nextComposition,
+          codeBundle: createFallbackCodeBundle(nextComposition),
+          codeSource: undefined,
+        });
+        setAutoDesignStatus("error");
+        setAutoDesignWarning(
+          "AI layout is temporarily unavailable. A source-matched draft is ready; retry AI design when the provider is back.",
+        );
+      }
       setGenerateStatus("idle");
       setStep("creative");
       trackStudioEvent("generation_completed", {
         mode,
         channelCount: data.outputs.length,
         approvedClaimCount: brand.claims.filter(
-          (claim) => claim.approvalState === "approved",
+          (claim) => claim.approvalState !== "rejected",
         ).length,
         warningCount: data.outputs.reduce(
           (count, output) => count + output.warnings.length,
@@ -739,6 +1249,7 @@ export function StudioShell() {
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
+      pollingJobId.current = null;
       setGenerateStatus("error");
       setGenerateError(
         error instanceof Error ? error.message : "Campaign generation failed.",
@@ -761,10 +1272,19 @@ export function StudioShell() {
     setAutoDesignWarning("");
     setSelectedCreativeId(id);
     const nextComposition = applyCreativeDirection(composition, direction);
+    setComposition(nextComposition);
+    const requestId = autoDesignRequest.current + 1;
     if (brand) {
-      void runAutomaticDesign(nextComposition, brand, draft).catch(() => {
-        // The AI request records the visible error state; no local scene is
-        // applied when a direction cannot be designed by the provider.
+      void runAutomaticDesign(nextComposition, brand, draft, requestId).catch(() => {
+        if (autoDesignRequest.current !== requestId) return;
+        setComposition({
+          ...nextComposition,
+          codeBundle: createFallbackCodeBundle(nextComposition),
+          codeSource: undefined,
+        });
+        setAutoDesignWarning(
+          "AI layout is temporarily unavailable. This direction is still editable as a source-matched draft.",
+        );
       });
     }
   }
@@ -787,6 +1307,8 @@ export function StudioShell() {
     try {
       const form = new FormData();
       form.append("file", file);
+      if (projectId) form.append("projectId", projectId);
+      if (campaignId) form.append("campaignId", campaignId);
       const response = await fetch("/api/uploads", {
         method: "POST",
         body: form,
@@ -806,10 +1328,11 @@ export function StudioShell() {
   }
 
   async function rewriteCreativeText(input: CreativeRewriteInput) {
+    if (!projectId || !campaignId) throw new Error("Save this campaign before using AI rewrite.");
     const response = await fetch("/api/ai/rewrite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, projectId, campaignId }),
     });
     const data = (await response.json()) as {
       text?: string;
@@ -825,7 +1348,9 @@ export function StudioShell() {
   async function designCreativeComposition(
     input: CreativeDesignInput,
     requestId = autoDesignRequest.current + 1,
+    targetCampaignId: string | null = campaignId,
   ) {
+    if (!projectId || !targetCampaignId) throw new Error("Save this campaign before using AI design.");
     autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
     if (requestId === autoDesignRequest.current) {
       setAutoDesignStatus("loading");
@@ -837,7 +1362,7 @@ export function StudioShell() {
       const response = await fetch("/api/ai/design", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, projectId, campaignId: targetCampaignId }),
         signal: controller.signal,
       });
       const body = await response.text();
@@ -898,107 +1423,113 @@ export function StudioShell() {
     return () => window.clearTimeout(timer);
   }, [step]);
 
-  async function renderPreview() {
-    if (!captureRef.current) throw new Error("Creative preview is unavailable.");
-    const { toPng } = await import("html-to-image");
-    return toPng(captureRef.current, {
-      width: composition.output.width,
-      height: composition.output.height,
-      pixelRatio: 1,
-      cacheBust: true,
-      backgroundColor: composition.tokens.background,
-      style: {
-        width: `${composition.output.width}px`,
-        height: `${composition.output.height}px`,
-      },
-    });
+  async function regenerateChannel(channel: ChannelOutput["channel"]) {
+    if (!campaignId) throw new Error("Save or generate this campaign before regenerating channel copy.");
+    if (plan !== "pro") throw new Error("Channel regeneration is available on Pro.");
+    setRegenerationBusyChannel(channel);
+    let activeJobId: string | null = null;
+    try {
+      const operationId = crypto.randomUUID();
+      const response = await postWithNetworkRetry(`/api/campaigns/${campaignId}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": operationId },
+        body: JSON.stringify({ channel }),
+      });
+      const queued = await response.json() as { job?: DurableJob; error?: string };
+      if (!response.ok || !queued.job?.id) throw new Error(queued.error || "Channel regeneration could not be queued.");
+      activeJobId = queued.job.id;
+      pollingJobId.current = activeJobId;
+      setJobId(activeJobId);
+      setJobType("regenerate");
+      const result = await waitForCompletedJob(activeJobId);
+      const generation = parseDurableJobResult(result, generateJobResultSchema).generation;
+      const replacement = generation.outputs.find((output) => output.channel === channel);
+      if (!replacement) throw new Error("The provider returned no replacement for this channel.");
+      setOutputs((current) => current.map((output) => output.channel === channel ? replacement : output));
+      setGeneration((current) => current ? {
+        ...current,
+        outputs: current.outputs.map((output) => output.channel === channel ? replacement : output),
+      } : current);
+      setJobId(null);
+      setJobType(null);
+      setGenerateError("");
+      setEntitlementRefreshVersion((version) => version + 1);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("taking longer")) {
+        if (activeJobId) {
+          setJobId(null);
+          setJobType(null);
+        }
+      }
+      throw error;
+    } finally {
+      if (pollingJobId.current === activeJobId) pollingJobId.current = null;
+      setRegenerationBusyChannel(null);
+    }
+  }
+
+  async function exportSavedCampaign(format: "png" | "zip") {
+    if (!canExportLaunchKit) {
+      setExportError(format === "png"
+        ? "Upgrade to Pro to download an unwatermarked launch visual."
+        : "Upgrade to Pro to download the full launch kit.");
+      return;
+    }
+    if (!projectId || !campaignId || !brand) {
+      setExportError("Save a completed campaign before exporting.");
+      return;
+    }
+    const outputCount = outputs.length;
+    const approvedClaimCount = brand.claims.filter(
+      (claim) => claim.approvalState !== "rejected",
+    ).length;
+    setExportStatus("loading");
+    setExportError("");
+    setExportDownloadUrl(null);
+    const startedAt = Date.now();
+    trackStudioEvent("export_started", { outputCount, approvedClaimCount, format });
+    try {
+      const saved = await persistStudioState({ manual: true });
+      if (!saved || saveRevision.current === null) {
+        throw new Error("Save this campaign before exporting.");
+      }
+      const signature = `${format}:${projectId}:${campaignId}:${saveRevision.current}`;
+      if (!exportOperation.current || exportOperation.current.signature !== signature) {
+        exportOperation.current = { signature, id: crypto.randomUUID() };
+      }
+      const response = await postWithNetworkRetry("/api/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": exportOperation.current.id },
+        body: JSON.stringify({
+          format,
+          projectId,
+          campaignId,
+          expectedRevision: saveRevision.current,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "The saved campaign could not be exported. Please retry.");
+      }
+      const queued = await response.json() as { job?: DurableJob; error?: string };
+      if (!queued.job?.id) throw new Error(queued.error || "The export could not be queued.");
+      exportOperation.current = null;
+      exportStartedAt.current = startedAt;
+      setJobId(queued.job.id);
+      setJobType("export");
+      setExportStatus("loading");
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "The campaign could not be exported. Please retry.");
+      setExportStatus("idle");
+    }
   }
 
   async function exportPng() {
-    if (!canExportLaunchKit) {
-      setExportError("Upgrade to Pro to download an unwatermarked launch visual.");
-      return;
-    }
-    setExportStatus("loading");
-    setExportError("");
-    const startedAt = Date.now();
-    trackStudioEvent("export_started", { outputCount: outputs.length });
-    try {
-      const dataUrl = await renderPreview();
-      downloadDataUrl(dataUrl, "easeyourstartup-campaign-preview.png");
-      trackStudioEvent("export_completed", {
-        outputCount: outputs.length,
-        durationMs: Date.now() - startedAt,
-      });
-    } catch {
-      setExportError(
-        "The preview could not be exported. Try an uploaded screenshot.",
-      );
-      trackStudioEvent("export_failed", {
-        outputCount: outputs.length,
-        durationMs: Date.now() - startedAt,
-      });
-    } finally {
-      setExportStatus("idle");
-    }
+    await exportSavedCampaign("png");
   }
 
   async function exportZip() {
-    if (!canExportLaunchKit) {
-      setExportError("Upgrade to Pro to download the full launch kit.");
-      return;
-    }
-    if (!brand) {
-      setExportError("A source-backed brand profile is required before exporting.");
-      return;
-    }
-    setExportStatus("loading");
-    setExportError("");
-    const startedAt = Date.now();
-    trackStudioEvent("export_started", {
-      outputCount: outputs.length,
-      approvedClaimCount: brand.claims.filter(
-        (claim) => claim.approvalState === "approved",
-      ).length,
-    });
-    try {
-      const [{ default: JSZip }, dataUrl] = await Promise.all([
-        import("jszip"),
-        renderPreview(),
-      ]);
-      const zip = new JSZip();
-      for (const file of buildLaunchKitFiles({
-        brand,
-        draft,
-        outputs,
-        composition,
-        scan,
-      })) {
-        zip.file(file.path, file.contents);
-      }
-      zip.file("creative-preview.png", dataUrl.split(",")[1], {
-        base64: true,
-      });
-      const blob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(blob);
-      downloadDataUrl(url, "easeyourstartup-launch-kit.zip");
-      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-      trackStudioEvent("export_completed", {
-        outputCount: outputs.length,
-        approvedClaimCount: brand.claims.filter(
-          (claim) => claim.approvalState === "approved",
-        ).length,
-        durationMs: Date.now() - startedAt,
-      });
-    } catch {
-      setExportError("The campaign ZIP could not be created.");
-      trackStudioEvent("export_failed", {
-        outputCount: outputs.length,
-        durationMs: Date.now() - startedAt,
-      });
-    } finally {
-      setExportStatus("idle");
-    }
+    await exportSavedCampaign("zip");
   }
 
   const available: StudioStep[] = [
@@ -1006,13 +1537,27 @@ export function StudioShell() {
     ...(scan ? (["brand", "campaign"] as StudioStep[]) : []),
     ...(generation ? (["creative"] as StudioStep[]) : []),
   ];
+  const compositionImageRefs = [
+    composition.screenshotUrl,
+    composition.mockups.desktop,
+    composition.mockups.tablet,
+    composition.mockups.phone,
+    ...(composition.elements ?? []).flatMap((element) => element.kind === "image" && element.src ? [element.src] : []),
+  ];
+  const hasDurableCompositionImages = compositionImageRefs.every((source) => storedAssetId(source) !== null);
   const launchKitReadiness = brand
-    ? getLaunchKitReadiness({ brand, draft, outputs, composition, scan })
+    ? (() => {
+        const readiness = getLaunchKitReadiness({ brand, draft, outputs, composition, scan });
+        const warnings = hasDurableCompositionImages
+          ? readiness.warnings
+          : ["Upload or capture a product screenshot so it is saved privately before exporting.", ...readiness.warnings];
+        return { ...readiness, ready: readiness.ready && hasDurableCompositionImages, warnings: [...new Set(warnings)] };
+      })()
     : {
         ready: false,
         approvedClaimCount: 0,
         outputCount: 0,
-        warnings: ["Scan a product and approve facts before creating a launch kit."],
+        warnings: ["Scan a product before creating a launch kit."],
       };
 
   return (
@@ -1034,7 +1579,7 @@ export function StudioShell() {
               sourceUrl={scan.pages[0]?.url ?? ""}
               approvedClaims={
                 brand.claims.filter(
-                  (claim) => claim.approvalState === "approved",
+                  (claim) => claim.approvalState !== "rejected",
                 ).length
               }
               totalClaims={brand.claims.length}
@@ -1055,7 +1600,7 @@ export function StudioShell() {
       >
         {step === "scan" && (
           <ScanPanel
-            status={scanStatus}
+            status={jobType === "scan" && jobId && scanStatus === "idle" ? "loading" : scanStatus}
             error={scanError}
             result={scan}
             onScan={runScan}
@@ -1066,9 +1611,6 @@ export function StudioShell() {
             scan={scan}
             brand={brand}
             onChange={setBrand}
-            onClaimsApproved={(approvedClaimCount) =>
-              trackStudioEvent("claims_approved", { approvedClaimCount })
-            }
             onBack={() => setStep("scan")}
             onContinue={() => setStep("campaign")}
           />
@@ -1076,9 +1618,10 @@ export function StudioShell() {
         {step === "campaign" && brand && (
           <CampaignBuilder
             draft={draft}
-            angles={generation?.angles ?? DEMO_ANGLES}
-            status={generateStatus}
+            angles={generation?.angles ?? DEFAULT_ANGLES}
+            status={(jobType === "generate" || jobType === "regenerate") && jobId && generateStatus === "idle" ? "loading" : generateStatus}
             error={generateError}
+            isAuthenticated={initialAuthenticated}
             onChange={setDraft}
             onBack={() => setStep("brand")}
             onGenerate={runGeneration}
@@ -1088,17 +1631,22 @@ export function StudioShell() {
           <CreativeWorkspace
             composition={composition}
             outputs={outputs}
+            onRegenerateChannel={regenerateChannel}
+            regenerationRemaining={regenerationRemaining}
+            regenerationBusyChannel={regenerationBusyChannel}
             generationProvider={generation.provider}
             autoDesignStatus={autoDesignStatus}
             autoDesignWarning={autoDesignWarning}
             captureRef={captureRef}
             uploadStatus={uploadStatus}
             uploadError={uploadError}
-            exportStatus={exportStatus}
+            exportStatus={jobType === "export" && jobId && !exportDownloadUrl && !exportError ? "loading" : exportStatus}
             exportError={exportError}
+            exportDownloadUrl={exportDownloadUrl}
             plan={plan}
             canExportLaunchKit={canExportLaunchKit}
             campaignsRemaining={campaignsRemaining}
+            usagePeriodEndsAt={usagePeriodEndsAt}
             launchKitReadiness={launchKitReadiness}
             creativeDirections={generation.creativeDirections}
             selectedCreativeId={selectedCreativeId}
@@ -1110,7 +1658,7 @@ export function StudioShell() {
             onAiDesign={designCreativeComposition}
             saveStatus={saveStatus}
             saveError={saveError}
-            onSave={() => persistStudioState({ manual: true })}
+            onSave={async () => { await persistStudioState({ manual: true }); }}
             aiContext={{
               projectName: brand.projectName,
               context: [
@@ -1122,10 +1670,10 @@ export function StudioShell() {
                 .filter(Boolean)
                 .join("\n"),
               approvedFacts: brand.claims
-                .filter((claim) => claim.approvalState === "approved")
+                .filter((claim) => claim.approvalState !== "rejected")
                 .map((claim) => claim.text),
               approvedClaims: brand.claims.filter(
-                (claim) => claim.approvalState === "approved",
+                (claim) => claim.approvalState !== "rejected",
               ),
             }}
             onExportPng={exportPng}

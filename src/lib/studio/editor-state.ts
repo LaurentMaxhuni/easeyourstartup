@@ -54,7 +54,7 @@ function textElement(
     fontWeight:
       role === "headline" || role === "cta" ? 650 : role === "eyebrow" ? 600 : 450,
     align: centered ? "center" : role === "footer" ? "right" : "left",
-    radius: role === "cta" ? 8 : 0,
+    radius: role === "cta" ? composition.tokens.radius ?? 8 : 0,
     effect: role === "headline" ? "rise" : "none",
     effectTrigger: "always",
     shadow: role === "cta" ? "soft" : "none",
@@ -134,7 +134,12 @@ function shapeElement(
     hidden: false,
     shape,
     fill: composition.tokens.foreground,
-    radius: shape === "circle" ? 50 : shape === "line" ? 0 : 16,
+    radius:
+      shape === "circle"
+        ? 50
+        : shape === "line"
+          ? 0
+          : composition.tokens.radius ?? 8,
     effect: "none",
     effectTrigger: "always",
     shadow: shape === "line" ? "none" : "soft",
@@ -231,7 +236,7 @@ function createRichSingleImageElements(
           composition,
         );
   return [
-    gradientElement(composition),
+    ...(composition.tokens.usesGradient ? [gradientElement(composition)] : []),
     panel,
     accent,
     image,
@@ -260,7 +265,7 @@ export function createDefaultEditorElements(
 
   if (composition.imageMode === "devices") {
     return [
-      gradientElement(composition),
+      ...(composition.tokens.usesGradient ? [gradientElement(composition)] : []),
       shapeElement("shape-device-panel", 49, 30, 47, 42, "rectangle", composition, -3),
       shapeElement("shape-device-rule", 7, 67, 31, 0.5, "line", composition),
       imageElement(

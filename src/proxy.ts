@@ -6,18 +6,19 @@ const neonAuthMiddleware = getNeonAuth()?.middleware({ loginUrl: "/login" });
 
 export async function proxy(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
+  const isPaddleCheckout = new URL(request.url).pathname === "/checkout";
   const developmentScriptPolicy =
     process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   const upgradePolicy =
     process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : "";
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${developmentScriptPolicy} https://js.stripe.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isPaddleCheckout ? " https://cdn.paddle.com" : ""}${developmentScriptPolicy}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.openai.com https://*.neon.tech https://*.neon.build https://*.browserless.io https://api.stripe.com https://*.inngest.com",
-    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+    `connect-src 'self' https://api.openai.com https://*.neon.tech https://*.neon.build https://*.browserless.io https://*.inngest.com${isPaddleCheckout ? " https://*.paddle.com https://*.paddle.io" : ""}`,
+    `frame-src 'self'${isPaddleCheckout ? " https://*.paddle.com https://*.paddle.io" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

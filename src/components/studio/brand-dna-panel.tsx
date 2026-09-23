@@ -1,58 +1,36 @@
 "use client";
 
 import {
-  Check,
+  CheckCircle,
   LinkSimple,
+  Palette,
+  TextAa,
   WarningCircle,
-  X,
 } from "@phosphor-icons/react";
 import Image from "next/image";
 import { StudioActionBar } from "@/components/studio/studio-action-bar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { BrandProfile, ScanResult } from "@/lib/contracts";
 import { toExportableImageUrl } from "@/lib/studio-export";
-import { cn } from "@/lib/utils";
 
 export function BrandDnaPanel({
   scan,
   brand,
   onChange,
-  onClaimsApproved,
   onBack,
   onContinue,
 }: {
   scan: ScanResult;
   brand: BrandProfile;
   onChange: (brand: BrandProfile) => void;
-  onClaimsApproved?: (approvedClaimCount: number) => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
   const approvedCount = brand.claims.filter(
-    (claim) => claim.approvalState === "approved",
+    (claim) => claim.approvalState !== "rejected",
   ).length;
-
-  function updateClaim(
-    id: string,
-    approvalState: "approved" | "rejected",
-  ) {
-    const nextClaims = brand.claims.map((claim) =>
-      claim.id === id ? { ...claim, approvalState } : claim,
-    );
-    onChange({
-      ...brand,
-      claims: nextClaims,
-    });
-    const previous = brand.claims.find((claim) => claim.id === id);
-    if (approvalState === "approved" && previous?.approvalState !== "approved") {
-      onClaimsApproved?.(
-        nextClaims.filter((claim) => claim.approvalState === "approved").length,
-      );
-    }
-  }
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6 lg:py-14">
@@ -62,15 +40,19 @@ export function BrandDnaPanel({
             <Badge>{scan.mode === "demo" ? "Demo scan" : "Live scan"}</Badge>
             <Badge>{scan.pages.length} source pages</Badge>
             <Badge>
-              {approvedCount}/{brand.claims.length} facts approved
+              {approvedCount} facts kept
             </Badge>
+            {scan.curation && (
+              <Badge>{scan.curation.mode === "ai" ? "AI curated" : "Rules curated"}</Badge>
+            )}
           </div>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
-            Check what we found
+            Source profile, ready to use
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-            Confirm the brand details and approve only the facts you want to use
-            in public copy.
+            We scanned the source and filtered weak or duplicate snippets
+            automatically. Adjust the brand details if you need to steer the
+            launch story.
           </p>
         </div>
       </div>
@@ -208,6 +190,32 @@ export function BrandDnaPanel({
                 ))}
               </div>
             </div>
+            {brand.visualSystem && (
+              <div className="border-t border-line pt-5">
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <Palette aria-hidden="true" size={16} />
+                  Source visual system
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted">
+                  <div className="rounded-control border border-line bg-canvas p-3">
+                    <span className="block text-[10px] uppercase tracking-[0.1em]">Shape</span>
+                    <span className="mt-1 block text-ink">{brand.visualSystem.radius}px corners · {brand.visualSystem.spacing}px rhythm</span>
+                  </div>
+                  <div className="rounded-control border border-line bg-canvas p-3">
+                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.1em]"><TextAa aria-hidden="true" size={13} /> Type</span>
+                    <span className="mt-1 block text-ink">{brand.visualSystem.headingFont} + {brand.visualSystem.bodyFont}</span>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2" aria-label="Mapped source colors">
+                  {[brand.visualSystem.backgroundColor, brand.visualSystem.foregroundColor, brand.visualSystem.accentColor].map((color) => (
+                    <span key={color} className="size-8 rounded-full border border-line" style={{ backgroundColor: color }} title={color} />
+                  ))}
+                  <span className="self-center text-xs text-muted">
+                    {brand.visualSystem.usesGradient ? "Source uses a gradient" : "Flat source treatment"}
+                  </span>
+                </div>
+              </div>
+            )}
             {brand.imageUrl && (
               <div>
                 <span className="text-xs font-semibold">Source image</span>
@@ -241,10 +249,10 @@ export function BrandDnaPanel({
         <section aria-labelledby="claims-title">
           <div className="flex items-center justify-between">
             <h2 id="claims-title" className="text-lg font-semibold">
-              Public claims
+              Kept source facts
             </h2>
             <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-muted">
-              {approvedCount} approved for copy
+              {approvedCount} kept for copy
             </span>
           </div>
           <div className="mt-4 space-y-3">
@@ -253,26 +261,26 @@ export function BrandDnaPanel({
                 <p className="font-semibold">No reliable claims were extracted.</p>
                 <p className="mt-2 text-sm leading-6 text-muted">
                   You can still generate from the update details you enter. The
-                  output will warn that it contains no approved website claim.
+                  output will call out that it has no source-backed claim.
                 </p>
               </div>
             )}
             {brand.claims.map((claim) => (
               <article
                 key={claim.id}
-                className={cn(
-                  "rounded-container border bg-surface-raised p-5 transition-colors",
-                  claim.approvalState === "approved"
-                    ? "border-accent/50"
-                    : "border-line",
-                  claim.approvalState === "rejected" && "opacity-55",
-                )}
+                className="rounded-container border border-accent/40 bg-surface-raised p-5"
               >
-                <p className="text-sm font-semibold leading-6">{claim.text}</p>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="mt-0.5 shrink-0 text-accent" size={18} weight="fill" />
+                  <div>
+                    <p className="text-sm font-semibold leading-6">{claim.text}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-accent">Kept for campaign copy</p>
+                  </div>
+                </div>
                 <blockquote className="mt-3 border-l-2 border-line pl-3 text-xs leading-5 text-muted">
                   {claim.sourceExcerpt}
                 </blockquote>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-4">
                   <a
                     href={claim.sourceUrl}
                     target="_blank"
@@ -284,32 +292,6 @@ export function BrandDnaPanel({
                       {new URL(claim.sourceUrl).hostname}
                     </span>
                   </a>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={
-                        claim.approvalState === "rejected"
-                          ? "secondary"
-                          : "ghost"
-                      }
-                      size="sm"
-                      onClick={() => updateClaim(claim.id, "rejected")}
-                    >
-                      <X size={15} />
-                      Exclude
-                    </Button>
-                    <Button
-                      variant={
-                        claim.approvalState === "approved"
-                          ? "primary"
-                          : "secondary"
-                      }
-                      size="sm"
-                      onClick={() => updateClaim(claim.id, "approved")}
-                    >
-                      <Check size={15} weight="bold" />
-                      Approve
-                    </Button>
-                  </div>
                 </div>
               </article>
             ))}
@@ -323,8 +305,8 @@ export function BrandDnaPanel({
         onNext={onContinue}
         helper={
           brand.claims.length === 0
-            ? "No approved facts yet. Your brief can still use the update you enter."
-            : approvedCount + " facts will be available to the campaign."
+            ? "No source-backed facts found. Your brief can still use the update you enter."
+            : approvedCount + " source-backed facts will be available to the campaign."
         }
       />
     </div>

@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { inngest } from "@/inngest/client";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import { assertSameOrigin, readJsonBody } from "@/lib/server/request-security";
 import { getRequestIdentity, rateLimit } from "@/lib/server/rate-limit";
@@ -26,7 +25,7 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    const limit = rateLimit(`job-scan:${getRequestIdentity(request)}`, {
+    const limit = await rateLimit(`job-scan:${getRequestIdentity(request, context.workspaceId)}`, {
       limit: 8,
       windowMs: 60 * 60 * 1000,
     });
@@ -36,119 +35,36 @@ export async function POST(request: Request) {
 
     const input = inputSchema.parse(await readJsonBody(request, 16_000));
     const safeUrl = parsePublicHttpUrl(input.url).toString();
-    let projectId = input.projectId;
-
-    if (!projectId) {
-      const [project] = await context.database`
-        with available_slot as (
-          select slots.slot::integer as active_slot
-          from pg_catalog.generate_series(1, ${context.limits.activeProjects}) as slots(slot)
-          where not exists (
-            select 1
-            from public.projects as active_project
-            where active_project.workspace_id = ${context.workspaceId}
-              and active_project.status = 'active'
-              and active_project.active_slot = slots.slot
-          )
-          order by slots.slot
-          limit 1
-        )
-        insert into public.projects (workspace_id, name, public_url, active_slot)
-        select
-          ${context.workspaceId},
-          ${input.projectName},
-          ${safeUrl},
-          available_slot.active_slot
-        from available_slot
-        on conflict (workspace_id, active_slot)
-          where status = 'active' and active_slot is not null
-          do nothing
-        returning id
-      `;
-      if (!project) {
-        return NextResponse.json(
-          { error: "Active project limit reached." },
-          { status: 403 },
-        );
-      }
-      projectId = project.id;
-    } else {
-      const [project] = await context.database`
-        update public.projects
-        set
-          name = ${input.projectName},
-          public_url = ${safeUrl},
-          updated_at = now()
-        where id = ${projectId}
-          and workspace_id = ${context.workspaceId}
-        returning id
-      `;
-      if (!project) throw new Error("Project not found.");
+    const suppliedKey = request.headers.get("idempotency-key")?.trim();
+    if (!suppliedKey || suppliedKey.length > 200) {
+      return NextResponse.json({ error: "An idempotency key is required for website scans." }, { status: 400 });
     }
-    if (!projectId) throw new Error("Project could not be resolved.");
-    const resolvedProjectId = projectId;
-
-    const suppliedKey = request.headers.get("idempotency-key");
-    const idempotencyKey =
-      suppliedKey && suppliedKey.length <= 200
-        ? suppliedKey
-        : createHash("sha256")
-            .update(
-              `${context.workspaceId}:${resolvedProjectId}:${safeUrl}:${new Date()
-                .toISOString()
-                .slice(0, 13)}`,
-            )
-            .digest("hex");
-    const jobId = randomUUID();
-    const [job] = await context.database`
-      insert into public.jobs (
-        id,
-        workspace_id,
-        project_id,
-        kind,
-        status,
-        progress,
-        idempotency_key
+    const idempotencyKey = createHash("sha256").update(`${context.workspaceId}:${suppliedKey}`).digest("hex");
+    const [result] = await context.database`
+      select * from public.enqueue_scan_job(
+        ${context.workspaceId}::uuid,
+        ${input.projectId ?? null}::uuid,
+        ${input.projectName},
+        ${safeUrl},
+        ${context.limits.activeProjects},
+        ${randomUUID()}::uuid,
+        ${idempotencyKey},
+        ${randomUUID()}::uuid
       )
-      values (
-        ${jobId},
-        ${context.workspaceId},
-        ${resolvedProjectId},
-        'scan',
-        'queued',
-        0,
-        ${idempotencyKey}
-      )
-      on conflict (workspace_id, idempotency_key) do nothing
-      returning id, status, progress
     `;
-    if (!job) {
-      const [existing] = await context.database`
-        select id, status, progress
-        from public.jobs
-        where workspace_id = ${context.workspaceId}
-          and idempotency_key = ${idempotencyKey}
-        limit 1
-      `;
+    if (!result?.allowed) {
       return NextResponse.json(
-        { job: existing, projectId: resolvedProjectId },
-        { status: 202 },
+        { error: input.projectId ? "Project not found or read-only." : "Active project limit reached." },
+        { status: 403 },
       );
     }
-
-    await inngest.send({
-      name: "campaign/scan.requested",
-      data: {
-        jobId: job.id,
-        workspaceId: context.workspaceId,
-        projectId: resolvedProjectId,
-        url: safeUrl,
-      },
-    });
-    return NextResponse.json(
-      { job, projectId: resolvedProjectId },
-      { status: 202 },
-    );
+    if (typeof result.job_id !== "string" || typeof result.project_id !== "string") {
+      return NextResponse.json({ error: "The scan could not be queued. Retry the scan." }, { status: 503 });
+    }
+    return NextResponse.json({
+      job: { id: result.job_id, status: result.status, progress: result.progress },
+      projectId: result.project_id,
+    }, { status: 202 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Scan job could not be queued.";

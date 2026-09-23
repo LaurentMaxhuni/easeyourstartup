@@ -39,7 +39,7 @@ export type LaunchKitReadiness = {
 };
 
 function approvedClaims(brand: BrandProfile) {
-  return brand.claims.filter((claim) => claim.approvalState === "approved");
+  return brand.claims.filter((claim) => claim.approvalState !== "rejected");
 }
 
 function orderedOutputs(input: LaunchKitInput) {
@@ -80,7 +80,7 @@ function copyFile(output: ChannelOutput, claimsById: Map<string, BrandClaim>) {
   if (evidence.length > 0) {
     sections.push(
       "",
-      "## Approved source evidence",
+      "## Source evidence",
       "",
       ...evidence.map(sourceForClaim),
     );
@@ -89,7 +89,7 @@ function copyFile(output: ChannelOutput, claimsById: Map<string, BrandClaim>) {
     sections.push("", "## Review before publishing", "");
     if (missingEvidence.length > 0) {
       sections.push(
-        `- ${missingEvidence.length} linked claim${missingEvidence.length === 1 ? "" : "s"} is not currently approved.`,
+        `- ${missingEvidence.length} linked claim${missingEvidence.length === 1 ? "" : "s"} is not available in the kept source facts.`,
       );
     }
     sections.push(...output.warnings.map((warning) => `- ${warning}`));
@@ -123,13 +123,13 @@ function readmeFile(input: LaunchKitInput, files: LaunchKitFile[]) {
   return [
     `# ${input.brand.projectName} launch kit`,
     "",
-    "This package is ready for a final founder review before publishing. The copy is editable; the source file lists only claims you approved for public use.",
+    "This package is ready for a final founder review before publishing. The copy is editable; the source file lists only facts the automatic curation pass kept for public use.",
     "",
     "## Publish in this order",
     "",
     "1. Read `brief.md` to confirm the audience, update, angle, and CTA.",
     "2. Review every file in `copy/` and resolve any `Review before publishing` notes.",
-    "3. Use `sources/approved-claims.md` when you need to verify a factual statement.",
+    "3. Use `sources/source-facts.md` when you need to verify a factual statement.",
     "4. Use `creative-preview.png` as the accompanying visual.",
     "",
     "## Contents",
@@ -149,7 +149,7 @@ export function getLaunchKitReadiness(input: LaunchKitInput): LaunchKitReadiness
   ];
   const approvedClaimCount = approvedClaims(input.brand).length;
   if (input.outputs.length === 0) warnings.unshift("Generate at least one channel output before exporting.");
-  if (approvedClaimCount === 0) warnings.unshift("Approve at least one source-backed fact before publishing.");
+  if (approvedClaimCount === 0) warnings.unshift("No source-backed facts were kept for publishing.");
   return {
     ready: input.outputs.length > 0 && approvedClaimCount > 0 && warnings.length === 0,
     approvedClaimCount,
@@ -168,15 +168,15 @@ export function buildLaunchKitFiles(input: LaunchKitInput): LaunchKitFile[] {
       contents: copyFile(output, claimsById),
     })),
     {
-      path: "sources/approved-claims.md",
+      path: "sources/source-facts.md",
       contents: [
-        "# Approved public claims",
+        "# Kept public source facts",
         "",
-        "Only these source-backed claims were approved for public launch copy.",
+        "Only these source-backed facts passed automatic curation for public launch copy.",
         "",
         ...(claims.length > 0
           ? claims.map(sourceForClaim)
-          : ["No website claims were approved for this launch."]),
+          : ["No website facts were kept for this launch."]),
         "",
       ].join("\n"),
     },

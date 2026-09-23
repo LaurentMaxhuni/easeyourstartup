@@ -6,22 +6,34 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getUnallocatedFoundingSlots } from "@/lib/server/founding-offer";
+import { hasUnredeemedFoundingSlot } from "@/lib/server/founding-offer";
+import { getCurrentUser } from "@/lib/auth/server";
+
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
 
 export const metadata: Metadata = {
   title: "Pricing",
   description: "One straightforward paid plan for repeatable launch campaigns.",
 };
 
+export const dynamic = "force-dynamic";
+
 const FEATURES = [
   "Three active projects",
   "Eight new campaigns per billing period",
   "Editable channel copy and launch visuals",
   "High resolution PNG and launch-kit exports",
-  "Approved claim sources bundled with every kit",
-  "Founding beta support for unusual launch flows",
+  "Source evidence bundled with every kit",
+  "Five successful AI copy regenerations per channel",
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const [foundingSlotsRemaining, user] = await Promise.all([
+    getUnallocatedFoundingSlots(),
+    getCurrentUser().catch(() => null),
+  ]);
+  const foundingPriceEligible = user ? await hasUnredeemedFoundingSlot(user.id) : false;
   return (
     <>
       <SiteHeader />
@@ -33,8 +45,8 @@ export default function PricingPage() {
               One plan for founders who keep shipping.
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-muted">
-              Sign in to scan for free, then upgrade when the campaign is ready
-              to leave the studio.
+              Sign in before scanning. The Free plan includes one active project
+              and one campaign per UTC calendar month.
             </p>
           </div>
         </section>
@@ -43,11 +55,11 @@ export default function PricingPage() {
             <div className="rounded-container border border-line bg-surface p-6">
               <p className="text-lg font-semibold">Free</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                One project scan, editable Brand DNA, one sample campaign, and
-                watermarked previews.
+                One active project, editable Brand DNA, one source-backed
+                campaign each calendar month, and watermarked previews.
               </p>
               <Button asChild variant="secondary" className="mt-8 w-full">
-                <Link href="/login?next=%2Fstudio">Sign in for a free scan</Link>
+                <Link href="/">Start a free scan</Link>
               </Button>
             </div>
             <div className="rounded-container border border-accent bg-surface-raised p-6 sm:p-9">
@@ -60,9 +72,9 @@ export default function PricingPage() {
                 </div>
                 <div className="text-right">
                   <span className="text-6xl font-semibold tracking-[-0.07em]">
-                    $29
+                    {foundingPriceEligible ? "$19" : "$29"}
                   </span>
-                  <span className="text-sm text-muted"> / month</span>
+                  <span className="text-sm text-muted"> / month{foundingPriceEligible ? " · founding price" : ""}</span>
                 </div>
               </div>
               <div className="my-8 h-px bg-line" />
@@ -82,18 +94,19 @@ export default function PricingPage() {
                 ))}
               </ul>
               <div className="mt-9 flex flex-col items-start gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <CheckoutButton label="Start Pro" />
-                <p className="max-w-xs text-xs leading-5 text-muted">
-                  Founding access is $19/month for the first ten beta founders.
-                  Email{" "}
+                <CheckoutButton label={foundingPriceEligible ? "Continue at $19/month" : "Start Pro"} />
+                {foundingPriceEligible ? <p className="max-w-xs text-xs leading-5 text-muted">
+                  Your workspace has one of ten founding slots. The $19/month price continues while the subscription stays uninterrupted.
+                </p> : foundingSlotsRemaining > 0 && supportEmail && <p className="max-w-xs text-xs leading-5 text-muted">
+                  Request a $19/month founding place. The offer is limited to the first ten founders and keeps that price while the subscription stays active. Email{" "}
                   <a
                     className="font-semibold text-ink underline underline-offset-4"
-                    href="mailto:hello@easeyourstartup.com?subject=Founding%20access"
+                    href={`mailto:${supportEmail}?subject=Founding%20access`}
                   >
-                    hello@easeyourstartup.com
+                    {supportEmail}
                   </a>
                   .
-                </p>
+                </p>}
               </div>
             </div>
           </div>
@@ -111,8 +124,10 @@ export default function PricingPage() {
                 quota.
               </p>
               <p>
-                Cancel through the customer portal at any time. Existing
-                exports stay yours.
+                Free usage resets each UTC calendar month. Pro usage renews with
+                your subscription. Cancel through the customer portal; Pro
+                access continues through the paid period and your saved work
+                remains available after cancellation.
               </p>
             </div>
           </div>

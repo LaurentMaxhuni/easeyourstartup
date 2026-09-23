@@ -1,5 +1,3 @@
-import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
-import Link from "next/link";
 import { ChannelsSection } from "@/components/landing/channels-section";
 import { LaunchPreview } from "@/components/landing/launch-preview";
 import { PricingSection } from "@/components/landing/pricing-section";
@@ -10,7 +8,9 @@ import { Reveal } from "@/components/reveal";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
   return (
     <>
       <SiteHeader />
@@ -26,17 +26,10 @@ export default function HomePage() {
                 <span className="block">Leave with a launch kit.</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-7 text-muted">
-                Approve what you can say, turn your update into channel-ready
-                copy and visuals, then download the package to publish.
+                We map your public source, filter the useful facts, and turn an
+                update into channel-ready copy and visuals you can publish.
               </p>
               <HeroScanForm />
-              <Link
-                href="/login?next=%2Fstudio%3Fdemo%3D1"
-                className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-ink"
-              >
-                Try a demo launch scan
-                <ArrowRight size={17} />
-              </Link>
               <div className="mt-9 grid max-w-xl grid-cols-3 gap-3 border-t border-line pt-4 text-[11px] leading-4 text-muted">
                 <div>
                   <span className="block font-sans text-accent">01</span>

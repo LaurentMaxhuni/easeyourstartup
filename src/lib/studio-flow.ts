@@ -7,7 +7,7 @@ export const STUDIO_STAGES = [
   {
     id: "brand",
     label: "Facts",
-    description: "Review what can be said",
+    description: "Automatic source curation",
   },
   {
     id: "campaign",

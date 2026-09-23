@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { inngest } from "@/inngest/client";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import {
   generateCampaignSchema,
@@ -28,7 +27,7 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    const limit = rateLimit(`job-generate:${getRequestIdentity(request)}`, {
+    const limit = await rateLimit(`job-generate:${getRequestIdentity(request, context.workspaceId)}`, {
       limit: 16,
       windowMs: 60 * 60 * 1000,
     });
@@ -45,32 +44,21 @@ export async function POST(request: Request) {
       from public.projects
       where id = ${input.projectId}
         and workspace_id = ${context.workspaceId}
+        and status = 'active'
+        and active_slot <= ${context.limits.activeProjects}
       limit 1
     `;
     if (!project) throw new Error("Project not found.");
 
-    const now = new Date();
-    const periodStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-    );
-    const periodEnd = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-    );
-    const periodKey = periodStart.toISOString().slice(0, 10);
-    const periodEndKey = periodEnd.toISOString().slice(0, 10);
+    const periodKey = context.usagePeriodStart;
+    const periodEndKey = context.usagePeriodEnd;
 
     const campaign = input.campaign as GenerateCampaignInput;
-    const suppliedKey = request.headers.get("idempotency-key");
-    const idempotencyKey =
-      suppliedKey && suppliedKey.length <= 200
-        ? suppliedKey
-        : createHash("sha256")
-            .update(
-              `${context.workspaceId}:${input.projectId}:${JSON.stringify(
-                campaign,
-              )}`,
-            )
-            .digest("hex");
+    const suppliedKey = request.headers.get("idempotency-key")?.trim();
+    if (!suppliedKey || suppliedKey.length > 200) {
+      return NextResponse.json({ error: "An idempotency key is required for campaign generation." }, { status: 400 });
+    }
+    const idempotencyKey = createHash("sha256").update(`${context.workspaceId}:${suppliedKey}`).digest("hex");
     const [existingJob] = await context.database`
       select id, status, progress, campaign_id
       from public.jobs
@@ -86,8 +74,32 @@ export async function POST(request: Request) {
     }
 
     const jobId = randomUUID();
+    const eventId = randomUUID();
     const [job] = await context.database`
-      with reserved as (
+      with idempotency_lock as materialized (
+        select pg_catalog.pg_advisory_xact_lock(
+          pg_catalog.hashtextextended(${context.workspaceId}::text || ':' || ${idempotencyKey}, 0)
+        ) as locked
+      ),
+      existing_job as materialized (
+        select j.id, j.status, j.progress, j.campaign_id
+        from public.jobs j
+        cross join idempotency_lock
+        where j.workspace_id = ${context.workspaceId}::uuid
+          and j.idempotency_key = ${idempotencyKey}
+        limit 1
+      ),
+      active_project as materialized (
+        select p.id
+        from public.projects p
+        cross join idempotency_lock
+        where p.id = ${input.projectId}::uuid
+          and p.workspace_id = ${context.workspaceId}::uuid
+          and p.status = 'active'
+          and p.active_slot between 1 and ${context.limits.activeProjects}
+        for update of p
+      ),
+      reserved as (
         insert into public.usage_periods (
           workspace_id,
           period_start,
@@ -95,13 +107,14 @@ export async function POST(request: Request) {
           completed_campaigns,
           reserved_campaigns
         )
-        values (
+        select
           ${context.workspaceId},
           ${periodKey},
           ${periodEndKey},
           0,
           1
-        )
+        from active_project
+        where not exists (select 1 from existing_job)
         on conflict (workspace_id, period_start)
         do update set
           reserved_campaigns = public.usage_periods.reserved_campaigns + 1,
@@ -122,7 +135,9 @@ export async function POST(request: Request) {
           generation_input,
           selected_angle,
           launch_date,
-          usage_reserved
+          usage_reserved,
+          usage_period_start,
+          usage_period_end
         )
         select
           ${context.workspaceId},
@@ -133,31 +148,58 @@ export async function POST(request: Request) {
           ${JSON.stringify(campaign)}::jsonb,
           ${campaign.angle ? JSON.stringify(campaign.angle) : null}::jsonb,
           ${campaign.launchDate || null},
-          true
-        from reserved
+          true,
+          ${periodKey},
+          ${periodEndKey}
+        from reserved cross join active_project
         returning id
+      ),
+      created_job as (
+        insert into public.jobs (
+          id,
+          workspace_id,
+          project_id,
+          campaign_id,
+          kind,
+          status,
+          progress,
+          idempotency_key
+        )
+        select
+          ${jobId},
+          ${context.workspaceId},
+          ${input.projectId},
+          created_campaign.id,
+          'generate',
+          'queued',
+          0,
+          ${idempotencyKey}
+        from created_campaign
+        returning id, status, progress, campaign_id
+      ),
+      queued_event as (
+        insert into public.job_outbox (
+          event_id, workspace_id, job_id, event_name, event_payload
+        )
+        select
+          ${eventId}::uuid,
+          ${context.workspaceId}::uuid,
+          created_job.id,
+          'campaign/generation.requested',
+          pg_catalog.jsonb_build_object(
+            'jobId', created_job.id,
+            'workspaceId', ${context.workspaceId}::uuid,
+            'campaignId', created_job.campaign_id
+          )
+        from created_job
+        returning job_id
       )
-      insert into public.jobs (
-        id,
-        workspace_id,
-        project_id,
-        campaign_id,
-        kind,
-        status,
-        progress,
-        idempotency_key
-      )
-      select
-        ${jobId},
-        ${context.workspaceId},
-        ${input.projectId},
-        created_campaign.id,
-        'generate',
-        'queued',
-        0,
-        ${idempotencyKey}
-      from created_campaign
-      returning id, status, progress, campaign_id
+      select created_job.id, created_job.status, created_job.progress, created_job.campaign_id
+      from created_job
+      join queued_event on queued_event.job_id = created_job.id
+      union all
+      select existing_job.id, existing_job.status, existing_job.progress, existing_job.campaign_id
+      from existing_job
     `;
     if (!job || typeof job.campaign_id !== "string") {
       return NextResponse.json(
@@ -167,29 +209,6 @@ export async function POST(request: Request) {
     }
     const campaignId = job.campaign_id;
 
-    try {
-      await inngest.send({
-        name: "campaign/generation.requested",
-        data: {
-          jobId: job.id,
-          workspaceId: context.workspaceId,
-          campaignId,
-        },
-      });
-    } catch (error) {
-      await context.database`
-        select public.release_campaign_usage_reservation(
-          ${context.workspaceId},
-          ${campaignId}
-        )
-      `;
-      await context.database`
-        update public.jobs
-        set status = 'failed', error_message = 'The campaign job could not be sent.', updated_at = now()
-        where id = ${job.id} and workspace_id = ${context.workspaceId}
-      `;
-      throw error;
-    }
     return NextResponse.json(
       { job, campaignId },
       { status: 202 },

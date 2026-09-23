@@ -11,7 +11,7 @@ export const PLAN_LIMITS = {
     campaignsPerPeriod: 8,
     regenerationsPerChannel: 5,
     highResolutionExports: true,
-    supporterRooms: true,
+    supporterRooms: false,
   },
 } as const;
 

@@ -53,7 +53,7 @@ export function LaunchPreview() {
           <div className="rounded-[10px] border border-line bg-canvas p-4">
             <div className="flex items-center gap-2 text-xs font-semibold">
               <Check className="text-accent" size={16} weight="bold" />
-              3 approved claims
+              3 source facts kept
             </div>
           </div>
           <div className="rounded-[10px] border border-line bg-accent p-4 text-accent-ink">

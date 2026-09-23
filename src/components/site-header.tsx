@@ -79,7 +79,7 @@ export function SiteHeader() {
             <ThemeToggle />
           </div>
           <Button asChild size="sm" className="px-2 text-[11px] sm:px-3 sm:text-xs">
-            <Link href="/login?next=%2Fstudio">
+            <Link href="/">
               <span className="sm:hidden">Scan</span>
               <span className="hidden sm:inline">Free scan</span>
             </Link>

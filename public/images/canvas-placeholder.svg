@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500" fill="none">
+  <rect width="1200" height="1500" fill="#ecebe6"/>
+  <rect x="128" y="224" width="944" height="1052" rx="36" fill="#f7f6f2" stroke="#c7c6c0" stroke-width="4"/>
+  <rect x="184" y="280" width="832" height="64" rx="16" fill="#e5e4de"/>
+  <circle cx="224" cy="312" r="10" fill="#a6a59f"/>
+  <circle cx="260" cy="312" r="10" fill="#a6a59f"/>
+  <circle cx="296" cy="312" r="10" fill="#a6a59f"/>
+  <rect x="184" y="392" width="832" height="560" rx="24" fill="#eeede7"/>
+  <path d="M482 617h236M600 499v236" stroke="#aaa9a2" stroke-linecap="round" stroke-width="8"/>
+  <text x="600" y="1028" fill="#686862" font-family="Arial,sans-serif" font-size="38" text-anchor="middle">Add a product screenshot</text>
+  <text x="600" y="1088" fill="#86857e" font-family="Arial,sans-serif" font-size="24" text-anchor="middle">Use an upload or a live site capture</text>
+</svg>

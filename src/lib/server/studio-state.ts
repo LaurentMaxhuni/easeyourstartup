@@ -7,74 +7,135 @@ import {
 } from "@/lib/contracts";
 import type { DatabaseClient } from "@/lib/server/database";
 
-let studioStateTableReady: Promise<void> | null = null;
-
 export function getStudioStorageKey(userId: string) {
   const digest = createHash("sha256").update(userId).digest("hex").slice(0, 16);
-  return `easeyourstartup:studio-state:v1:${digest}`;
+  return `easeyourstartup:studio-state:v2:${digest}`;
 }
 
-async function ensureStudioStateTable(database: DatabaseClient) {
-  if (!studioStateTableReady) {
-    studioStateTableReady = database`
-      create table if not exists public.studio_states (
-        user_id text primary key,
-        state jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      )
-    `.then(() => undefined).catch((error) => {
-      studioStateTableReady = null;
-      throw error;
-    });
+type StateRow = { state?: unknown; revision?: unknown };
+
+function parseRow(row: StateRow | undefined) {
+  if (!row) return null;
+  const parsed = studioStateSchema.safeParse(row.state);
+  if (!parsed.success) {
+    console.error("[studio-state] Stored editor snapshot failed validation.");
+    return null;
   }
-  await studioStateTableReady;
+  const revision = Number(row.revision ?? 0);
+  return {
+    state: parsed.data,
+    revision: Number.isSafeInteger(revision) && revision > 0 ? revision : null,
+  };
 }
 
 export async function loadStudioState(
   database: DatabaseClient,
   userId: string,
-): Promise<StudioState | null> {
-  await ensureStudioStateTable(database);
-  const [row] = await database`
-    select state
-    from public.studio_states
-    where user_id = ${userId}
-    limit 1
-  `;
-  if (!row || typeof row !== "object") return null;
+  scope: { projectId?: string | null; campaignId?: string | null } = {},
+) {
+  if (scope.projectId) {
+    const [row] = await database`
+      select state, revision
+      from public.studio_states
+      where user_id = ${userId}
+        and project_id = ${scope.projectId}::uuid
+        and campaign_id is not distinct from ${scope.campaignId ?? null}::uuid
+      limit 1
+    `;
+    const scoped = parseRow(row as StateRow | undefined);
+    if (scoped) return scoped;
 
-  const parsed = studioStateSchema.safeParse(
-    (row as { state?: unknown }).state,
-  );
-  if (!parsed.success) {
-    console.error("[studio-state] Stored editor snapshot failed validation.");
+    // Import a matching legacy snapshot lazily. The original user snapshot is
+    // retained until the user deletes their account.
+    const [legacyRow] = await database`
+      select state, revision
+      from public.studio_states
+      where user_id = ${userId}
+        and project_id is null
+      limit 1
+    `;
+    const legacy = parseRow(legacyRow as StateRow | undefined);
+    if (legacy?.state.projectId === scope.projectId && !scope.campaignId) {
+      const saved = await saveStudioState(database, userId, legacy.state, null);
+      return { state: legacy.state, revision: saved.revision };
+    }
     return null;
   }
-  return parsed.data;
+
+  const [row] = await database`
+    select state, revision
+    from public.studio_states
+    where user_id = ${userId}
+      and project_id is null
+    limit 1
+  `;
+  return parseRow(row as StateRow | undefined);
+}
+
+export class StudioStateConflictError extends Error {
+  constructor() {
+    super("This launch was changed in another tab. Reload the latest version before saving again.");
+    this.name = "StudioStateConflictError";
+  }
 }
 
 export async function saveStudioState(
   database: DatabaseClient,
   userId: string,
   state: StudioState,
+  expectedRevision: number | null,
 ) {
-  await ensureStudioStateTable(database);
+  if (state.projectId) {
+    const [row] = await database`
+      insert into public.studio_states (
+        user_id, project_id, campaign_id, state, revision
+      )
+      values (
+        ${userId},
+        ${state.projectId}::uuid,
+        ${state.campaignId}::uuid,
+        ${JSON.stringify(state)}::jsonb,
+        1
+      )
+      on conflict (
+        user_id,
+        project_id,
+        (coalesce(campaign_id, '00000000-0000-0000-0000-000000000000'::uuid))
+      ) where project_id is not null
+      do update set
+        state = excluded.state,
+        revision = public.studio_states.revision + 1,
+        updated_at = now()
+      where public.studio_states.revision = ${expectedRevision}
+      returning revision, updated_at
+    `;
+    if (!row) throw new StudioStateConflictError();
+    return {
+      revision: Number(row.revision),
+      savedAt: row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : typeof row.updated_at === "string"
+          ? row.updated_at
+          : new Date().toISOString(),
+    };
+  }
+
   const [row] = await database`
-    insert into public.studio_states (user_id, state)
-    values (${userId}, ${JSON.stringify(state)}::jsonb)
-    on conflict (user_id)
+    insert into public.studio_states (user_id, state, revision)
+    values (${userId}, ${JSON.stringify(state)}::jsonb, 1)
+    on conflict (user_id) where project_id is null
     do update set
       state = excluded.state,
+      revision = public.studio_states.revision + 1,
       updated_at = now()
-    returning updated_at
+    returning revision, updated_at
   `;
-  const updatedAt = row && typeof row === "object"
-    ? (row as { updated_at?: unknown }).updated_at
-    : undefined;
-  return updatedAt instanceof Date
-    ? updatedAt.toISOString()
-    : typeof updatedAt === "string"
-      ? updatedAt
-      : new Date().toISOString();
+  return {
+    revision: Number(row?.revision ?? 1),
+    savedAt: row?.updated_at instanceof Date
+      ? row.updated_at.toISOString()
+      : typeof row?.updated_at === "string"
+        ? row.updated_at
+        : new Date().toISOString(),
+  };
 }

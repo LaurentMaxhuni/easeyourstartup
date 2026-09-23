@@ -23,6 +23,8 @@ function PostCopy({
   deviceMode?: boolean;
   className?: string;
 }) {
+  const sourceRadius = composition.tokens.radius ?? 8;
+  const sourceSpacing = composition.tokens.spacing ?? 16;
   return (
     <div
       className={cn(
@@ -31,6 +33,11 @@ function PostCopy({
         deviceMode && "overflow-hidden p-0",
         className,
       )}
+      style={{
+        padding: deviceMode
+          ? 0
+          : `${Math.max(5, Math.min(10, sourceSpacing / 2))}%`,
+      }}
     >
       <div className={cn("w-full", centered && "flex flex-col items-center")}>
         <div className={cn("flex items-center gap-2", deviceMode && "gap-1.5")}>
@@ -66,6 +73,10 @@ function PostCopy({
             deviceMode &&
               "mt-[4%] max-w-[14ch] text-[clamp(20px,7.4cqw,42px)] leading-[.95]",
           )}
+          style={{
+            fontFamily:
+              composition.tokens.headingFontFamily ?? composition.tokens.fontFamily,
+          }}
         >
           {composition.text.headline}
         </h2>
@@ -94,12 +105,13 @@ function PostCopy({
       >
         <span
           className={cn(
-            "rounded-[8px] px-3 py-2 text-[clamp(9px,1.2vw,13px)] font-semibold",
-            deviceMode && "rounded-[6px] px-2 py-1.5 text-[clamp(8px,2cqw,11px)]",
+            "px-3 py-2 text-[clamp(9px,1.2vw,13px)] font-semibold",
+            deviceMode && "px-2 py-1.5 text-[clamp(8px,2cqw,11px)]",
           )}
           style={{
             backgroundColor: composition.tokens.foreground,
             color: composition.tokens.accent,
+            borderRadius: `${deviceMode ? Math.max(4, sourceRadius * 0.75) : sourceRadius}px`,
           }}
         >
           {composition.text.cta}
@@ -146,17 +158,30 @@ function DeviceFrame({
       : device === "tablet"
         ? "Tablet product screenshot"
         : "Phone product screenshot";
+  const sourceRadius = composition.tokens.radius ?? 8;
+  const frameRadius =
+    device === "desktop"
+      ? sourceRadius
+      : Math.max(24, Math.min(48, sourceRadius * 3));
 
   return (
     <div className={cn("relative max-h-full max-w-full overflow-visible", aspectClass, className)}>
       <div
         className={cn(
-          "relative h-full w-full overflow-hidden border-[#171917] bg-[#171917] shadow-[0_12px_30px_rgba(23,25,23,0.28)]",
+          "relative h-full w-full overflow-hidden shadow-[0_12px_30px_rgba(23,25,23,0.28)]",
           radiusClass,
         )}
+        style={{
+          borderColor: composition.tokens.foreground,
+          backgroundColor: composition.tokens.foreground,
+          borderRadius: frameRadius,
+        }}
       >
         {device === "phone" && (
-          <div className="absolute left-1/2 top-[1.5%] z-20 h-[2.5%] w-[32%] -translate-x-1/2 rounded-full bg-[#171917]" />
+          <div
+            className="absolute left-1/2 top-[1.5%] z-20 h-[2.5%] w-[32%] -translate-x-1/2 rounded-full"
+            style={{ backgroundColor: composition.tokens.foreground }}
+          />
         )}
         <Image
           src={src}
@@ -176,8 +201,14 @@ function DeviceFrame({
       </div>
       {device === "desktop" && (
         <>
-          <div className="absolute -bottom-[10%] left-1/2 h-[11%] w-[18%] -translate-x-1/2 bg-[#171917]" />
-          <div className="absolute -bottom-[14%] left-1/2 h-[5%] w-[34%] -translate-x-1/2 rounded-full bg-[#171917]" />
+          <div
+            className="absolute -bottom-[10%] left-1/2 h-[11%] w-[18%] -translate-x-1/2"
+            style={{ backgroundColor: composition.tokens.foreground }}
+          />
+          <div
+            className="absolute -bottom-[14%] left-1/2 h-[5%] w-[34%] -translate-x-1/2 rounded-full"
+            style={{ backgroundColor: composition.tokens.foreground }}
+          />
         </>
       )}
     </div>
@@ -249,12 +280,14 @@ export function CreativePreview({
     <div className="flex min-h-[560px] items-center justify-center overflow-auto rounded-container border border-line bg-surface p-5 sm:p-8">
       <div
         ref={captureRef}
-        className="relative w-full max-w-[560px] overflow-hidden text-[#f4f3ef] shadow-[0_24px_80px_rgba(23,25,23,0.22)]"
+        className="relative w-full max-w-[560px] overflow-hidden shadow-[0_24px_80px_rgba(23,25,23,0.22)]"
         style={{
           aspectRatio: ratio,
           backgroundColor: composition.tokens.background,
           color: composition.tokens.foreground,
-          fontFamily: "var(--font-outfit)",
+          borderRadius: composition.tokens.radius ?? 8,
+          fontFamily:
+            composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily,
         }}
       >
         <CreativeGraphic
@@ -284,20 +317,32 @@ export function CreativePreview({
               className={cn(
                 "relative z-10 min-h-0 overflow-hidden",
                 asymmetrical
-                  ? "m-[4%] ml-0 rounded-[9px]"
+                  ? "m-[4%] ml-0"
                   : "mx-[6%] mb-[6%] flex-1",
                 centered &&
-                  "mx-[9%] mb-[7%] min-h-[27%] flex-none rounded-[9px]",
+                  "mx-[9%] mb-[7%] min-h-[27%] flex-none",
                 phone &&
-                  "mx-auto mb-[6%] h-auto min-h-0 w-[48%] flex-1 rounded-[10%] border-[6px] border-[#171917]",
+                  "mx-auto mb-[6%] h-auto min-h-0 w-[48%] flex-1 border-[6px]",
                 composition.templateId === "browser" &&
-                  "rounded-[9px] border-[5px] border-[#171917]",
+                  "border-[5px]",
                 composition.templateId === "launch-card" &&
-                  "rounded-[9px] border border-white/30",
+                  "border",
               )}
+              style={{
+                borderRadius: phone
+                  ? Math.max(24, Math.min(48, (composition.tokens.radius ?? 8) * 3))
+                  : composition.tokens.radius ?? 8,
+                borderColor:
+                  composition.templateId === "launch-card" || centered
+                    ? `color-mix(in srgb, ${composition.tokens.foreground} 35%, transparent)`
+                    : composition.tokens.foreground,
+              }}
             >
               {composition.templateId === "browser" && (
-                <div className="absolute inset-x-0 top-0 z-20 h-[5%] min-h-4 bg-[#171917]" />
+                <div
+                  className="absolute inset-x-0 top-0 z-20 h-[5%] min-h-4"
+                  style={{ backgroundColor: composition.tokens.foreground }}
+                />
               )}
               <Image
                 src={composition.screenshotUrl}
@@ -318,7 +363,13 @@ export function CreativePreview({
           </div>
         )}
         {watermarked && (
-          <div className="absolute bottom-3 right-3 z-30 rounded bg-[#171917]/85 px-2 py-1 font-sans text-[8px] uppercase tracking-[0.12em] text-[#f4f3ef]">
+          <div
+            className="absolute bottom-3 right-3 z-30 rounded px-2 py-1 font-sans text-[8px] uppercase tracking-[0.12em]"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${composition.tokens.foreground} 85%, transparent)`,
+              color: composition.tokens.background,
+            }}
+          >
             Free preview
           </div>
         )}

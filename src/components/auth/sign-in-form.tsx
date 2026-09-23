@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { GoogleIcon } from "@neondatabase/auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,11 +22,13 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<FormStatus>("idle");
   const [message, setMessage] = useState("");
+  const [resendAvailable, setResendAvailable] = useState(false);
 
   function setFormMode(nextMode: FormMode) {
     setMode(nextMode);
     setStatus("idle");
-    setMessage("");
+      setMessage("");
+      setResendAvailable(false);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -54,6 +57,7 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
             ? "Check your email to verify your account before signing in."
             : "Your session could not be established. Please try again.",
         );
+        setResendAvailable(mode === "sign-up");
         return;
       }
 
@@ -201,6 +205,29 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
         >
           {message}
         </p>
+      )}
+      {isSignIn && (
+        <Link href="/forgot-password" className="mt-4 inline-block text-xs font-semibold text-accent underline underline-offset-4">Forgot password?</Link>
+      )}
+      {resendAvailable && (
+        <button
+          type="button"
+          className="mt-3 block text-xs font-semibold text-accent underline underline-offset-4"
+          onClick={async () => {
+            setStatus("loading");
+            try {
+              const result = await authClient.sendVerificationEmail({ email, callbackURL: `${window.location.origin}${nextPath}` });
+              if (result.error) throw new Error(result.error.message);
+              setStatus("info");
+              setMessage("Verification email sent. Check your inbox.");
+            } catch (error) {
+              setStatus("error");
+              setMessage(error instanceof Error ? error.message : "Verification email could not be sent.");
+            }
+          }}
+        >
+          Resend verification email
+        </button>
       )}
     </div>
   );

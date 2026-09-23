@@ -38,6 +38,21 @@ describe("website scanner extraction", () => {
     expect(page.colors).toContain("#16a34a");
   });
 
+  it("extracts the source visual system signals", () => {
+    const page = extractPage(
+      `<style>
+        :root { font-family: 'Source Sans 3', sans-serif; }
+        .hero { background: linear-gradient(120deg, #102a43, #f4f1e8); border-radius: 14px; padding: 24px; gap: 12px; }
+      </style>`,
+      "https://example.com/",
+    );
+
+    expect(page.fonts).toContain("Source Sans 3");
+    expect(page.radii).toContain(14);
+    expect(page.spacings).toEqual(expect.arrayContaining([24, 12]));
+    expect(page.usesGradient).toBe(true);
+  });
+
   it("extracts the primary social image and responsive image sources", () => {
     const page = extractPage(
       `<meta property="og:image" content="/images/social-card.webp">
@@ -66,5 +81,10 @@ describe("website scanner extraction", () => {
     expect(result.profile.imageUrl).toBe(
       "https://example.com/images/hero.webp",
     );
+    expect(result.profile.visualSystem).toMatchObject({
+      radius: 8,
+      spacing: 16,
+      usesGradient: false,
+    });
   });
 });

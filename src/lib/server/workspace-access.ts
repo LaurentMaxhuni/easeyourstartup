@@ -7,13 +7,35 @@ import {
 } from "@/lib/server/database";
 import { PLAN_LIMITS, type Plan } from "@/lib/entitlements";
 
+export function isLocalTestMode() {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.EASEYOURSTARTUP_TEST_MODE?.trim().toLowerCase() !== "true"
+  ) {
+    return false;
+  }
+
+  try {
+    const url = new URL(process.env.NEXT_PUBLIC_APP_URL ?? "");
+    return (
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureWorkspaceForUser(
   database: DatabaseClient,
   userId: string,
   workspaceName = "My workspace",
 ) {
   const [workspace] = await database`
-    select public.ensure_workspace_for_user(${userId}, ${workspaceName}) as workspace_id
+    select public.ensure_workspace_for_user(
+      ${userId}::uuid,
+      ${workspaceName}::text
+    ) as workspace_id
   `;
   const workspaceId = workspace?.workspace_id;
   if (typeof workspaceId !== "string") {
@@ -34,21 +56,60 @@ export async function requireWorkspaceContext() {
   );
 
   const [subscription] = await database`
-    select status
-    from public.subscriptions
-    where workspace_id = ${workspaceId}
+    select s.status, s.billing_price_id, s.current_period_start,
+      s.current_period_end,
+      exists (
+        select 1 from public.founding_slots f
+        where f.workspace_id = s.workspace_id
+      ) as founding_offer_eligible
+    from public.subscriptions s
+    where s.workspace_id = ${workspaceId}
+      and s.billing_provider = 'paddle'
     limit 1
   `;
-  const plan: Plan =
+  const [testGrant] = isLocalTestMode()
+    ? await database`
+        select expires_at
+        from public.test_pro_grants
+        where user_id = ${user.id}::uuid
+          and workspace_id = ${workspaceId}::uuid
+          and expires_at > pg_catalog.now()
+        limit 1
+      `
+    : [];
+  const regularPriceId = process.env.PADDLE_PRO_PRICE_ID?.trim();
+  const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim();
+  const isEligibleProSubscription = Boolean(
     subscription &&
-    ["active", "trialing"].includes(subscription.status)
-      ? "pro"
-      : "free";
+      ["active", "trialing"].includes(subscription.status) &&
+      ((regularPriceId && subscription.billing_price_id === regularPriceId) ||
+        (foundingPriceId &&
+          subscription.billing_price_id === foundingPriceId &&
+          subscription.founding_offer_eligible === true)),
+  );
+  const testProExpiresAt = testGrant?.expires_at ?? null;
+  const plan: Plan = isEligibleProSubscription || testProExpiresAt ? "pro" : "free";
+  const now = new Date();
+  const calendarStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const calendarEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const dateKey = (value: unknown, fallback: Date) => {
+    const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : fallback;
+    return Number.isNaN(date.getTime()) ? fallback.toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
+  };
+  const usagePeriodStart = plan === "pro"
+    ? dateKey(subscription?.current_period_start, calendarStart)
+    : calendarStart.toISOString().slice(0, 10);
+  const usagePeriodEnd = plan === "pro"
+    ? dateKey(subscription?.current_period_end, calendarEnd)
+    : calendarEnd.toISOString().slice(0, 10);
   return {
     database,
     user,
     workspaceId,
     plan,
     limits: PLAN_LIMITS[plan],
+    usagePeriodStart,
+    usagePeriodEnd,
+    testProExpiresAt,
   };
 }

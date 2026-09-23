@@ -2,7 +2,12 @@ import "server-only";
 
 import { load, type CheerioAPI } from "cheerio";
 import { randomUUID } from "node:crypto";
-import type { BrandClaim, ScanResult, SourcePage } from "@/lib/contracts";
+import type {
+  BrandClaim,
+  BrandVisualSystem,
+  ScanResult,
+  SourcePage,
+} from "@/lib/contracts";
 import {
   assertPublicHttpUrl,
   safeFetchHtml,
@@ -173,6 +178,134 @@ function extractCssImageUrl(markup: string, base: string) {
   return null;
 }
 
+const SAFE_FONT_FALLBACK = "Trebuchet MS";
+const SAFE_HEADING_FALLBACK = "Georgia";
+const BANNED_FONT_NAMES = new Set([
+  "arial",
+  "dm sans",
+  "geist",
+  "inter",
+  "montserrat",
+  "poppins",
+  "roboto",
+  "space grotesk",
+]);
+
+function cleanFontFamily(value: string) {
+  const family = value
+    .split(",")
+    .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+    .find((item) => {
+      const normalized = item.toLowerCase();
+      return (
+        item &&
+        !/[()]/.test(item) &&
+        !BANNED_FONT_NAMES.has(normalized) &&
+        !/^(?:sans-serif|serif|monospace|system-ui|ui-sans-serif|ui-serif|cursive|fantasy)$/.test(
+          normalized,
+        )
+      );
+    });
+  return family?.slice(0, 80) || null;
+}
+
+function extractFontFamilies(markup: string) {
+  const fontMatches = markup.match(/font-family\s*:\s*([^;}]+)/gi) ?? [];
+  return Array.from(
+    new Set(
+      fontMatches
+        .map((match) => cleanFontFamily(match.split(":").slice(1).join(":")))
+        .filter((font): font is string => Boolean(font)),
+    ),
+  ).slice(0, 6);
+}
+
+function extractCssLengths(markup: string, property: string) {
+  const values: number[] = [];
+  const declarationPattern = new RegExp(
+    `${property}\\s*:\\s*([^;}]+)`,
+    "gi",
+  );
+  for (const declaration of markup.matchAll(declarationPattern)) {
+    for (const match of declaration[1].matchAll(/(-?\d+(?:\.\d+)?)(px|rem|em)\b/gi)) {
+      const value = Number.parseFloat(match[1]);
+      if (!Number.isFinite(value)) continue;
+      const multiplier = match[2].toLowerCase() === "px" ? 1 : 16;
+      values.push(Math.abs(value * multiplier));
+    }
+  }
+  return values.filter((value) => value <= 96).slice(0, 24);
+}
+
+function colorLuminance(value: string) {
+  const [red, green, blue] = value
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((channel) => Number.parseInt(channel, 16) / 255);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function colorSaturation(value: string) {
+  const channels = value
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((channel) => Number.parseInt(channel, 16) / 255);
+  const highest = Math.max(...channels);
+  const lowest = Math.min(...channels);
+  return highest === 0 ? 0 : (highest - lowest) / highest;
+}
+
+function median(values: number[], fallback: number) {
+  if (values.length === 0) return fallback;
+  const ordered = [...values].sort((a, b) => a - b);
+  return ordered[Math.floor(ordered.length / 2)] ?? fallback;
+}
+
+function buildVisualSystem(
+  colors: string[],
+  fonts: string[],
+  radii: number[],
+  spacings: number[],
+  usesGradient: boolean,
+): BrandVisualSystem {
+  const palette =
+    colors.length > 0 ? colors : ["#f3f0e8", "#1b1b18", "#245cf0"];
+  const background =
+    palette.find((color) => colorLuminance(color) >= 0.78) ??
+    palette.find((color) => colorLuminance(color) <= 0.18) ??
+    palette[0];
+  const backgroundLuminance = colorLuminance(background);
+  const foreground =
+    palette.find(
+      (color) =>
+        color !== background &&
+        Math.abs(colorLuminance(color) - backgroundLuminance) >= 0.48,
+    ) ?? (backgroundLuminance > 0.5 ? "#171917" : "#f4f1e8");
+  const accent =
+    [...palette]
+      .filter((color) => color !== background && color !== foreground)
+      .sort((left, right) => colorSaturation(right) - colorSaturation(left))[0] ??
+    (backgroundLuminance > 0.5 ? "#245cf0" : "#f0b429");
+  const radius = Math.round(clamp(median(radii, 8), 0, 24));
+  const spacing = Math.round(clamp(median(spacings, 16), 6, 32));
+  const density =
+    spacing <= 10 ? "compact" : spacing >= 24 ? "airy" : "comfortable";
+  const bodyFont = fonts[0] ?? SAFE_FONT_FALLBACK;
+  const headingFont = fonts.length > 1 ? fonts[1] : fonts[0] ?? SAFE_HEADING_FALLBACK;
+
+  return {
+    backgroundColor: background,
+    foregroundColor: foreground,
+    accentColor: accent,
+    radius,
+    spacing,
+    headingFont: headingFont.slice(0, 100),
+    bodyFont: bodyFont.slice(0, 100),
+    density,
+    usesGradient,
+  };
+}
+
 type ExtractedPage = {
   title: string;
   description: string;
@@ -182,6 +315,9 @@ type ExtractedPage = {
   internalLinks: string[];
   colors: string[];
   fonts: string[];
+  radii: number[];
+  spacings: number[];
+  usesGradient: boolean;
   favicon: string | null;
   logo: string | null;
   imageUrl: string | null;
@@ -242,15 +378,12 @@ export function extractPage(html: string, url: string): ExtractedPage {
     0,
     MAX_PALETTE_COLORS,
   );
-  const fontMatches =
-    paletteMarkup.match(/font-family\s*:\s*([^;}"]+)/gi) ?? [];
-  const fonts = Array.from(
-    new Set(
-      fontMatches
-        .map((match) => cleanText(match.split(":").slice(1).join(":")))
-        .filter(Boolean),
-    ),
-  ).slice(0, 6);
+  const fonts = extractFontFamilies(paletteMarkup);
+  const radii = extractCssLengths(paletteMarkup, "border-radius");
+  const spacings = [
+    ...extractCssLengths(paletteMarkup, "padding"),
+    ...extractCssLengths(paletteMarkup, "gap"),
+  ];
 
   const favicon =
     absoluteAssetUrl(
@@ -311,6 +444,9 @@ export function extractPage(html: string, url: string): ExtractedPage {
     internalLinks,
     colors,
     fonts,
+    radii,
+    spacings,
+    usesGradient: /(?:linear|radial|conic)-gradient\s*\(/i.test(paletteMarkup),
     favicon,
     logo,
     imageUrl,
@@ -327,7 +463,7 @@ function claimFromText(text: string, sourceUrl: string): BrandClaim | null {
     sourceUrl,
     sourceExcerpt: cleaned.slice(0, 1200),
     confidence: 0.82,
-    approvalState: "pending",
+    approvalState: "approved",
   };
 }
 
@@ -344,6 +480,13 @@ async function extractStylesheetAssets(urls: string[]) {
       return {
         colors: extractColors(result.text),
         imageUrl: extractCssImageUrl(result.text, result.finalUrl),
+        fonts: extractFontFamilies(result.text),
+        radii: extractCssLengths(result.text, "border-radius"),
+        spacings: [
+          ...extractCssLengths(result.text, "padding"),
+          ...extractCssLengths(result.text, "gap"),
+        ],
+        usesGradient: /(?:linear|radial|conic)-gradient\s*\(/i.test(result.text),
       };
     }),
   );
@@ -399,6 +542,35 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       ...stylesheetAssets.flatMap((asset) => asset.colors),
     ]),
   ).slice(0, MAX_PALETTE_COLORS);
+  const fonts = Array.from(
+    new Set([
+      ...homeData.fonts,
+      ...secondary.flatMap((result) =>
+        result.status === "fulfilled" ? result.value.data.fonts : [],
+      ),
+      ...stylesheetAssets.flatMap((asset) => asset.fonts),
+    ]),
+  ).slice(0, 6);
+  const radii = [
+    ...homeData.radii,
+    ...secondary.flatMap((result) =>
+      result.status === "fulfilled" ? result.value.data.radii : [],
+    ),
+    ...stylesheetAssets.flatMap((asset) => asset.radii),
+  ];
+  const spacings = [
+    ...homeData.spacings,
+    ...secondary.flatMap((result) =>
+      result.status === "fulfilled" ? result.value.data.spacings : [],
+    ),
+    ...stylesheetAssets.flatMap((asset) => asset.spacings),
+  ];
+  const usesGradient =
+    homeData.usesGradient ||
+    secondary.some(
+      (result) => result.status === "fulfilled" && result.value.data.usesGradient,
+    ) ||
+    stylesheetAssets.some((asset) => asset.usesGradient);
   const [imageUrl, logoUrl, faviconUrl] = await Promise.all([
     validateAssetUrl(
       homeData.imageUrl ??
@@ -441,7 +613,7 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     ),
   ].filter((claim): claim is BrandClaim => Boolean(claim));
 
-  const fallbackColors = ["#245cf0", "#171917", "#f4f3ef"];
+  const fallbackColors = ["#f3f0e8", "#171917", "#245cf0"];
   const projectName =
     homeData.title.split(/[|:]/)[0]?.trim() || new URL(home.finalUrl).hostname;
   const failedPages = secondary.filter(
@@ -460,6 +632,13 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
   const hasCapture = Boolean(process.env.BROWSERLESS_API_KEY);
   const hasImage = Boolean(imageUrl);
   const hasVisualAsset = hasCapture || hasImage;
+  const visualSystem = buildVisualSystem(
+    colors.length > 0 ? colors : fallbackColors,
+    fonts,
+    radii,
+    spacings,
+    usesGradient,
+  );
 
   return {
     profile: {
@@ -468,12 +647,13 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       audience: `Customers described on ${new URL(home.finalUrl).hostname}`,
       voice: ["clear", "credible", "direct"],
       colors: colors.length > 0 ? colors : fallbackColors,
-      fonts: homeData.fonts.length > 0 ? homeData.fonts : ["Outfit"],
+      fonts: fonts.length > 0 ? fonts : [visualSystem.bodyFont],
       cta: homeData.cta.slice(0, 120),
       claims: candidateClaims.slice(0, 30),
       logoUrl,
       faviconUrl,
       imageUrl,
+      visualSystem,
     },
     pages,
     readiness: [
@@ -533,7 +713,7 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
             "Live capture is unavailable and no usable website image was found. Upload a product screenshot to continue.",
           ]
         : []),
-      "Review and approve every claim before generating publishable copy.",
+      "AI curation filtered duplicate and low-signal snippets before generation.",
     ],
     mode: "live",
   };

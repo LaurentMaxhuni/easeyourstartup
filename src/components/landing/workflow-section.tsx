@@ -13,8 +13,8 @@ const STEPS = [
     icon: Browser,
   },
   {
-    title: "Approve the story",
-    body: "Edit your Brand DNA, choose a narrative angle, and keep only the claims you are ready to publish.",
+    title: "Filter the signal",
+    body: "AI and rules remove duplicate, low-signal, and navigation-heavy claims before the brief is built.",
     icon: CheckCircle,
   },
   {

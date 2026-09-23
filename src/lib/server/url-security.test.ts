@@ -1,6 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+const { lookupMock, dispatcherLookups } = vi.hoisted(() => ({
+  lookupMock: vi.fn(),
+  dispatcherLookups: [] as unknown[],
+}));
+vi.mock("node:dns/promises", () => ({ lookup: lookupMock }));
+vi.mock("undici", () => ({
+  Agent: class {
+    constructor(options: { connect: { lookup: unknown } }) {
+      dispatcherLookups.push(options.connect.lookup);
+    }
+    close() { return Promise.resolve(); }
+  },
+}));
 
 import {
   isPrivateIpAddress,
@@ -12,6 +25,8 @@ import {
 describe("URL security", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    lookupMock.mockReset();
+    dispatcherLookups.length = 0;
   });
 
   it.each([
@@ -20,11 +35,15 @@ describe("URL security", () => {
     "169.254.169.254",
     "172.16.4.2",
     "192.168.1.1",
+    "192.88.99.1",
     "100.64.0.1",
     "::1",
     "fe80::1",
     "fc00::1",
     "2001:db8::1",
+    "2001:0::1",
+    "2002:0808:0808::1",
+    "64:ff9b::808:808",
   ])("blocks private or reserved address %s", (address) => {
     expect(isPrivateIpAddress(address)).toBe(true);
   });
@@ -41,6 +60,33 @@ describe("URL security", () => {
     expect(() =>
       parsePublicHttpUrl("https://user:password@example.com"),
     ).toThrow(/credentials/);
+  });
+
+  it("rejects bracketed IPv6 loopback destinations", () => {
+    expect(() => parsePublicHttpUrl("http://[::1]/admin")).toThrow(/Private|local/);
+  });
+
+  it("pins connections to the address that passed the public-address check", async () => {
+    lookupMock
+      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+      .mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>safe</html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    })));
+
+    await safeFetchHtml("https://example.com");
+
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+    const pinnedLookup = dispatcherLookups[0] as (
+      hostname: string,
+      options: { all?: boolean; family?: number },
+      callback: (error: Error | null, address: string | Array<{ address: string; family: number }>, family?: number) => void,
+    ) => void;
+    const result = await new Promise<unknown>((resolve) => {
+      pinnedLookup("example.com", { family: 4 }, (...values) => resolve(values));
+    });
+    expect(result).toEqual([null, "93.184.216.34", 4]);
   });
 
   it("rejects a redirect to a loopback address", async () => {

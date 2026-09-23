@@ -28,6 +28,12 @@ export function StudioHeader() {
             Free preview
           </Badge>
           <ThemeToggle />
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/settings/billing">Billing</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+            <Link href="/settings/account">Account</Link>
+          </Button>
           <Button asChild variant="secondary" size="sm">
             <Link href="/pricing">Upgrade</Link>
           </Button>

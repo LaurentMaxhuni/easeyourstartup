@@ -12,7 +12,7 @@ export async function GET() {
       select completed_campaigns, reserved_campaigns
       from public.usage_periods
       where workspace_id = ${context.workspaceId}
-        and period_start = pg_catalog.date_trunc('month', pg_catalog.now())::date
+        and period_start = ${context.usagePeriodStart}::date
       limit 1
     `;
     const campaignsUsed = Number(usage?.completed_campaigns ?? 0);
@@ -29,6 +29,7 @@ export async function GET() {
           campaignsUsed,
           campaignsReserved,
         ),
+        usagePeriodEndsAt: context.usagePeriodEnd,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

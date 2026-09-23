@@ -17,6 +17,9 @@ import type { LaunchKitReadiness } from "@/lib/launch-kit";
 export function CreativeWorkspace({
   composition,
   outputs,
+  onRegenerateChannel,
+  regenerationRemaining,
+  regenerationBusyChannel,
   generationProvider,
   autoDesignStatus,
   autoDesignWarning,
@@ -25,9 +28,11 @@ export function CreativeWorkspace({
   uploadError,
   exportStatus,
   exportError,
+  exportDownloadUrl,
   plan,
   canExportLaunchKit,
   campaignsRemaining,
+  usagePeriodEndsAt,
   launchKitReadiness,
   creativeDirections,
   selectedCreativeId,
@@ -46,6 +51,9 @@ export function CreativeWorkspace({
 }: {
   composition: CreativeComposition;
   outputs: ChannelOutput[];
+  onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
+  regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
+  regenerationBusyChannel?: ChannelOutput["channel"] | null;
   generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
@@ -54,9 +62,11 @@ export function CreativeWorkspace({
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  exportDownloadUrl: string | null;
   plan: "free" | "pro";
   canExportLaunchKit: boolean;
   campaignsRemaining: number | null;
+  usagePeriodEndsAt: string | null;
   launchKitReadiness: LaunchKitReadiness;
   creativeDirections: CreativeDirection[];
   selectedCreativeId: string;
@@ -80,6 +90,9 @@ export function CreativeWorkspace({
     <VisualStudio
       composition={composition}
       outputs={outputs}
+      onRegenerateChannel={onRegenerateChannel}
+      regenerationRemaining={regenerationRemaining}
+      regenerationBusyChannel={regenerationBusyChannel}
       generationProvider={generationProvider}
       autoDesignStatus={autoDesignStatus}
       autoDesignWarning={autoDesignWarning}
@@ -90,9 +103,11 @@ export function CreativeWorkspace({
       uploadError={uploadError}
       exportStatus={exportStatus}
       exportError={exportError}
+      exportDownloadUrl={exportDownloadUrl}
       plan={plan}
       canExportLaunchKit={canExportLaunchKit}
       campaignsRemaining={campaignsRemaining}
+      usagePeriodEndsAt={usagePeriodEndsAt}
       launchKitReadiness={launchKitReadiness}
       onChange={onCompositionChange}
       onOutputsChange={onOutputsChange}

@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import {
   ArrowRight,
-  Browser,
   GlobeSimple,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
@@ -20,13 +19,13 @@ export function ScanPanel({
   status: "idle" | "loading" | "success" | "error";
   error: string;
   result: ScanResult | null;
-  onScan: (url?: string, demo?: boolean) => Promise<void>;
+  onScan: (url?: string) => Promise<void>;
 }) {
   const [url, setUrl] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onScan(url, false);
+    await onScan(url);
   }
 
   return (
@@ -81,7 +80,7 @@ export function ScanPanel({
             </Button>
           </div>
           <p className="mt-3 text-xs leading-5 text-muted">
-            Public pages only. No login or setup required.
+            Public pages only. Your account keeps this project and its source pages together.
           </p>
           {error && (
             <p id="scan-error" role="alert" className="mt-3 text-sm text-danger">
@@ -100,37 +99,6 @@ export function ScanPanel({
             </div>
           )}
         </form>
-
-        <div className="my-7 flex items-center gap-3 text-xs text-muted">
-          <span className="h-px flex-1 bg-line" />
-          or
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => onScan(undefined, true)}
-          disabled={status === "loading"}
-          className="group flex w-full items-center justify-between rounded-control border border-line bg-canvas p-4 text-left transition-colors hover:border-muted disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-control bg-accent text-accent-ink">
-              <Browser size={20} />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold">
-                Try the complete demo
-              </span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Explore the full flow without connecting a site
-              </span>
-            </span>
-          </span>
-          <ArrowRight
-            className="text-muted transition-transform group-hover:translate-x-0.5"
-            size={18}
-          />
-        </button>
 
         {result && (
           <p className="mt-5 text-xs text-muted">

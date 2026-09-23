@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight, Check } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/reveal";
+import { getUnallocatedFoundingSlots } from "@/lib/server/founding-offer";
+import { hasUnredeemedFoundingSlot } from "@/lib/server/founding-offer";
+import { getCurrentUser } from "@/lib/auth/server";
 
 const PRO_FEATURES = [
   "Three active projects",
@@ -9,10 +12,15 @@ const PRO_FEATURES = [
   "Editable channel copy and launch visuals",
   "High resolution PNG and launch-kit exports",
   "Source evidence in every exported kit",
-  "Founding beta support",
+  "Five successful AI copy regenerations per channel",
 ];
 
-export function PricingSection() {
+export async function PricingSection() {
+  const [foundingSlotsRemaining, user] = await Promise.all([
+    getUnallocatedFoundingSlots(),
+    getCurrentUser().catch(() => null),
+  ]);
+  const foundingPriceEligible = user ? await hasUnredeemedFoundingSlot(user.id) : false;
   return (
     <section id="pricing" className="border-t border-line bg-ink py-24 text-canvas sm:py-32">
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
@@ -25,8 +33,8 @@ export function PricingSection() {
               Less than the cost of one forgotten launch.
             </h2>
             <p className="mt-6 max-w-md text-base leading-7 text-[#b7bcb4]">
-              Sign in for a free scan and sample campaign. Upgrade when you are
-              ready to export and keep shipping.
+              Sign in before scanning. Start with one project and one campaign
+              each UTC calendar month, then upgrade for repeat campaigns and exports.
             </p>
           </Reveal>
           <Reveal
@@ -42,9 +50,9 @@ export function PricingSection() {
               </div>
               <div className="text-right">
                 <span className="text-5xl font-semibold tracking-[-0.06em]">
-                  $29
+                  {foundingPriceEligible ? "$19" : "$29"}
                 </span>
-                <span className="text-sm text-[#b7bcb4]"> / month</span>
+                <span className="text-sm text-[#b7bcb4]"> / month{foundingPriceEligible ? " · founding price" : ""}</span>
               </div>
             </div>
             <div className="my-8 h-px bg-[#f4f3ef]/20" />
@@ -66,13 +74,13 @@ export function PricingSection() {
             <div className="mt-9 flex flex-wrap items-center gap-4">
               <Button asChild size="lg">
                 <Link href="/pricing">
-                  See founding access
+                  {foundingPriceEligible ? "Reserved $19/month" : foundingSlotsRemaining > 0 ? "See founding access" : "See Pro plan"}
                   <ArrowRight size={18} />
                 </Link>
               </Button>
-              <span className="text-xs text-[#b7bcb4]">
-                Beta founders start at $19/month.
-              </span>
+              {foundingPriceEligible
+                ? <span className="text-xs text-[#b7bcb4]">Your workspace keeps this price while the subscription stays uninterrupted.</span>
+                : foundingSlotsRemaining > 0 && <span className="text-xs text-[#b7bcb4]">First ten founders: $19/month while subscribed.</span>}
             </div>
           </Reveal>
         </div>

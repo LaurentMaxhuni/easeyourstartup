@@ -2,6 +2,7 @@ import "server-only";
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Agent } from "undici";
 import { z } from "zod";
 
 const urlInputSchema = z.string().trim().min(1).max(2048);
@@ -40,6 +41,7 @@ export function isPrivateIpAddress(address: string): boolean {
       ["172.16.0.0", 12],
       ["192.0.0.0", 24],
       ["192.0.2.0", 24],
+      ["192.88.99.0", 24],
       ["192.168.0.0", 16],
       ["198.18.0.0", 15],
       ["198.51.100.0", 24],
@@ -60,12 +62,17 @@ export function isPrivateIpAddress(address: string): boolean {
 
     const firstGroup = normalized.split(":")[0] || "0";
     const first = Number.parseInt(firstGroup, 16);
+    const secondGroup = Number.parseInt(normalized.split(":")[1] || "0", 16);
     return (
       normalized === "::" ||
       normalized === "::1" ||
+      first < 0x2000 ||
+      first > 0x3fff ||
+      (first === 0x2001 && secondGroup <= 0x01ff) ||
       normalized.startsWith("2001:db8:") ||
       normalized.startsWith("2001:2:") ||
       normalized.startsWith("2001:10:") ||
+      normalized.startsWith("2002:") ||
       (first >= 0xfc00 && first <= 0xfdff) ||
       (first >= 0xfe80 && first <= 0xfebf) ||
       first >= 0xff00
@@ -94,7 +101,7 @@ export function parsePublicHttpUrl(value: string) {
     throw new Error("Only standard web ports are supported.");
   }
 
-  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+  const hostname = normalizeHostname(url.hostname);
   if (
     !hostname ||
     BLOCKED_HOSTS.has(hostname) ||
@@ -112,24 +119,74 @@ export function parsePublicHttpUrl(value: string) {
   return url;
 }
 
+function normalizeHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+}
+
+async function resolvePublicAddresses(url: URL) {
+  const hostname = normalizeHostname(url.hostname);
+  const family = isIP(hostname);
+  if (family) {
+    if (isPrivateIpAddress(hostname)) {
+      throw new Error("Private and reserved IP addresses are not supported.");
+    }
+    return [{ address: hostname, family }];
+  }
+
+  let addresses: Array<{ address: string; family: number }>;
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new Error("The website host could not be resolved.");
+  }
+  if (addresses.length === 0 || addresses.some(({ address }) => isPrivateIpAddress(address))) {
+    throw new Error("The website resolves to a private destination.");
+  }
+  return addresses;
+}
+
 export async function assertPublicHttpUrl(value: string) {
   const url = parsePublicHttpUrl(value);
-  const hostname = url.hostname;
-  if (!isIP(hostname)) {
-    let addresses: Array<{ address: string; family: number }>;
-    try {
-      addresses = await lookup(hostname, { all: true, verbatim: true });
-    } catch {
-      throw new Error("The website host could not be resolved.");
-    }
-    if (
-      addresses.length === 0 ||
-      addresses.some(({ address }) => isPrivateIpAddress(address))
-    ) {
-      throw new Error("The website resolves to a private destination.");
-    }
-  }
+  await resolvePublicAddresses(url);
   return url;
+}
+
+async function fetchPinnedPublicUrl(url: URL, init: RequestInit) {
+  const hostname = normalizeHostname(url.hostname);
+  const addresses = await resolvePublicAddresses(url);
+  const dispatcher = new Agent({
+    connect: {
+      lookup(requestedHostname, options, callback) {
+        if (normalizeHostname(requestedHostname) !== hostname) {
+          const error = Object.assign(new Error("Unexpected request host."), { code: "ENOTFOUND" });
+          if (options.all) callback(error, []);
+          else callback(error, "", 0);
+          return;
+        }
+        const matching = options.family
+          ? addresses.filter((address) => address.family === options.family)
+          : addresses;
+        if (options.all) {
+          callback(null, matching);
+          return;
+        }
+        const selected = matching[0];
+        if (!selected) {
+          const error = Object.assign(new Error("No validated address for the request host."), { code: "ENOTFOUND" });
+          callback(error, "", 0);
+          return;
+        }
+        callback(null, selected.address, selected.family);
+      },
+    },
+  });
+  try {
+    const response = await fetch(url, { ...init, dispatcher } as RequestInit);
+    return { response, close: () => dispatcher.close() };
+  } catch (error) {
+    await dispatcher.close();
+    throw error;
+  }
 }
 
 export async function safeFetchText(
@@ -151,15 +208,16 @@ export async function safeFetchText(
   ];
   const accept =
     options.accept ?? "text/html,application/xhtml+xml,text/css;q=0.8";
-  let current = await assertPublicHttpUrl(initialUrl);
+  let current = parsePublicHttpUrl(initialUrl);
 
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let closeDispatcher: (() => Promise<void>) | null = null;
     try {
       let response: Response;
       try {
-        response = await fetch(current, {
+        const pinned = await fetchPinnedPublicUrl(current, {
           redirect: "manual",
           cache: "no-store",
           signal: controller.signal,
@@ -169,6 +227,8 @@ export async function safeFetchText(
               "EaseYourStartupBot/0.1 (+https://easeyourstartup.com/bot)",
           },
         });
+        response = pinned.response;
+        closeDispatcher = pinned.close;
       } catch {
         throw new Error("The website did not respond in time.");
       }
@@ -178,9 +238,10 @@ export async function safeFetchText(
         if (!location || redirectCount === maxRedirects) {
           throw new Error("The website redirected too many times.");
         }
-        current = await assertPublicHttpUrl(
-          new URL(location, current).toString(),
-        );
+        await response.body?.cancel().catch(() => undefined);
+        await closeDispatcher?.();
+        closeDispatcher = null;
+        current = parsePublicHttpUrl(new URL(location, current).toString());
         continue;
       }
 
@@ -226,6 +287,7 @@ export async function safeFetchText(
       return { text, finalUrl: current.toString(), contentType };
     } finally {
       clearTimeout(timeout);
+      await closeDispatcher?.();
     }
   }
 
@@ -263,15 +325,16 @@ export async function safeFetchImage(
   const timeoutMs = options.timeoutMs ?? 8_000;
   const maxBytes = options.maxBytes ?? 12_000_000;
   const maxRedirects = options.maxRedirects ?? 3;
-  let current = await assertPublicHttpUrl(initialUrl);
+  let current = parsePublicHttpUrl(initialUrl);
 
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let closeDispatcher: (() => Promise<void>) | null = null;
     try {
       let response: Response;
       try {
-        response = await fetch(current, {
+        const pinned = await fetchPinnedPublicUrl(current, {
           redirect: "manual",
           cache: "no-store",
           signal: controller.signal,
@@ -281,6 +344,8 @@ export async function safeFetchImage(
               "EaseYourStartupBot/0.1 (+https://easeyourstartup.com/bot)",
           },
         });
+        response = pinned.response;
+        closeDispatcher = pinned.close;
       } catch {
         throw new Error("The image did not respond in time.");
       }
@@ -290,9 +355,10 @@ export async function safeFetchImage(
         if (!location || redirectCount === maxRedirects) {
           throw new Error("The image redirected too many times.");
         }
-        current = await assertPublicHttpUrl(
-          new URL(location, current).toString(),
-        );
+        await response.body?.cancel().catch(() => undefined);
+        await closeDispatcher?.();
+        closeDispatcher = null;
+        current = parsePublicHttpUrl(new URL(location, current).toString());
         continue;
       }
 
@@ -338,6 +404,7 @@ export async function safeFetchImage(
       return { buffer: buffer.buffer, contentType };
     } finally {
       clearTimeout(timeout);
+      await closeDispatcher?.();
     }
   }
 

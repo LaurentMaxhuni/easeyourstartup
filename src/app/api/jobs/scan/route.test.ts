@@ -62,12 +62,11 @@ describe("POST /api/jobs/scan", () => {
     vi.unstubAllEnvs();
   });
 
-  it("updates the saved project source when an existing project is rescanned", async () => {
+  it("queues an existing project's rescan through the transactional job function", async () => {
     const projectId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    const { database, queries } = recordingDatabase([
-      [{ id: projectId }],
-      [{ id: "job-1", status: "queued", progress: 0 }],
-    ]);
+    const { database, queries } = recordingDatabase([[
+      { job_id: "job-1", status: "queued", progress: 0, project_id: projectId, created: true, allowed: true },
+    ]]);
     mocks.requireWorkspaceContext.mockResolvedValue({
       database,
       workspaceId: "workspace-1",
@@ -80,14 +79,16 @@ describe("POST /api/jobs/scan", () => {
     });
 
     const response = await POST(
-      new Request("http://example.test/api/jobs/scan", { method: "POST" }),
+      new Request("http://example.test/api/jobs/scan", {
+        method: "POST",
+        headers: { "Idempotency-Key": "scan-operation" },
+      }),
     );
 
     expect(response.status).toBe(202);
-    const update = queries.find((query) =>
-      query.sql.includes("update public.projects"),
-    );
-    expect(update?.values).toEqual(
+    expect(queries).toHaveLength(1);
+    expect(queries[0].sql).toContain("public.enqueue_scan_job");
+    expect(queries[0].values).toEqual(
       expect.arrayContaining([
         "New source",
         "https://new-source.example/launch",
@@ -97,10 +98,11 @@ describe("POST /api/jobs/scan", () => {
     );
   });
 
-  it("atomically claims an available project slot before queueing a new scan", async () => {
+  it("creates a project, job, and outbox event atomically for a new scan", async () => {
     const projectId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-    const job = { id: "job-1", status: "queued", progress: 0 };
-    const { database, queries } = recordingDatabase([[{ id: projectId }], [job]]);
+    const { database, queries } = recordingDatabase([[
+      { job_id: "job-1", status: "queued", progress: 0, project_id: projectId, created: true, allowed: true },
+    ]]);
     mocks.requireWorkspaceContext.mockResolvedValue({
       database,
       workspaceId: "workspace-1",
@@ -112,18 +114,26 @@ describe("POST /api/jobs/scan", () => {
     });
 
     const response = await POST(
-      new Request("http://example.test/api/jobs/scan", { method: "POST" }),
+      new Request("http://example.test/api/jobs/scan", {
+        method: "POST",
+        headers: { "Idempotency-Key": "scan-operation" },
+      }),
     );
 
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({ job, projectId });
-    expect(queries).toHaveLength(2);
-    expect(queries[0].sql).toContain("generate_series");
-    expect(queries[0].sql).toContain("on conflict (workspace_id, active_slot)");
+    expect(await response.json()).toEqual({
+      job: { id: "job-1", status: "queued", progress: 0 },
+      projectId,
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0].sql).toContain("public.enqueue_scan_job");
+    expect(mocks.inngestSend).not.toHaveBeenCalled();
   });
 
   it("rejects a new scan when no project slot can be claimed", async () => {
-    const { database, queries } = recordingDatabase([[]]);
+    const { database, queries } = recordingDatabase([[
+      { job_id: null, status: null, progress: 0, project_id: null, created: false, allowed: false },
+    ]]);
     mocks.requireWorkspaceContext.mockResolvedValue({
       database,
       workspaceId: "workspace-1",
@@ -135,7 +145,10 @@ describe("POST /api/jobs/scan", () => {
     });
 
     const response = await POST(
-      new Request("http://example.test/api/jobs/scan", { method: "POST" }),
+      new Request("http://example.test/api/jobs/scan", {
+        method: "POST",
+        headers: { "Idempotency-Key": "scan-operation" },
+      }),
     );
 
     expect(response.status).toBe(403);

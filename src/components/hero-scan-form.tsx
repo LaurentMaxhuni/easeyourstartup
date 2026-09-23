@@ -34,8 +34,7 @@ export function HeroScanForm() {
       return;
     }
     setError("");
-    const nextPath = `/studio?url=${encodeURIComponent(normalized)}`;
-    router.push(`/login?next=${encodeURIComponent(nextPath)}`);
+    router.push(`/studio?url=${encodeURIComponent(normalized)}`);
   }
 
   return (
@@ -68,21 +67,10 @@ export function HeroScanForm() {
           <ArrowRight aria-hidden="true" size={18} />
         </Button>
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted">
+      <div className="mt-3 px-1 text-xs text-muted">
         <span id="hero-scan-feedback" aria-live="polite">
-          {error || "Sign in required. No credit card for your first scan."}
+          {error || "Sign in first, then we’ll scan and save the project to your dashboard."}
         </span>
-        <button
-          type="button"
-          className="font-semibold text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
-          onClick={() =>
-            router.push(
-              `/login?next=${encodeURIComponent("/studio?demo=1")}`,
-            )
-          }
-        >
-          Explore the demo
-        </button>
       </div>
     </form>
   );

@@ -30,6 +30,7 @@ const eventSchema = z.object({
       warningCount: z.number().int().min(0).max(30).optional(),
       durationMs: z.number().int().min(0).max(3_600_000).optional(),
       mode: z.enum(["durable", "direct", "demo"]).optional(),
+      format: z.enum(["png", "zip"]).optional(),
     })
     .strict()
     .default({}),
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     const context = await requireWorkspaceContext();
-    const limit = rateLimit(
+    const limit = await rateLimit(
       `studio-events:${context.workspaceId}:${context.user.id}`,
       { limit: 120, windowMs: 60 * 60 * 1000 },
     );

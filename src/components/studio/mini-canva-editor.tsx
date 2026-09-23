@@ -246,8 +246,8 @@ function sameElements(first: CreativeElement[], second: CreativeElement[]) {
   return JSON.stringify(first) === JSON.stringify(second);
 }
 
-function resolveEditorFontFamily() {
-  return "var(--font-outfit)";
+function resolveEditorFontFamily(composition?: CreativeComposition) {
+  return composition?.tokens.bodyFontFamily ?? composition?.tokens.fontFamily ?? "var(--font-body)";
 }
 
 function prepareDesignComposition(composition: CreativeComposition) {
@@ -318,7 +318,7 @@ function makeTextElement(
         : composition.tokens.foreground,
     fontWeight: role === "headline" || role === "cta" ? 650 : 450,
     align: centered ? "center" : "left",
-    radius: role === "cta" ? 8 : 0,
+    radius: role === "cta" ? composition.tokens.radius ?? 8 : 0,
   };
 }
 
@@ -326,6 +326,7 @@ function makeShapeElement(
   shape: "rectangle" | "circle" | "line",
   id: string,
   fill: string,
+  composition: CreativeComposition,
 ): CreativeElement {
   return {
     id,
@@ -340,7 +341,7 @@ function makeShapeElement(
     hidden: false,
     shape,
     fill,
-    radius: shape === "circle" ? 50 : 8,
+    radius: shape === "circle" ? 50 : composition.tokens.radius ?? 8,
   };
 }
 
@@ -441,7 +442,10 @@ function renderTextElement(
       )}
       style={{
         color: element.color ?? composition.tokens.foreground,
-        fontFamily: resolveEditorFontFamily(),
+        fontFamily:
+          element.textRole === "headline"
+            ? composition.tokens.headingFontFamily ?? composition.tokens.fontFamily
+            : resolveEditorFontFamily(composition),
         backgroundColor: isCta
           ? composition.tokens.foreground
           : "transparent",
@@ -449,8 +453,15 @@ function renderTextElement(
         fontWeight: element.fontWeight ?? 450,
         lineHeight: element.textRole === "headline" ? 0.96 : 1.2,
         textAlign: element.align ?? "left",
-        borderRadius: isCta ? `${element.radius ?? 8}px` : undefined,
-        letterSpacing: element.textRole === "eyebrow" ? "0.12em" : "-0.025em",
+        borderRadius: isCta
+          ? `${element.radius ?? composition.tokens.radius ?? 8}px`
+          : undefined,
+        letterSpacing:
+          element.textRole === "eyebrow"
+            ? "0.08em"
+            : element.textRole === "headline"
+              ? "-0.035em"
+              : "normal",
         textTransform: element.textRole === "eyebrow" ? "uppercase" : undefined,
       }}
     >
@@ -467,6 +478,7 @@ function LayerVisual({
   composition: CreativeComposition;
 }) {
   if (element.hidden) return null;
+  const sourceRadius = composition.tokens.radius ?? 8;
   const style = {
     left: `${element.x}%`,
     top: `${element.y}%`,
@@ -492,7 +504,7 @@ function LayerVisual({
           <div
             className="relative h-full w-full overflow-hidden bg-white/10"
             style={{
-              borderRadius: `${element.radius ?? 7}px`,
+              borderRadius: `${element.radius ?? sourceRadius}px`,
               border: `1px solid color-mix(in srgb, ${composition.tokens.foreground} 30%, transparent)`,
               boxShadow: `inset 0 1px 0 color-mix(in srgb, ${composition.tokens.foreground} 24%, transparent)`,
             }}
@@ -519,7 +531,7 @@ function LayerVisual({
               borderRadius:
                 element.shape === "circle"
                   ? "999px"
-                  : `${element.radius ?? 8}px`,
+                  : `${element.radius ?? sourceRadius}px`,
             }}
           />
         )}
@@ -558,6 +570,9 @@ function LayerVisual({
 export function MiniCanvaEditor({
   composition,
   outputs,
+  onRegenerateChannel,
+  regenerationRemaining,
+  regenerationBusyChannel,
   generationProvider,
   autoDesignStatus,
   autoDesignWarning,
@@ -568,9 +583,11 @@ export function MiniCanvaEditor({
   uploadError,
   exportStatus,
   exportError,
+  exportDownloadUrl,
   plan,
   canExportLaunchKit,
   campaignsRemaining,
+  usagePeriodEndsAt,
   launchKitReadiness,
   onChange,
   onOutputsChange,
@@ -587,6 +604,9 @@ export function MiniCanvaEditor({
 }: {
   composition: CreativeComposition;
   outputs: ChannelOutput[];
+  onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
+  regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
+  regenerationBusyChannel?: ChannelOutput["channel"] | null;
   generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
@@ -597,9 +617,11 @@ export function MiniCanvaEditor({
   uploadError: string;
   exportStatus: "idle" | "loading";
   exportError: string;
+  exportDownloadUrl: string | null;
   plan: "free" | "pro";
   canExportLaunchKit: boolean;
   campaignsRemaining: number | null;
+  usagePeriodEndsAt: string | null;
   launchKitReadiness: LaunchKitReadiness;
   onChange: (composition: CreativeComposition) => void;
   onOutputsChange: (outputs: ChannelOutput[]) => void;
@@ -638,7 +660,7 @@ export function MiniCanvaEditor({
   const [aiStatus, setAiStatus] = useState<"idle" | "loading" | "error">("idle");
   const [aiError, setAiError] = useState("");
   const [designInstruction, setDesignInstruction] = useState(
-    "Design the whole canvas as a spacious, high-contrast visual scene with layered gradients, a product image, useful icons, and subtle motion around a clear CTA.",
+    "Design the whole canvas as a spacious, high-contrast visual scene with one product image, useful icons, restrained graphic accents, and subtle motion around a clear CTA. Respect the source visual system.",
   );
   const [designStatus, setDesignStatus] = useState<
     "idle" | "loading" | "error"
@@ -1168,7 +1190,7 @@ export function MiniCanvaEditor({
               <button
                 key={shape}
                 type="button"
-                onClick={() => addElement(makeShapeElement(shape, `shape-${Date.now().toString(36)}`, composition.tokens.foreground))}
+                onClick={() => addElement(makeShapeElement(shape, `shape-${Date.now().toString(36)}`, composition.tokens.foreground, composition))}
                 className="rounded-control border border-line bg-canvas p-3 text-center text-[10px] font-semibold hover:border-accent"
               >
                 <span className={cn(
@@ -1237,6 +1259,10 @@ export function MiniCanvaEditor({
           outputs={outputs}
           claims={aiContext.approvedClaims}
           onChange={onOutputsChange}
+          onRegenerate={onRegenerateChannel}
+          regenerationRemaining={regenerationRemaining}
+          regenerationBusyChannel={regenerationBusyChannel}
+          plan={plan}
           compact
         />
       );
@@ -1312,12 +1338,12 @@ export function MiniCanvaEditor({
               <Badge>{plan === "pro" ? "Pro" : "Free preview"}</Badge>
             </div>
             <p className="mt-2 text-muted">
-              {launchKitReadiness.outputCount} channel draft{launchKitReadiness.outputCount === 1 ? "" : "s"} · {launchKitReadiness.approvedClaimCount} approved fact{launchKitReadiness.approvedClaimCount === 1 ? "" : "s"}
+              {launchKitReadiness.outputCount} channel draft{launchKitReadiness.outputCount === 1 ? "" : "s"} · {launchKitReadiness.approvedClaimCount} source fact{launchKitReadiness.approvedClaimCount === 1 ? "" : "s"} kept
             </p>
             <p className="mt-1 text-muted">
               {campaignsRemaining === null
                 ? "Checking campaign allowance…"
-                : `${campaignsRemaining} campaign slot${campaignsRemaining === 1 ? "" : "s"} left this month`}
+                : `${campaignsRemaining} campaign slot${campaignsRemaining === 1 ? "" : "s"} left this period${usagePeriodEndsAt ? ` · resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(usagePeriodEndsAt))}` : ""}`}
             </p>
             {launchKitReadiness.warnings.length > 0 && (
               <ul className="mt-3 space-y-1 border-t border-line pt-3 text-muted">
@@ -1359,7 +1385,12 @@ export function MiniCanvaEditor({
             </div>
           )}
           {exportStatus === "loading" && (
-            <p className="text-xs text-muted">Preparing your export...</p>
+            <p role="status" className="text-xs text-muted">Preparing your export… This can take a minute. Your saved campaign is safe if you leave the page.</p>
+          )}
+          {exportDownloadUrl && (
+            <a href={exportDownloadUrl} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-control border border-accent/40 bg-accent/10 px-3 text-sm font-semibold text-accent underline-offset-4 hover:underline">
+              <DownloadSimple size={16} />Download completed export
+            </a>
           )}
           {exportError && (
             <p role="alert" className="text-xs leading-5 text-danger">
@@ -1379,7 +1410,7 @@ export function MiniCanvaEditor({
           />
           <div className="mt-3 rounded-control border border-accent/30 bg-accent/10 p-3 text-[11px] leading-5 text-muted">
             AI builds the editable layer stack plus HTML, CSS, and JavaScript for an
-            isolated preview. Images stay limited to your approved uploads.
+            isolated preview. Images stay limited to your selected uploads.
           </div>
           {effectiveAutoDesignStatus !== "idle" && (
             <div
@@ -1714,7 +1745,13 @@ export function MiniCanvaEditor({
                     <LayerVisual key={element.id} element={element} composition={composition} />
                   ))}
                   {!canExportLaunchKit && (
-                    <div className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded bg-[#171917]/85 px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase tracking-[0.12em] text-[#f4f3ef]">
+                    <div
+                      className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase tracking-[0.12em]"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${composition.tokens.foreground} 85%, transparent)`,
+                        color: composition.tokens.background,
+                      }}
+                    >
                       Free preview
                     </div>
                   )}

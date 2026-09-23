@@ -12,7 +12,7 @@ export const DEMO_BRAND: BrandProfile = {
   audience: "Solo SaaS founders who ship often but struggle to launch consistently.",
   voice: ["direct", "practical", "optimistic"],
   colors: ["#245cf0", "#171917", "#f4f3ef"],
-  fonts: ["Outfit"],
+  fonts: ["Trebuchet MS", "Georgia"],
   cta: "Build your launch campaign",
   logoUrl: null,
   faviconUrl: null,
@@ -37,7 +37,7 @@ export const DEMO_BRAND: BrandProfile = {
     },
     {
       id: "claim-room",
-      text: "Creates a supporter room with approved copy and downloadable visuals.",
+      text: "Creates a supporter room with source-backed copy and downloadable visuals.",
       sourceUrl: "https://demo.easeyourstartup.com/share",
       sourceExcerpt:
         "Supporters can copy a prepared message and download the matching launch image.",
@@ -45,6 +45,17 @@ export const DEMO_BRAND: BrandProfile = {
       approvalState: "approved",
     },
   ],
+  visualSystem: {
+    backgroundColor: "#245cf0",
+    foregroundColor: "#f4f3ef",
+    accentColor: "#171917",
+    radius: 8,
+    spacing: 16,
+    headingFont: "Georgia",
+    bodyFont: "Trebuchet MS",
+    density: "comfortable",
+    usesGradient: false,
+  },
 };
 
 export const DEMO_SCAN: ScanResult = {
@@ -152,7 +163,7 @@ export const DEMO_OUTPUTS: ChannelOutput[] = [
   {
     channel: "product_hunt",
     primaryCopy:
-      "Hey Product Hunt, we built EaseYourStartup for founders who keep shipping but struggle to turn each update into a real campaign.\n\nPaste your public site, approve the source-backed Brand DNA, add your update, and get channel-specific copy plus visuals made from your actual product screenshots.\n\nNo invented interfaces. No unsupported claims. Just a practical path from shipped to launched.",
+      "Hey Product Hunt, EaseYourStartup is for founders who keep shipping but struggle to turn each update into a real campaign.\n\nPaste your public site, let the scan filter the source-backed Brand DNA, add your update, and get channel-specific copy plus visuals made from your actual product screenshots.\n\nNo invented interfaces. No unsupported claims. Just a practical path from shipped to launched.",
     alternateHooks: [
       "Turn every ship into a campaign.",
       "Launch copy and visuals grounded in your real product.",
@@ -182,7 +193,12 @@ export const DEMO_COMPOSITION: CreativeComposition = {
     background: "#245cf0",
     foreground: "#f4f3ef",
     accent: "#171917",
-    fontFamily: "Outfit",
+    fontFamily: "Trebuchet MS",
+    headingFontFamily: "Georgia",
+    bodyFontFamily: "Trebuchet MS",
+    radius: 8,
+    spacing: 16,
+    usesGradient: false,
   },
   text: {
     eyebrow: "EaseYourStartup",

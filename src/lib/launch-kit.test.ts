@@ -26,7 +26,7 @@ const draft = {
 };
 
 describe("launch kit", () => {
-  it("packages separate channel copy and approved source evidence", () => {
+  it("packages separate channel copy and curated source evidence", () => {
     const files = buildLaunchKitFiles({
       brand: {
         ...DEMO_BRAND,
@@ -54,13 +54,13 @@ describe("launch kit", () => {
       "copy/01-x.md",
       "copy/02-linkedin.md",
       "copy/03-product-hunt.md",
-      "sources/approved-claims.md",
+      "sources/source-facts.md",
       "campaign.json",
     ]);
     expect(files.find((file) => file.path === "copy/01-x.md")?.contents).toContain(
       "Shipping the feature is only half the job.",
     );
-    expect(files.find((file) => file.path === "sources/approved-claims.md")?.contents).toContain(
+    expect(files.find((file) => file.path === "sources/source-facts.md")?.contents).toContain(
       "https://demo.easeyourstartup.com/product",
     );
     expect(files.map((file) => file.contents).join("\n")).not.toContain(
@@ -68,7 +68,7 @@ describe("launch kit", () => {
     );
   });
 
-  it("flags missing approved evidence and unresolved copy warnings before export", () => {
+  it("flags missing source evidence and unresolved copy warnings before export", () => {
     const readiness = getLaunchKitReadiness({
       brand: { ...DEMO_BRAND, claims: [] },
       draft,
@@ -95,7 +95,7 @@ describe("launch kit", () => {
     expect(readiness.ready).toBe(false);
     expect(readiness.approvedClaimCount).toBe(0);
     expect(readiness.warnings).toEqual([
-      "Approve at least one source-backed fact before publishing.",
+      "No source-backed facts were kept for publishing.",
       "The benefit claim needs founder review.",
       "Add customer proof: No customer result is available on the site.",
     ]);
