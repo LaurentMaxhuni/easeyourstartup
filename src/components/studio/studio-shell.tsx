@@ -39,6 +39,7 @@ import { applyCreativeDesign } from "@/lib/studio/editor-state";
 import { createDeterministicCreativeCodeBundle as createFallbackCodeBundle } from "@/lib/creative-code";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
+import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 
 const EMPTY_DRAFT: CampaignDraft = {
   kind: "launch",
@@ -868,19 +869,9 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
           data.profile.visualSystem?.accentColor ??
           data.profile.colors[1] ??
           current.tokens.accent,
-        fontFamily:
-          data.profile.visualSystem?.bodyFont ??
-          data.profile.fonts[0] ??
-          current.tokens.fontFamily,
-        headingFontFamily:
-          data.profile.visualSystem?.headingFont ??
-          data.profile.fonts[1] ??
-          data.profile.fonts[0] ??
-          current.tokens.headingFontFamily,
-        bodyFontFamily:
-          data.profile.visualSystem?.bodyFont ??
-          data.profile.fonts[0] ??
-          current.tokens.bodyFontFamily,
+        fontFamily: OUTFIT_FONT_FAMILY,
+        headingFontFamily: OUTFIT_FONT_FAMILY,
+        bodyFontFamily: OUTFIT_FONT_FAMILY,
         radius: data.profile.visualSystem?.radius ?? current.tokens.radius ?? 8,
         spacing: data.profile.visualSystem?.spacing ?? current.tokens.spacing ?? 16,
         usesGradient:

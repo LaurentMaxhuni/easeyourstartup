@@ -44,7 +44,7 @@ export function GenerationProgressScreen({
         ? "The studio has your brief and is getting started."
       : stage === "writing"
         ? `Creating tailored copy for ${channelCount} selected ${channelCount === 1 ? "channel" : "channels"}.`
-        : "The studio is using your brand colors, fonts, imagery, and campaign copy to create the first editable design.";
+        : "The studio is applying your brand colors and imagery to create the first editable design in Outfit.";
 
   return (
     <main className="fixed inset-0 z-[80] min-h-[100dvh] overflow-y-auto bg-canvas text-ink">

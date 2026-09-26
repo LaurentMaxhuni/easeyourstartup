@@ -5,6 +5,7 @@ import type {
   NarrativeAngle,
   ScanResult,
 } from "@/lib/contracts";
+import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 
 export const DEMO_BRAND: BrandProfile = {
   projectName: "EaseYourStartup",
@@ -12,7 +13,7 @@ export const DEMO_BRAND: BrandProfile = {
   audience: "Solo SaaS founders who ship often but struggle to launch consistently.",
   voice: ["direct", "practical", "optimistic"],
   colors: ["#245cf0", "#171917", "#f4f3ef"],
-  fonts: ["Trebuchet MS", "Georgia"],
+  fonts: [OUTFIT_FONT_FAMILY],
   cta: "Build your launch campaign",
   logoUrl: null,
   faviconUrl: null,
@@ -51,8 +52,8 @@ export const DEMO_BRAND: BrandProfile = {
     accentColor: "#171917",
     radius: 8,
     spacing: 16,
-    headingFont: "Georgia",
-    bodyFont: "Trebuchet MS",
+    headingFont: OUTFIT_FONT_FAMILY,
+    bodyFont: OUTFIT_FONT_FAMILY,
     density: "comfortable",
     usesGradient: false,
   },
@@ -193,9 +194,9 @@ export const DEMO_COMPOSITION: CreativeComposition = {
     background: "#245cf0",
     foreground: "#f4f3ef",
     accent: "#171917",
-    fontFamily: "Trebuchet MS",
-    headingFontFamily: "Georgia",
-    bodyFontFamily: "Trebuchet MS",
+    fontFamily: OUTFIT_FONT_FAMILY,
+    headingFontFamily: OUTFIT_FONT_FAMILY,
+    bodyFontFamily: OUTFIT_FONT_FAMILY,
     radius: 8,
     spacing: 16,
     usesGradient: false,

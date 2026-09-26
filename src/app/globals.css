@@ -3,7 +3,7 @@
 @theme inline {
   --font-sans: var(--font-outfit);
   --font-display: var(--font-outfit);
-  --font-mono: "Cascadia Mono", "SFMono-Regular", monospace;
+  --font-mono: var(--font-outfit);
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);

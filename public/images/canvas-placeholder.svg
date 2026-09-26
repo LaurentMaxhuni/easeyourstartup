@@ -7,6 +7,6 @@
   <circle cx="296" cy="312" r="10" fill="#a6a59f"/>
   <rect x="184" y="392" width="832" height="560" rx="24" fill="#eeede7"/>
   <path d="M482 617h236M600 499v236" stroke="#aaa9a2" stroke-linecap="round" stroke-width="8"/>
-  <text x="600" y="1028" fill="#686862" font-family="Arial,sans-serif" font-size="38" text-anchor="middle">Add a product screenshot</text>
-  <text x="600" y="1088" fill="#86857e" font-family="Arial,sans-serif" font-size="24" text-anchor="middle">Use an upload or a live site capture</text>
+  <text x="600" y="1028" fill="#686862" font-family="Outfit,sans-serif" font-size="38" text-anchor="middle">Add a product screenshot</text>
+  <text x="600" y="1088" fill="#86857e" font-family="Outfit,sans-serif" font-size="24" text-anchor="middle">Use an upload or a live site capture</text>
 </svg>
