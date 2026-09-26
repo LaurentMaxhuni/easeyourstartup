@@ -36,6 +36,17 @@ describe("getAuthenticatedUser", () => {
     expect(mocks.getSession).toHaveBeenCalledTimes(2);
   });
 
+  it("retries one transient network error and accepts a recovered session", async () => {
+    mocks.getSession
+      .mockResolvedValueOnce({ data: null, error: { code: "NETWORK_ERROR" } } as never)
+      .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
+
+    await expect(getAuthenticatedUser()).resolves.toEqual({
+      user: { id: "user-1" },
+    });
+    expect(mocks.getSession).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry a rejected session", async () => {
     mocks.getSession.mockResolvedValueOnce({
       data: null,

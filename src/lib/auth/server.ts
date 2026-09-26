@@ -31,7 +31,14 @@ async function getSessionWithTransientRetry(auth: NeonAuth) {
   const status = result.error && "status" in result.error
     ? Number(result.error.status)
     : 0;
-  if (!result.error || !RETRYABLE_AUTH_STATUSES.has(status)) return result;
+  const code = result.error && "code" in result.error ? result.error.code : "";
+  const retryableNetworkError = status === 0 && code === "NETWORK_ERROR";
+  if (
+    !result.error ||
+    (!RETRYABLE_AUTH_STATUSES.has(status) && !retryableNetworkError)
+  ) {
+    return result;
+  }
 
   await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
   return auth.getSession();
