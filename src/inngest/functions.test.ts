@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   requireDatabase: vi.fn(),
   scanWebsite: vi.fn(),
   generateCampaign: vi.fn(),
+  generateCampaignV2: vi.fn(),
+  analyzeBrandIntelligence: vi.fn(),
   inngestSend: vi.fn(),
 }));
 
@@ -38,13 +40,25 @@ vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: vi.fn() }));
 
 vi.mock("@/lib/server/campaign-generator", () => ({
   generateCampaign: mocks.generateCampaign,
+  publicProviderError: (error: unknown) => error instanceof Error
+    ? error.message
+    : "Unknown provider error",
+}));
+vi.mock("@/lib/server/generation-v2", () => ({
+  generateCampaignV2: mocks.generateCampaignV2,
+}));
+vi.mock("@/lib/server/brand-intelligence", () => ({
+  analyzeBrandIntelligence: mocks.analyzeBrandIntelligence,
 }));
 
 import { dispatchJobOutbox, generateCampaignAssets, scanProject } from "@/inngest/functions";
 
 type RegisteredFunction = {
   config: {
-    onFailure: (input: { event: { data: { event: { data: Record<string, string> } } } }) => Promise<void>;
+    onFailure: (input: {
+      event: { data: { event: { data: Record<string, string> } } };
+      error?: Error;
+    }) => Promise<void>;
   };
 };
 
@@ -97,6 +111,30 @@ describe("durable job failure cleanup", () => {
       sql: expect.stringContaining("release_campaign_usage_reservation"),
       values: ["workspace", "campaign"],
     });
+  });
+
+  it("stores the sanitized error that caused campaign retries to fail", async () => {
+    const { database, queries } = recordingDatabase();
+    mocks.createDatabase.mockReturnValue(database);
+
+    await (generateCampaignAssets as unknown as RegisteredFunction).config.onFailure({
+      event: {
+        data: {
+          event: {
+            data: {
+              jobId: "generation-job",
+              workspaceId: "workspace",
+              campaignId: "campaign",
+            },
+          },
+        },
+      },
+      error: new Error("provider unavailable"),
+    });
+
+    expect(queries[1].values).toContain(
+      "Campaign generation failed after retries: provider unavailable",
+    );
   });
 });
 

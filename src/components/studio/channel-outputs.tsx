@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ArrowClockwise, Check, Copy, WarningCircle } from "@phosphor-icons/react";
+import { ThinkingOrb } from "thinking-orbs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { BrandClaim, ChannelOutput } from "@/lib/contracts";
@@ -95,7 +96,7 @@ export function ChannelOutputs({
                 }}
                 disabled={regenerationBusy || plan !== "pro" || regenerationsRemaining === 0}
               >
-                {regenerationBusy ? <ArrowClockwise className="animate-spin" size={16} /> : <ArrowClockwise size={16} />}
+                {regenerationBusy ? <ThinkingOrb state="composing" size={20} aria-hidden="true" /> : <ArrowClockwise size={16} />}
                 {regenerationBusy ? "Regenerating" : "Regenerate"}
               </Button>
               <span className="mt-1 block text-[10px] text-muted">

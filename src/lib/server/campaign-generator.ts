@@ -704,7 +704,7 @@ function asString(value: unknown, fallback: string, maximum = 1000) {
     : fallback;
 }
 
-function publicProviderError(error: unknown) {
+export function publicProviderError(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown provider error";
   return message
     .replace(/(?:gsk_|sk-)[A-Za-z0-9_-]+/g, "[redacted]")

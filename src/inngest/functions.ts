@@ -6,6 +6,7 @@ import { channelSchema, generateCampaignSchema, studioStateSchema } from "@/lib/
 import {
   curateScannedClaims,
   generateCampaign,
+  publicProviderError,
 } from "@/lib/server/campaign-generator";
 import { createDatabase, requireDatabase } from "@/lib/server/database";
 import { scanWebsite } from "@/lib/server/scanner";
@@ -85,9 +86,15 @@ export const generateCampaignAssets = inngest.createFunction(
   {
     id: "generate-campaign-assets",
     retries: 2,
-    onFailure: async ({ event }) => {
+    onFailure: async ({ event, error }) => {
       const database = createDatabase();
       if (!database) return;
+      const reason = error instanceof Error && error.message.trim()
+        ? publicProviderError(error)
+        : "";
+      const errorMessage = reason
+        ? `Campaign generation failed after retries: ${reason}`
+        : "Campaign generation failed after retries.";
       await database`
         select public.release_campaign_usage_reservation(
           ${event.data.event.data.workspaceId}::uuid,
@@ -98,7 +105,7 @@ export const generateCampaignAssets = inngest.createFunction(
         update public.jobs
         set
           status = 'failed',
-          error_message = 'Campaign generation failed after retries.',
+          error_message = ${errorMessage},
           updated_at = now()
         where id = ${event.data.event.data.jobId}
       `;

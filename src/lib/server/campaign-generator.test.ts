@@ -12,6 +12,7 @@ import {
   normalizeGenerationPayload,
   normalizeCreativeDesignPayload,
   parseStructuredJson,
+  publicProviderError,
 } from "@/lib/server/campaign-generator";
 import * as campaignGenerator from "@/lib/server/campaign-generator";
 import { claimCurationResultSchema } from "@/lib/contracts";
@@ -23,6 +24,12 @@ import {
 } from "@/lib/demo-data";
 
 describe("source-backed campaign generation", () => {
+  it("redacts provider API keys from public failure details", () => {
+    expect(publicProviderError(new Error("Provider rejected sk-test-secret"))).toBe(
+      "Provider rejected [redacted]",
+    );
+  });
+
   it("honors the operator AI-generation kill switch", async () => {
     vi.stubEnv("AI_GENERATION_ENABLED", "false");
     try {

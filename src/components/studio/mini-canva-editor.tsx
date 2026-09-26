@@ -40,6 +40,7 @@ import { Logo } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { ThinkingOrb } from "thinking-orbs";
 import {
   creativeCodeBundleSchema,
   creativeElementEffectSchema,
@@ -1425,10 +1426,12 @@ export function MiniCanvaEditor({
               )}
             >
               <p className="font-semibold">
-                {canvasSourceLabel(
-                  effectiveAutoDesignStatus,
-                  generationProvider,
-                )}
+                <span className="flex items-center gap-2">
+                  {effectiveAutoDesignStatus === "loading" && (
+                    <ThinkingOrb state="shaping" size={20} aria-hidden="true" />
+                  )}
+                  {canvasSourceLabel(effectiveAutoDesignStatus, generationProvider)}
+                </span>
               </p>
               {autoDesignWarning && (
                 <p className="mt-1">{autoDesignWarning}</p>
@@ -1450,7 +1453,7 @@ export function MiniCanvaEditor({
             onClick={() => void designEntireCanvas()}
             disabled={designStatus === "loading"}
           >
-            {designStatus === "loading" ? <LoadingIndicator size="sm" /> : <Sparkle size={16} />}
+            {designStatus === "loading" ? <ThinkingOrb state="shaping" size={20} aria-hidden="true" /> : <Sparkle size={16} />}
             {designStatus === "loading" ? "Designing canvas" : "Design entire canvas"}
           </Button>
           {designError && (
@@ -1507,7 +1510,7 @@ export function MiniCanvaEditor({
                 onClick={() => void rewriteSelectedText()}
                 disabled={aiStatus === "loading"}
               >
-                {aiStatus === "loading" ? <LoadingIndicator size="sm" /> : <Sparkle size={16} />}
+                {aiStatus === "loading" ? <ThinkingOrb state="composing" size={20} aria-hidden="true" /> : <Sparkle size={16} />}
                 {aiStatus === "loading" ? "Rewriting" : "Rewrite with AI"}
               </Button>
               {aiError && (

@@ -5,9 +5,9 @@ import {
   ArrowRight,
   GlobeSimple,
 } from "@phosphor-icons/react";
+import { ThinkingOrb } from "thinking-orbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import type { ScanResult } from "@/lib/contracts";
 
 export function ScanPanel({
@@ -72,7 +72,7 @@ export function ScanPanel({
               disabled={status === "loading"}
             >
               {status === "loading" ? (
-                <LoadingIndicator size="sm" />
+                <ThinkingOrb state="searching" size={20} aria-hidden="true" />
               ) : (
                 <ArrowRight size={18} />
               )}
@@ -88,8 +88,8 @@ export function ScanPanel({
             </p>
           )}
           {status === "loading" && (
-            <div className="mt-5 flex items-start gap-3 rounded-control border border-accent/30 bg-accent/10 p-4">
-              <LoadingIndicator className="mt-0.5 shrink-0 text-accent" />
+            <div role="status" aria-live="polite" className="mt-5 flex items-center gap-4 rounded-control border border-accent/30 bg-accent/10 p-4">
+              <ThinkingOrb className="shrink-0" state="searching" size={64} aria-hidden="true" />
               <div>
                 <p className="text-sm font-semibold">Reading your public site</p>
                 <p className="mt-1 text-xs leading-5 text-muted">
