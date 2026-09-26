@@ -6,6 +6,8 @@ import {
 } from "@neondatabase/auth/next/server";
 
 let cachedAuth: NeonAuth | null | undefined;
+const AUTH_RETRY_DELAY_MS = 250;
+const RETRYABLE_AUTH_STATUSES = new Set([502, 503, 504]);
 
 export function getNeonAuth(): NeonAuth | null {
   if (cachedAuth !== undefined) return cachedAuth;
@@ -24,11 +26,22 @@ export function getNeonAuth(): NeonAuth | null {
   return cachedAuth;
 }
 
+async function getSessionWithTransientRetry(auth: NeonAuth) {
+  const result = await auth.getSession();
+  const status = result.error && "status" in result.error
+    ? Number(result.error.status)
+    : 0;
+  if (!result.error || !RETRYABLE_AUTH_STATUSES.has(status)) return result;
+
+  await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
+  return auth.getSession();
+}
+
 export async function getCurrentSession() {
   const auth = getNeonAuth();
   if (!auth) return null;
 
-  const { data, error } = await auth.getSession();
+  const { data, error } = await getSessionWithTransientRetry(auth);
   if (error) return null;
   return data;
 }
