@@ -7,10 +7,13 @@ import {
   autoCurateClaims,
   generateDeterministicCampaign,
   getOpenAIProviderConfig,
+  getOpenAIProviderSetup,
+  getStructuredAiTimeoutMs,
   isAiGenerationEnabled,
   parseAiCampaignResult,
   normalizeGenerationPayload,
   normalizeCreativeDesignPayload,
+  parseProviderCreativeDesign,
   parseStructuredJson,
   publicProviderError,
 } from "@/lib/server/campaign-generator";
@@ -23,10 +26,87 @@ import {
   DEMO_SCAN,
 } from "@/lib/demo-data";
 
+function validCreativeDesignPlan() {
+  const { tokens } = DEMO_COMPOSITION;
+  const layerState = { rotation: 0, opacity: 1, locked: false, hidden: false };
+
+  return {
+    theme: {
+      background: tokens.background,
+      foreground: tokens.foreground,
+      accent: tokens.accent,
+      headingFontFamily: "Outfit",
+      bodyFontFamily: "Outfit",
+    },
+    elements: [
+      {
+        ...layerState,
+        id: "hero-image",
+        kind: "image",
+        asset: "primary",
+        x: 54,
+        y: 12,
+        width: 38,
+        height: 64,
+      },
+      {
+        ...layerState,
+        id: "launch-headline",
+        kind: "text",
+        textRole: "headline",
+        text: "A launch visual made for your next big release",
+        x: 8,
+        y: 16,
+        width: 42,
+        height: 20,
+        color: tokens.foreground,
+        fontSize: 5,
+        fontWeight: 700,
+        align: "left",
+      },
+      {
+        ...layerState,
+        id: "launch-cta",
+        kind: "text",
+        textRole: "cta",
+        text: DEMO_COMPOSITION.text.cta,
+        x: 8,
+        y: 82,
+        width: 32,
+        height: 7,
+        color: tokens.accent,
+        fontSize: 2,
+        fontWeight: 600,
+        align: "left",
+      },
+      {
+        ...layerState,
+        id: "rocket-icon",
+        kind: "icon",
+        icon: "rocket-launch",
+        x: 78,
+        y: 10,
+        width: 10,
+        height: 10,
+        color: tokens.accent,
+      },
+    ],
+  };
+}
+
 describe("source-backed campaign generation", () => {
   it("redacts provider API keys from public failure details", () => {
     expect(publicProviderError(new Error("Provider rejected sk-test-secret"))).toBe(
       "Provider rejected [redacted]",
+    );
+  });
+
+  it("preserves sanitized causes from wrapped provider failures", () => {
+    const error = new Error("Review unavailable", {
+      cause: new Error("NIM rejected nvapi-test-secret"),
+    });
+    expect(publicProviderError(error)).toBe(
+      "Review unavailable Cause: NIM rejected [redacted]",
     );
   });
 
@@ -169,308 +249,164 @@ describe("source-backed campaign generation", () => {
     expect(result.creativeDirections[1].imageMode).toBe("devices");
   });
 
-  it("keeps AI canvas designs bounded and compositionally intentional", () => {
+  it("maps provider layers to verified assets and keeps the design bounded", () => {
     const result = normalizeCreativeDesignPayload(
-      {
-        templateId: "split",
-        imageMode: "single",
-        tokens: {
-          background: "#245cf0",
-          foreground: "#f4f3ef",
-          accent: "#171917",
-          fontFamily: "Playfair Display",
-        },
-        text: DEMO_COMPOSITION.text,
-        elements: [
-          {
-            id: "hero-image",
-            kind: "image",
-            asset: "primary",
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "headline-one",
-            kind: "text",
-            textRole: "headline",
-            text: "Make the launch clearer",
-            x: 7,
-            y: 14,
-            width: 48,
-            height: 20,
-            fontSize: 20,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "headline-two",
-            kind: "text",
-            textRole: "headline",
-            text: "Duplicate headline",
-            x: 8,
-            y: 38,
-            width: 48,
-            height: 20,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "shape-one",
-            kind: "shape",
-            shape: "rectangle",
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100,
-            rotation: 0,
-            opacity: 0.8,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "shape-two",
-            kind: "shape",
-            shape: "circle",
-            x: 8,
-            y: 8,
-            width: 22,
-            height: 22,
-            rotation: 0,
-            opacity: 0.5,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "cta-one",
-            kind: "text",
-            textRole: "cta",
-            text: "Try it now",
-            x: 8,
-            y: 78,
-            width: 26,
-            height: 7,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-        ],
-      },
+      validCreativeDesignPlan(),
       DEMO_COMPOSITION,
     );
+    const image = result.elements.find((element) => element.kind === "image");
+    const textLayers = result.elements.filter((element) => element.kind === "text");
 
-    const textRoles = result.elements
-      .filter((element) => element.kind === "text")
-      .map((element) => element.textRole)
-      .filter((role) => Boolean(role));
-    const imageElements = result.elements.filter(
-      (element) => element.kind === "image",
-    );
-    const shapeElements = result.elements.filter(
-      (element) => element.kind === "shape",
-    );
-    const headline = result.elements.find(
-      (element) => element.kind === "text" && element.textRole === "headline",
-    );
-
-    expect(result.elements.length).toBeLessThanOrEqual(16);
-    expect(result.tokens.fontFamily).toBe(DEMO_COMPOSITION.tokens.fontFamily);
-    expect(imageElements).toHaveLength(1);
-    expect(imageElements[0].x).toBeGreaterThanOrEqual(2);
-    expect(imageElements[0].width).toBeLessThanOrEqual(60);
-    expect(shapeElements.length).toBeLessThanOrEqual(2);
-    expect(headline?.fontSize).toBeLessThanOrEqual(5.2);
-    expect(new Set(textRoles).size).toBe(textRoles.length);
-    expect(textRoles).toEqual(expect.arrayContaining(["headline", "cta"]));
+    expect(result.theme.headingFontFamily).toBe("Outfit");
+    expect(image).toMatchObject({
+      kind: "image",
+      x: 54,
+      y: 12,
+      width: 38,
+      height: 64,
+      src: DEMO_COMPOSITION.screenshotUrl,
+    });
+    expect(image).not.toHaveProperty("asset");
+    expect(textLayers.map((element) => element.textRole)).toEqual([
+      "headline",
+      "cta",
+    ]);
+    expect(textLayers.every((element) => element.fontFamily === "Outfit")).toBe(true);
+    for (const element of result.elements) {
+      expect(element.x + element.width).toBeLessThanOrEqual(100);
+      expect(element.y + element.height).toBeLessThanOrEqual(100);
+    }
   });
 
-  it("normalizes rich layers without inventing a gradient treatment", () => {
+  it("preserves supported rich layers using only supplied brand colors", () => {
+    const plan = validCreativeDesignPlan();
+    const { tokens } = DEMO_COMPOSITION;
     const result = normalizeCreativeDesignPayload(
       {
-        templateId: "editorial",
-        imageMode: "single",
-        tokens: DEMO_COMPOSITION.tokens,
-        text: DEMO_COMPOSITION.text,
+        ...plan,
         elements: [
+          ...plan.elements,
           {
-            id: "background-wash",
+            id: "background-gradient",
             kind: "gradient",
             x: 0,
             y: 0,
             width: 100,
             height: 100,
-            gradientFrom: "#101828",
-            gradientTo: "#245cf0",
-            gradientAngle: 225,
-            effect: "drift",
-            effectTrigger: "always",
+            rotation: 0,
+            opacity: 1,
+            locked: false,
+            hidden: false,
+            gradientFrom: tokens.background,
+            gradientTo: tokens.foreground,
           },
           {
-            id: "feature-icon",
-            kind: "icon",
+            id: "accent-shape",
+            kind: "shape",
+            shape: "circle",
             x: 76,
-            y: 12,
-            width: 13,
-            height: 13,
-            icon: "sparkle",
-            effect: "pulse",
-            effectTrigger: "hover",
-            shadow: "glow",
-          },
-          {
-            id: "primary-image",
-            kind: "image",
-            asset: "primary",
-            x: 52,
-            y: 24,
-            width: 40,
-            height: 58,
-          },
-          {
-            id: "rich-headline",
-            kind: "text",
-            textRole: "headline",
-            text: "Make the launch clearer",
-            x: 8,
-            y: 16,
-            width: 42,
-            height: 20,
-            effect: "rise",
+            y: 65,
+            width: 15,
+            height: 15,
+            rotation: 0,
+            opacity: 1,
+            locked: false,
+            hidden: false,
+            fill: tokens.accent,
           },
         ],
       },
       DEMO_COMPOSITION,
     );
 
-    expect(result.elements.map((element) => element.kind)).toEqual(
-      expect.arrayContaining(["image", "icon", "text"]),
-    );
-    expect(result.elements.some((element) => element.kind === "gradient")).toBe(false);
-    expect(result.elements.find((element) => element.kind === "icon")?.effectTrigger).toBe("hover");
-  });
-
-  it("uses art-directed layout slots instead of trusting arbitrary model coordinates", () => {
-    const result = normalizeCreativeDesignPayload(
-      {
-        templateId: "editorial",
-        imageMode: "single",
-        tokens: DEMO_COMPOSITION.tokens,
-        text: DEMO_COMPOSITION.text,
-        elements: [
-          {
-            id: "wild-image",
-            kind: "image",
-            asset: "primary",
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-          {
-            id: "wild-headline",
-            kind: "text",
-            textRole: "headline",
-            text: "A clear launch story",
-            x: 82,
-            y: 81,
-            width: 12,
-            height: 4,
-            fontSize: 20,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          },
-        ],
-      },
-      DEMO_COMPOSITION,
-    );
-
-    const headline = result.elements.find(
-      (element) => element.kind === "text" && element.textRole === "headline",
-    );
-    const image = result.elements.find((element) => element.kind === "image");
-    const gradient = result.elements.find((element) => element.kind === "gradient");
-
-    expect(gradient).toBeUndefined();
-    expect(headline).toMatchObject({ x: 8, y: 15, width: 84 });
-    expect(headline?.fontSize).toBeLessThanOrEqual(5.2);
-    expect(image).toMatchObject({ x: 36, y: 64, width: 60, height: 27 });
-    expect(headline && image).toBeTruthy();
-    expect(
-      headline &&
-        image &&
-        (headline.x < image.x + image.width &&
-          headline.x + headline.width > image.x &&
-          headline.y < image.y + image.height &&
-          headline.y + headline.height > image.y),
-    ).toBe(false);
-  });
-
-  it("fills a complete editable scene when the model returns sparse layers", () => {
-    const layouts = [
-      "browser",
-      "phone",
-      "launch-card",
-      "split",
-      "editorial",
-      "quote",
-      "feature",
-    ] as const;
-
-    for (const layout of layouts) {
-      const result = normalizeCreativeDesignPayload(
+    expect(result.elements.map((element) => element.kind)).toContain("gradient");
+    expect(result.elements.map((element) => element.kind)).toContain("shape");
+    expect(() =>
+      parseProviderCreativeDesign(
         {
-          templateId: layout,
-          imageMode: layout === "feature" ? "devices" : "single",
-          tokens: DEMO_COMPOSITION.tokens,
-          text: DEMO_COMPOSITION.text,
-          elements: [],
+          ...plan,
+          theme: { ...plan.theme, accent: "#000000" },
         },
         DEMO_COMPOSITION,
-      );
-
-      expect(result.elements.length).toBeGreaterThanOrEqual(8);
-      expect(result.elements[0].kind).toBe("shape");
-      expect(result.elements.some((element) => element.kind === "icon")).toBe(true);
-      expect(result.elements.some((element) => element.kind === "shape")).toBe(true);
-      expect(result.elements.filter((element) => element.kind === "image")).toHaveLength(
-        layout === "feature" ? 3 : 1,
-      );
-      for (const element of result.elements) {
-        expect(element.x + element.width).toBeLessThanOrEqual(100);
-        expect(element.y + element.height).toBeLessThanOrEqual(100);
-      }
-    }
+      ),
+    ).toThrow("AI selected a accent color outside the supplied brand system.");
   });
 
-  it("provides a complete local design when the AI provider is unavailable", () => {
-    const result = createDeterministicCreativeDesign(DEMO_COMPOSITION);
-    const cta = result.elements.find(
-      (element) => element.kind === "text" && element.textRole === "cta",
+  it("rejects text placed outside the canvas safe area", () => {
+    const plan = validCreativeDesignPlan();
+    const headline = plan.elements.find(
+      (element) => element.id === "launch-headline",
     );
-    const image = result.elements.find((element) => element.kind === "image");
+    if (!headline) throw new Error("The valid design plan needs a headline.");
+    headline.x = 80;
+    headline.width = 20;
 
-    expect(result.elements.length).toBeGreaterThanOrEqual(8);
-    expect(result.elements[0].kind).toBe("shape");
-    expect(result.elements.some((element) => element.kind === "image")).toBe(true);
-    expect(result.elements.some((element) => element.kind === "text")).toBe(true);
-    expect(cta?.color).toBe("#171917");
-    expect(image).toMatchObject({ x: 57, y: 17, width: 36, height: 58 });
+    expect(() =>
+      parseProviderCreativeDesign(plan, DEMO_COMPOSITION),
+    ).toThrow("AI design placed readable text outside the canvas safe area.");
+  });
+
+  it("requires the AI to create both the headline and requested CTA", () => {
+    const plan = validCreativeDesignPlan();
+    plan.elements = plan.elements.filter(
+      (element) => element.id !== "launch-cta",
+    );
+
+    expect(() =>
+      normalizeCreativeDesignPayload(plan, DEMO_COMPOSITION),
+    ).toThrow("AI design omitted the requested call to action.");
+    expect(() =>
+      createDeterministicCreativeDesign(DEMO_COMPOSITION),
+    ).toThrow("AI must create the canvas; a template-based design is not available.");
+  });
+});
+
+describe("provider creative design validation", () => {
+  function validPlan() {
+    return validCreativeDesignPlan();
+  }
+
+  it("maps the model's editable layers to verified assets", () => {
+    const parsed = parseProviderCreativeDesign(
+      {
+        ...validPlan(),
+        providerMetadata: "discarded",
+      },
+      DEMO_COMPOSITION,
+    );
+    const headline = parsed.elements.find(
+      (element) => element.kind === "text" && element.textRole === "headline",
+    );
+    const image = parsed.elements.find((element) => element.kind === "image");
+    const icon = parsed.elements.find((element) => element.kind === "icon");
+
+    expect(headline).toMatchObject({
+      kind: "text",
+      text: "A launch visual made for your next big release",
+      fontFamily: "Outfit",
+    });
+    expect(image).toMatchObject({
+      kind: "image",
+      x: 54,
+      y: 12,
+      width: 38,
+      height: 64,
+      src: DEMO_COMPOSITION.screenshotUrl,
+    });
+    expect(icon).toMatchObject({ kind: "icon", icon: "rocket-launch" });
+    expect(image).not.toHaveProperty("asset");
+    expect(parsed.elements).toHaveLength(4);
+    expect(parsed).not.toHaveProperty("tokens");
+    expect(parsed).not.toHaveProperty("text");
+    expect(parsed).not.toHaveProperty("providerMetadata");
+  });
+
+  it("rejects an omitted requested CTA", () => {
+    const plan = validPlan();
+    plan.elements = plan.elements.filter((element) => element.id !== "launch-cta");
+    expect(() => parseProviderCreativeDesign(plan, DEMO_COMPOSITION)).toThrow(
+      "AI design omitted the requested call to action.",
+    );
   });
 });
 
@@ -518,15 +454,48 @@ describe("OpenAI-compatible provider configuration", () => {
         plugins: [{ id: "response-healing" }],
       });
       expect(create).toHaveBeenCalledTimes(2);
-      expect(create.mock.calls[1][0]).toMatchObject({
-        reasoning: { effort: "none" },
-      });
+      expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
       expect(create.mock.calls[1][0].messages.at(-1)).toMatchObject({
         role: "user",
         content: expect.stringMatching(/valid JSON/i),
       });
     },
   );
+
+  it("retries once when a chat provider returns no choices", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: '{"ok":true}' } }],
+      });
+    const requestChatJson = (
+      campaignGenerator as unknown as {
+        requestChatJson: (
+          setup: {
+            client: unknown;
+            model: string;
+            providerName: "openrouter";
+          },
+          messages: Array<{ role: "system" | "user"; content: string }>,
+          maxCompletionTokens: number,
+        ) => Promise<unknown>;
+      }
+    ).requestChatJson;
+
+    const result = await requestChatJson(
+      {
+        client: { chat: { completions: { create } } },
+        model: "openrouter/free",
+        providerName: "openrouter",
+      },
+      [{ role: "system", content: "Return JSON." }],
+      200,
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
 
   it("parses JSON returned by chat providers even when fenced", () => {
     expect(parseStructuredJson("```json\n{\"text\":\"Clear launch copy\"}\n```"))
@@ -641,6 +610,406 @@ describe("OpenAI-compatible provider configuration", () => {
       baseURL: "https://openrouter.ai/api/v1",
       model: "openrouter/free",
     });
+  });
+
+  it("selects task-specific provider models", () => {
+    const environment = {
+      OPENROUTER_API_KEY: "sk-or-v1-example",
+      OPENROUTER_MODEL: "openrouter/free",
+      OPENROUTER_STRATEGY_MODEL: "openrouter/strategy-model",
+      OPENROUTER_COPY_MODEL: "openrouter/copy-model",
+    };
+
+    expect(
+      getOpenAIProviderConfig(environment, "strategyModel")?.model,
+    ).toBe("openrouter/strategy-model");
+    expect(getOpenAIProviderConfig(environment, "copyModel")?.model).toBe(
+      "openrouter/copy-model",
+    );
+    expect(getOpenAIProviderConfig(environment, "criticModel")?.model).toBe(
+      "openrouter/free",
+    );
+  });
+
+  it("caps NVIDIA NIM structured requests at a two-minute response window", () => {
+    expect(
+      getStructuredAiTimeoutMs("strategyModel", {
+        NVIDIA_NIM_API_KEY: "nim-test-key",
+        NVIDIA_NIM_MODEL: "deepseek-ai/deepseek-v4.1-flash",
+      }),
+    ).toBe(120_000);
+    expect(
+      getStructuredAiTimeoutMs("designPlannerModel", {
+        NVIDIA_NIM_API_KEY: "nim-test-key",
+        NVIDIA_NIM_MODEL: "deepseek-ai/deepseek-v4.1-flash",
+      }),
+    ).toBe(120_000);
+    expect(
+      getStructuredAiTimeoutMs("strategyModel", {
+        OPENROUTER_API_KEY: "router-test-key",
+        OPENROUTER_MODEL: "openrouter/free",
+      }),
+    ).toBe(45_000);
+  });
+
+  it("caps NVIDIA NIM chat completions with its max_tokens parameter", async () => {
+    vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
+    vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");
+    vi.stubEnv("NVIDIA_NIM_MODEL", "deepseek-ai/deepseek-v4.1-flash");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input).toBeTruthy();
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl-nim-test",
+          object: "chat.completion",
+          created: 1,
+          model: "deepseek-ai/deepseek-v4.1-flash",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: '{"keptClaimIds":[]}' },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return structured JSON." },
+          { role: "user", content: "Return no kept claim IDs." },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "nim-token-limit-v1",
+        maxCompletionTokens: 200,
+      });
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {
+        max_tokens?: number;
+        max_completion_tokens?: number;
+        stream?: boolean;
+        reasoning_effort?: string;
+      };
+      expect(requestBody.max_tokens).toBe(200);
+      expect(requestBody).not.toHaveProperty("max_completion_tokens");
+      expect(requestBody.stream).toBe(false);
+      expect(requestBody.reasoning_effort).toBe("none");
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("disables Nemotron's reasoning-token budget for structured requests", async () => {
+    vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
+    vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");
+    vi.stubEnv("NVIDIA_NIM_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input).toBeTruthy();
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl-nemotron-test",
+          object: "chat.completion",
+          created: 1,
+          model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: '{"keptClaimIds":[]}' },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return structured JSON." },
+          { role: "user", content: "Return no kept claim IDs." },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "nemotron-reasoning-budget-v1",
+        maxCompletionTokens: 200,
+      });
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {
+        reasoning_budget?: number;
+        temperature?: number;
+        chat_template_kwargs?: { enable_thinking?: boolean };
+        messages?: Array<{ role: string; content: string }>;
+      };
+      expect(requestBody.reasoning_budget).toBe(0);
+      expect(requestBody.temperature).toBe(0);
+      expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: false });
+      expect(requestBody.messages?.[0]?.content).toContain('"keptClaimIds"');
+      expect(requestBody.messages?.[0]?.content).toContain(
+        "Return JSON matching this schema exactly.",
+      );
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("bounds GLM 5.3 Flash reasoning for structured requests", async () => {
+    vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
+    vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");
+    vi.stubEnv("NVIDIA_NIM_MODEL", "z-ai/glm-5.3-flash");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input).toBeTruthy();
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl-glm-test",
+          object: "chat.completion",
+          created: 1,
+          model: "z-ai/glm-5.3-flash",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: '{"keptClaimIds":[]}' },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return structured JSON." },
+          { role: "user", content: "Return no kept claim IDs." },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "glm-reasoning-effort-v1",
+        maxCompletionTokens: 200,
+      });
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {
+        reasoning_effort?: string;
+      };
+      expect(requestBody.reasoning_effort).toBe("low");
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retries one NVIDIA NIM server error and then accepts structured output", async () => {
+    vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
+    vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");
+    vi.stubEnv("NVIDIA_NIM_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b");
+    const successResponse = new Response(
+      JSON.stringify({
+        id: "chatcmpl-nemotron-retry",
+        object: "chat.completion",
+        created: 1,
+        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: '{"keptClaimIds":[]}' },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Internal Server Error" } }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(successResponse);
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return structured JSON." },
+          { role: "user", content: "Return no kept claim IDs." },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "nim-server-retry-v1",
+        maxCompletionTokens: 200,
+      });
+
+      expect(result.value).toEqual({ keptClaimIds: [] });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("loads and deduplicates the OpenRouter fallback model list", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-v1-test-secret");
+    vi.stubEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1");
+    vi.stubEnv(
+      "OPENROUTER_FALLBACK_MODELS",
+      "router/fallback-a, openrouter/free, router/fallback-a",
+    );
+    try {
+      expect(getOpenAIProviderSetup("strategyModel")?.fallbackModels).toEqual([
+        "router/fallback-a",
+        "openrouter/free",
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("returns structured metadata and logs no prompt content or credentials", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-v1-test-secret");
+    vi.stubEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1");
+    vi.stubEnv("OPENROUTER_STRATEGY_MODEL", "router/strategy-model");
+    vi.stubEnv("OPENROUTER_FALLBACK_MODELS", "openrouter/free");
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          created: 1,
+          model: "router/actual-model",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: '{"keptClaimIds":[]}' },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return structured JSON." },
+          { role: "user", content: "PRIVATE PROMPT CONTENT" },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "campaign-v2.1",
+        maxCompletionTokens: 200,
+      });
+
+      expect(result.value).toEqual({ keptClaimIds: [] });
+      expect(result.metadata).toMatchObject({
+        task: "strategyModel",
+        provider: "openrouter",
+        model: "router/actual-model",
+        promptVersion: "campaign-v2.1",
+        success: true,
+      });
+      expect(result.metadata.latencyMs).toBeGreaterThanOrEqual(0);
+      const logOutput = info.mock.calls.flat().join("\n");
+      expect(logOutput).toContain('"success":true');
+      expect(logOutput).not.toContain("PRIVATE PROMPT CONTENT");
+      expect(logOutput).not.toContain("sk-or-v1-test-secret");
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("corrects valid JSON that fails the task schema", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-v1-test-secret");
+    vi.stubEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1");
+    const response = (content: string) =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-schema-retry",
+          object: "chat.completion",
+          created: 1,
+          model: "router/test-model",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response('{"keptClaimIds":"bad-shape"}'))
+      .mockResolvedValueOnce(response('{"keptClaimIds":[]}'));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await campaignGenerator.requestStructuredAiJson({
+        task: "strategyModel",
+        messages: [
+          { role: "system", content: "Return the required structure." },
+          { role: "user", content: "INPUT" },
+        ],
+        schema: claimCurationResultSchema,
+        schemaName: "claim_curation",
+        promptVersion: "schema-retry-v1",
+        maxCompletionTokens: 200,
+      });
+
+      expect(result.value).toEqual({ keptClaimIds: [] });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const retryBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as {
+        messages: Array<{ content: string }>;
+      };
+      expect(retryBody.messages.at(-1)?.content).toMatch(/valid JSON/i);
+      expect(retryBody).not.toHaveProperty("reasoning");
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps validated AI channel copy instead of replacing it with templates", () => {

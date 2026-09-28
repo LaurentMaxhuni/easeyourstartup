@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   inngestSend: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("@/inngest/client", () => ({
   inngest: {
     send: mocks.inngestSend,
@@ -51,10 +53,17 @@ vi.mock("@/lib/server/brand-intelligence", () => ({
   analyzeBrandIntelligence: mocks.analyzeBrandIntelligence,
 }));
 
-import { dispatchJobOutbox, generateCampaignAssets, scanProject } from "@/inngest/functions";
+import {
+  dispatchJobOutbox,
+  generateCampaignAssets,
+  parseStoredGenerationInput,
+  scanProject,
+} from "@/inngest/functions";
+import { DEMO_ANGLES, DEMO_BRAND } from "@/lib/demo-data";
 
 type RegisteredFunction = {
   config: {
+    timeouts: { finish: string };
     onFailure: (input: {
       event: { data: { event: { data: Record<string, string> } } };
       error?: Error;
@@ -64,18 +73,53 @@ type RegisteredFunction = {
 
 function recordingDatabase(responses: unknown[][] = []) {
   const queries: Array<{ sql: string; values: unknown[] }> = [];
-  const database = (strings: TemplateStringsArray, ...values: unknown[]) => {
-    queries.push({ sql: strings.join("?"), values });
-    return Promise.resolve(responses.shift() ?? []);
-  };
+  const database = Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => {
+      queries.push({ sql: strings.join("?"), values });
+      return Promise.resolve(responses.shift() ?? []);
+    },
+    { transaction: (items: Promise<unknown[]>[]) => Promise.all(items) },
+  );
   return { database, queries };
 }
+
+describe("stored campaign generator version", () => {
+  const brief = {
+    brand: DEMO_BRAND,
+    kind: "launch" as const,
+    goal: "Introduce the campaign workflow to solo founders",
+    updateDetails: "A new campaign workflow is now available.",
+    audience: "Solo SaaS founders",
+    launchDate: "",
+    cta: "Try the free scan",
+    angle: DEMO_ANGLES[0],
+    channels: ["x" as const],
+  };
+
+  it("treats legacy stored briefs as V1", () => {
+    expect(parseStoredGenerationInput(brief)).toEqual({
+      generatorVersion: "v1",
+      brief,
+    });
+  });
+
+  it("uses the pinned V2 version from a queued campaign", () => {
+    expect(
+      parseStoredGenerationInput({ generatorVersion: "v2", brief }),
+    ).toEqual({ generatorVersion: "v2", brief });
+  });
+});
 
 type DispatchFunction = {
   handler: (input: { step: { run: (name: string, callback: () => Promise<unknown>) => Promise<unknown> } }) => Promise<unknown>;
 };
 
 describe("durable job failure cleanup", () => {
+  it("caps campaign generation at 15 minutes", () => {
+    expect((generateCampaignAssets as unknown as RegisteredFunction).config.timeouts.finish)
+      .toBe("15m");
+  });
+
   it("does not try to release a campaign reservation when a scan fails", async () => {
     const { database, queries } = recordingDatabase();
     mocks.createDatabase.mockReturnValue(database);
@@ -133,13 +177,27 @@ describe("durable job failure cleanup", () => {
     });
 
     expect(queries[1].values).toContain(
-      "Campaign generation failed after retries: provider unavailable",
+      "Campaign generation failed: provider unavailable",
     );
   });
 });
 
 describe("transactional job outbox dispatch", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("fails stale campaign jobs and releases their reserved usage", async () => {
+    const { database, queries } = recordingDatabase([[], [{ id: "stale-job" }], []]);
+    mocks.requireDatabase.mockReturnValue(database);
+    const step = { run: vi.fn(async (_name: string, callback: () => Promise<unknown>) => callback()) };
+    const functionConfig = dispatchJobOutbox as unknown as DispatchFunction;
+
+    await functionConfig.handler({ step });
+
+    expect(queries[1].sql).toContain("status in ('queued', 'generating')");
+    expect(queries[1].sql).toContain("updated_at < pg_catalog.now()");
+    expect(queries[2].sql).toContain("release_campaign_usage_reservation");
+    expect(queries[2].sql).toContain("updated_at = pg_catalog.now()");
+  });
 
   it("sends a stable event ID and marks the outbox entry delivered", async () => {
     const entry = {

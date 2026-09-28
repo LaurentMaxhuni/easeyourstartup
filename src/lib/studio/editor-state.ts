@@ -1,10 +1,10 @@
 import type {
   CreativeComposition,
-  CreativeDesignAsset,
   CreativeDesignResult,
   CreativeElement,
   CreativeTextRole,
 } from "@/lib/contracts";
+import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 
 const TEXT_ELEMENT_DEFAULTS: Record<
   CreativeTextRole,
@@ -290,6 +290,9 @@ export function createDefaultEditorElements(
 export function getEditorElements(
   composition: CreativeComposition,
 ): CreativeElement[] {
+  if (composition.designSource === "ai" && composition.elements) {
+    return composition.elements;
+  }
   return composition.elements?.length
     ? composition.elements
     : createDefaultEditorElements(composition);
@@ -437,32 +440,36 @@ export function applyCreativeDesign(
   composition: CreativeComposition,
   design: CreativeDesignResult,
 ): CreativeComposition {
-  const assetSources: Record<CreativeDesignAsset, string> = {
-    primary: composition.screenshotUrl,
-    desktop: composition.mockups.desktop,
-    tablet: composition.mockups.tablet,
-    phone: composition.mockups.phone,
-  };
-
-  const elements = normalizeEditorElements(
-    design.elements.map(({ asset, ...element }) => ({
-      ...element,
-      ...(element.kind === "image"
-        ? { src: assetSources[asset ?? "primary"] ?? composition.screenshotUrl }
-        : {}),
-    })),
+  const elements = normalizeEditorElements(design.elements).map((element) =>
+    element.kind === "text"
+      ? { ...element, fontFamily: OUTFIT_FONT_FAMILY }
+      : element,
   );
 
   return syncCompositionText(
     {
       ...composition,
-      templateId: design.templateId,
-      imageMode: design.imageMode,
-      screenshotCrop: design.screenshotCrop,
-      tokens: design.tokens,
-      text: design.text,
-      icon: design.icon,
-      graphic: design.graphic,
+      templateId: "custom",
+      tokens: {
+        ...composition.tokens,
+        background: design.theme.background,
+        foreground: design.theme.foreground,
+        accent: design.theme.accent,
+        fontFamily: OUTFIT_FONT_FAMILY,
+        headingFontFamily: OUTFIT_FONT_FAMILY,
+        bodyFontFamily: OUTFIT_FONT_FAMILY,
+      },
+      text: {
+        eyebrow: "",
+        headline: "",
+        subheadline: "",
+        body: "",
+        cta: "",
+        footer: "",
+      },
+      graphic: "none",
+      elements,
+      designSource: "ai",
     },
     elements,
   );

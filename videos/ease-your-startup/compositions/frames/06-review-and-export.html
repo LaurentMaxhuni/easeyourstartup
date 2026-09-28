@@ -1,0 +1,384 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Outfit";
+      src: url("assets/fonts/outfit-latin.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+    }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      container-type: size;
+      color: #171917;
+      font-family: "Outfit", sans-serif;
+    }
+
+    .clip {
+      position: absolute;
+    }
+
+    .ground {
+      inset: 0;
+      z-index: 0;
+      background: #f4f3ef;
+    }
+
+    .safe-view {
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 1920px;
+      height: 896px;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .world,
+    .zoom-outer,
+    .zoom-inner {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    .world,
+    .zoom-outer {
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    .zoom-inner {
+      will-change: transform;
+    }
+
+    .screen-panel {
+      left: 0;
+      top: 24px;
+      width: 1920px;
+      height: 666px;
+    }
+
+    #screen-panel-content {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      border-bottom: 1px solid rgba(36, 92, 240, 0.2);
+      background: #ebeae4;
+    }
+
+    .screenshot-frame {
+      position: absolute;
+      left: 50%;
+      top: 12px;
+      width: 960px;
+      height: 666.667px;
+      margin-left: -480px;
+      overflow: hidden;
+      border: 1.5px solid rgba(36, 92, 240, 0.2);
+      border-radius: 14px;
+      background: #f4f3ef;
+    }
+
+    .screenshot-frame img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+    }
+
+    .focus-target {
+      position: absolute;
+      display: block;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #review-target {
+      left: 1.6%;
+      top: 16%;
+      width: 96.7%;
+      height: 9.3%;
+    }
+
+    #preview-target {
+      left: 66.4%;
+      top: 21.3%;
+      width: 10.2%;
+      height: 4%;
+    }
+
+    #outputs-target {
+      left: 66.4%;
+      top: 21.3%;
+      width: 21.3%;
+      height: 4%;
+    }
+
+    #copy-eyebrow {
+      left: 96px;
+      top: 716px;
+      color: #245cf0;
+      font-size: 0.8cqw;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
+    #copy-eyebrow-inner {
+      display: inline-block;
+    }
+
+    #copy-headline {
+      left: 96px;
+      top: 750px;
+      display: flex;
+      align-items: baseline;
+      gap: 0.2em;
+      max-width: 78cqw;
+      color: #171917;
+      font-size: 3.5cqw;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.08;
+      white-space: nowrap;
+    }
+
+    #copy-headline span {
+      display: inline-block;
+    }
+
+    .action-slot {
+      top: 785px;
+      height: 72px;
+    }
+
+    #preview-action {
+      left: 1090px;
+      width: 326px;
+    }
+
+    #campaign-action {
+      left: 1432px;
+      width: 392px;
+    }
+
+    .action-pill {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      padding: 12px 24px;
+      border: 1.5px solid rgba(36, 92, 240, 0.2);
+      border-radius: 100px;
+      background: rgba(36, 92, 240, 0.04);
+      color: #171917;
+      font-size: 1.45cqw;
+      font-weight: 600;
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="06-review-and-export"
+    data-start="0"
+    data-duration="5.4"
+    data-width="1920"
+    data-height="1080"
+    aria-label="Review the real studio outputs before publishing"
+  >
+    <div class="clip ground" data-start="0" data-duration="5.4" data-track-index="0" aria-hidden="true"></div>
+
+    <div class="safe-view">
+      <div id="world" class="world">
+        <div id="zoom-outer" class="zoom-outer">
+          <div id="zoom-inner" class="zoom-inner">
+            <div
+              id="screen-panel"
+              class="clip screen-panel"
+              data-start="0"
+              data-duration="5.4"
+              data-track-index="1"
+            >
+              <div id="screen-panel-content">
+                <div class="screenshot-frame">
+                  <img
+                    id="studio-capture"
+                    src="assets/studio-capture.png"
+                    alt="The real launch studio screen with Preview PNG, Campaign ZIP, and Publish room controls"
+                  />
+                  <span id="review-target" class="focus-target" aria-hidden="true"></span>
+                  <span id="preview-target" class="focus-target" aria-hidden="true"></span>
+                  <span id="outputs-target" class="focus-target" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+
+            <p id="copy-eyebrow" class="clip" data-start="0.18" data-duration="5.22" data-track-index="2">
+              <span id="copy-eyebrow-inner">Ready to shape</span>
+            </p>
+            <div id="copy-headline" class="clip" data-start="0.2" data-duration="5.2" data-track-index="3">
+              <span id="word-review">Review.</span>
+              <span id="word-preview">Preview.</span>
+              <span id="word-export">Export.</span>
+            </div>
+            <div
+              id="preview-action"
+              class="clip action-slot"
+              data-start="1.48"
+              data-duration="3.92"
+              data-track-index="4"
+            >
+              <span id="preview-action-inner" class="action-pill">Preview PNG</span>
+            </div>
+            <div
+              id="campaign-action"
+              class="clip action-slot"
+              data-start="2.82"
+              data-duration="2.58"
+              data-track-index="5"
+            >
+              <span id="campaign-action-inner" class="action-pill">Campaign ZIP</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const root = document.currentScript.parentElement;
+        const W = 1920;
+        const H = 1080;
+        const centerOffset = (selector) => {
+          const rect = root.querySelector(selector).getBoundingClientRect();
+          return {
+            x: rect.left + rect.width / 2 - W / 2,
+            y: rect.top + rect.height / 2 - H / 2,
+            width: rect.width,
+            height: rect.height,
+          };
+        };
+        const maxScale = ({ width, height }) => Math.min((0.88 * W) / width, (0.88 * H) / height);
+        const cameraPose = (offset, scale) => ({
+          scale,
+          x: -offset.x * scale,
+          y: -offset.y * scale,
+        });
+
+        const reviewOffset = centerOffset("#review-target");
+        const previewOffset = centerOffset("#preview-target");
+        const outputsOffset = centerOffset("#outputs-target");
+        const reviewScale = Math.min(1.42, maxScale(reviewOffset));
+        const viewportScale = Math.min(1.48, maxScale(outputsOffset));
+        const reviewCounter = { x: -reviewOffset.x, y: -reviewOffset.y };
+        const previewPose = cameraPose(previewOffset, viewportScale);
+        const outputsPose = cameraPose(outputsOffset, viewportScale);
+
+        const cam = { scale: 1, x: 0, y: 0 };
+        const world = root.querySelector("#world");
+        const applyCamera = () => {
+          world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.scale})`;
+        };
+        applyCamera();
+
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          "#screen-panel-content",
+          { opacity: 0, scale: 0.985 },
+          { opacity: 1, scale: 1, duration: 0.36, ease: "power3.out" },
+          0,
+        );
+        tl.fromTo(
+          "#copy-eyebrow-inner",
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" },
+          0.18,
+        );
+        tl.fromTo(
+          "#word-review",
+          { opacity: 0, x: 18 },
+          { opacity: 1, x: 0, duration: 0.36, ease: "power3.out" },
+          0.2,
+        );
+        tl.fromTo(
+          "#word-preview",
+          { opacity: 0, x: 18 },
+          { opacity: 1, x: 0, duration: 0.36, ease: "power3.out" },
+          1.48,
+        );
+        tl.fromTo(
+          "#word-export",
+          { opacity: 0, x: 18 },
+          { opacity: 1, x: 0, duration: 0.36, ease: "power3.out" },
+          2.82,
+        );
+        tl.fromTo(
+          "#preview-action-inner",
+          { opacity: 0, x: 20 },
+          { opacity: 1, x: 0, duration: 0.38, ease: "power3.out" },
+          1.48,
+        );
+        tl.fromTo(
+          "#campaign-action-inner",
+          { opacity: 0, x: 20 },
+          { opacity: 1, x: 0, duration: 0.38, ease: "power3.out" },
+          2.82,
+        );
+
+        // Scene 1: nested scale + counter-translate locks the existing review row at center.
+        tl.fromTo(
+          "#zoom-outer",
+          { scale: 1 },
+          { scale: reviewScale, duration: 1.02, ease: "power3.inOut" },
+          0.22,
+        );
+        tl.fromTo(
+          "#zoom-inner",
+          { x: 0, y: 0 },
+          { x: reviewCounter.x, y: reviewCounter.y, duration: 1.02, ease: "power3.inOut" },
+          0.22,
+        );
+        tl.to("#zoom-outer", { scale: 1, duration: 0.24, ease: "power3.inOut" }, 1.44);
+        tl.to("#zoom-inner", { x: 0, y: 0, duration: 0.24, ease: "power3.inOut" }, 1.44);
+
+        // Scene 2: the single world camera lands on the real Preview PNG control.
+        tl.to(
+          cam,
+          {
+            ...previewPose,
+            duration: 1.08,
+            ease: "power3.inOut",
+            onUpdate: applyCamera,
+          },
+          1.68,
+        );
+        // Scene 3: move across to keep both genuine output controls together in view.
+        tl.to(
+          cam,
+          {
+            ...outputsPose,
+            duration: 0.68,
+            ease: "power3.inOut",
+            onUpdate: applyCamera,
+          },
+          2.9,
+        );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["06-review-and-export"] = tl;
+      })();
+    </script>
+  </div>
+</template>

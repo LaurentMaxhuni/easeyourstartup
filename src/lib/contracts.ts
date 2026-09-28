@@ -62,6 +62,51 @@ export const brandVisualSystemSchema = z.object({
 
 export type BrandVisualSystem = z.infer<typeof brandVisualSystemSchema>;
 
+export const brandEvidenceItemSchema = z.object({
+  text: z.string().min(1).max(400),
+  sourceUrl: z.url(),
+  sourceExcerpt: z.string().min(1).max(1200),
+});
+
+export type BrandEvidenceItem = z.infer<typeof brandEvidenceItemSchema>;
+
+export const productScreenshotCandidateSchema = z.object({
+  url: z.url(),
+  sourceUrl: z.url(),
+  alt: z.string().max(240),
+});
+
+export type ProductScreenshotCandidate = z.infer<
+  typeof productScreenshotCandidateSchema
+>;
+
+export const brandFontAssetSchema = z.object({
+  family: z.string().min(1).max(80),
+  url: z.url(),
+  weight: z.string().regex(/^(?:normal|bold|[1-9]00|[1-9]00\s+[1-9]00)$/),
+  style: z.enum(["normal", "italic", "oblique"]),
+  unicodeRange: z
+    .string()
+    .max(400)
+    .regex(/^[uU0-9a-fA-F?+,\s-]+$/)
+    .optional(),
+});
+
+export type BrandFontAsset = z.infer<typeof brandFontAssetSchema>;
+
+export const brandIntelligenceSchema = z.object({
+  productPurpose: z.string().min(1).max(400),
+  audience: z.string().min(1).max(400),
+  painPoints: z.array(z.string().min(1).max(240)).max(6),
+  benefits: z.array(z.string().min(1).max(240)).max(6),
+  differentiators: z.array(z.string().min(1).max(240)).max(6),
+  tone: z.array(z.string().min(1).max(48)).max(6),
+  visualStyle: z.array(z.string().min(1).max(100)).max(6),
+  unsupportedClaimsToAvoid: z.array(z.string().min(1).max(240)).max(8),
+});
+
+export type BrandIntelligence = z.infer<typeof brandIntelligenceSchema>;
+
 export const brandProfileSchema = z.object({
   projectName: z.string().min(1).max(120),
   tagline: z.string().max(240),
@@ -69,12 +114,24 @@ export const brandProfileSchema = z.object({
   voice: z.array(z.string().min(1).max(48)).max(6),
   colors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).min(1).max(8),
   fonts: z.array(z.string().min(1).max(80)).max(6),
+  fontAssets: z.array(brandFontAssetSchema).max(24).optional(),
   cta: z.string().max(120),
   claims: z.array(brandClaimSchema).max(30),
   logoUrl: z.url().nullable(),
   faviconUrl: z.url().nullable(),
   imageUrl: z.url().nullable().optional(),
   visualSystem: brandVisualSystemSchema.optional(),
+  brandEvidence: z
+    .object({
+      pricing: z.array(brandEvidenceItemSchema).max(12),
+      testimonials: z.array(brandEvidenceItemSchema).max(12),
+    })
+    .optional(),
+  productScreenshotCandidates: z
+    .array(productScreenshotCandidateSchema)
+    .max(16)
+    .optional(),
+  brandIntelligence: brandIntelligenceSchema.optional(),
 });
 
 export type BrandProfile = z.infer<typeof brandProfileSchema>;
@@ -246,6 +303,7 @@ export const creativeElementSchema = z.object({
   textRole: creativeTextRoleSchema.optional(),
   text: z.string().max(1000).optional(),
   src: z.string().min(1).max(1_000_000).optional(),
+  alt: z.string().max(240).optional(),
   shape: z.enum(["rectangle", "circle", "line"]).optional(),
   icon: creativeIconSchema.optional(),
   fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -259,8 +317,14 @@ export const creativeElementSchema = z.object({
   blur: z.number().min(0).max(24).optional(),
   fontSize: z.number().min(0.4).max(20).optional(),
   fontWeight: z.number().int().min(300).max(800).optional(),
+  fontFamily: z.string().min(1).max(100).optional(),
+  lineHeight: z.number().min(0.6).max(2).optional(),
+  textTransform: z.enum(["none", "uppercase", "lowercase"]).optional(),
   align: z.enum(["left", "center", "right"]).optional(),
   radius: z.number().min(0).max(50).optional(),
+  imageFit: z.enum(["cover", "contain"]).optional(),
+  imagePositionX: z.number().min(0).max(100).optional(),
+  imagePositionY: z.number().min(0).max(100).optional(),
 });
 export type CreativeElement = z.infer<typeof creativeElementSchema>;
 
@@ -298,13 +362,6 @@ export const creativeMockupsSchema = z.object({
 });
 export type CreativeMockups = z.infer<typeof creativeMockupsSchema>;
 
-export const creativeCodeBundleSchema = z.object({
-  html: z.string().min(1).max(50_000),
-  css: z.string().min(1).max(50_000),
-  javascript: z.string().min(1).max(30_000),
-});
-export type CreativeCodeBundle = z.infer<typeof creativeCodeBundleSchema>;
-
 export const creativeLayoutSchema = z.enum([
   "browser",
   "phone",
@@ -334,28 +391,6 @@ export const creativeDirectionSchema = z.object({
 
 export type CreativeDirection = z.infer<typeof creativeDirectionSchema>;
 
-export const generationResultSchema = z.object({
-  angles: z.array(narrativeAngleSchema).min(1).max(3),
-  outputs: z.array(channelOutputSchema).min(1).max(9),
-  creativeDirections: z.array(creativeDirectionSchema).min(1).max(3),
-  mode: z.enum(["ai", "deterministic"]),
-  provider: z.enum(["groq", "openrouter", "openai", "compatible"]).optional(),
-});
-
-export type GenerationResult = z.infer<typeof generationResultSchema>;
-
-export const scanJobResultSchema = z.object({
-  scan: scanResultSchema,
-});
-
-export type ScanJobResult = z.infer<typeof scanJobResultSchema>;
-
-export const generateJobResultSchema = z.object({
-  generation: generationResultSchema,
-});
-
-export type GenerateJobResult = z.infer<typeof generateJobResultSchema>;
-
 export const screenshotCropSchema = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
@@ -366,7 +401,7 @@ export const screenshotCropSchema = z.object({
 export const creativeCompositionSchema = z.object({
   id: z.string().min(1),
   templateVersion: z.literal("1.0"),
-  templateId: creativeLayoutSchema,
+  templateId: z.union([creativeLayoutSchema, z.literal("custom")]),
   output: z.object({
     width: z.number().int().min(320).max(4096),
     height: z.number().int().min(320).max(4096),
@@ -397,8 +432,7 @@ export const creativeCompositionSchema = z.object({
   icon: creativeIconSchema,
   graphic: creativeGraphicSchema,
   elements: z.array(creativeElementSchema).max(40).optional(),
-  codeBundle: creativeCodeBundleSchema.optional(),
-  codeSource: z.literal("ai").optional(),
+  designSource: z.literal("ai").optional(),
 });
 
 export type CreativeComposition = z.infer<typeof creativeCompositionSchema>;
@@ -408,64 +442,170 @@ export const creativeDesignAssetSchema = z.enum([
   "desktop",
   "tablet",
   "phone",
+  "brand-logo",
+  "brand-favicon",
+  "brand-image",
 ]);
 
-export type CreativeDesignAsset = z.infer<typeof creativeDesignAssetSchema>;
+export const creativeDesignAssetRefSchema = z.union([
+  creativeDesignAssetSchema,
+  z.string().regex(/^product-screenshot-(?:[1-9]|1[0-6])$/),
+  z.string().regex(/^existing-image-(?:[1-9]|[1-3][0-9]|40)$/),
+]);
 
-export const creativeDesignElementSchema = creativeElementSchema
-  .omit({ src: true })
-  .extend({
-    asset: creativeDesignAssetSchema.optional(),
-  });
+export type CreativeDesignAsset = z.infer<typeof creativeDesignAssetRefSchema>;
+
+const creativeDesignElementBaseSchema = creativeElementSchema.omit({ src: true });
+
+export const creativeDesignElementSchema = z.discriminatedUnion("kind", [
+  creativeDesignElementBaseSchema.extend({
+    kind: z.literal("text"),
+    textRole: creativeTextRoleSchema,
+    text: z.string().min(1).max(1000),
+  }),
+  creativeDesignElementBaseSchema.extend({
+    kind: z.literal("image"),
+    asset: creativeDesignAssetRefSchema,
+    alt: z.string().max(240).default(""),
+  }),
+  creativeDesignElementBaseSchema.extend({
+    kind: z.literal("shape"),
+    shape: z.enum(["rectangle", "circle", "line"]),
+  }),
+  creativeDesignElementBaseSchema.extend({
+    kind: z.literal("icon"),
+    icon: creativeIconSchema,
+  }),
+  creativeDesignElementBaseSchema.extend({
+    kind: z.literal("gradient"),
+    gradientFrom: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    gradientTo: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  }),
+]);
 
 export type CreativeDesignElement = z.infer<
   typeof creativeDesignElementSchema
 >;
 
+export const creativeDesignThemeSchema = z.object({
+  background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  headingFontFamily: z.string().min(1).max(100),
+  bodyFontFamily: z.string().min(1).max(100),
+});
+
+export const creativeDesignPlanSchema = z.object({
+  theme: creativeDesignThemeSchema,
+  elements: z.array(creativeDesignElementSchema).min(1).max(32),
+});
+
+export type CreativeDesignPlan = z.infer<typeof creativeDesignPlanSchema>;
+
 export const creativeDesignResultSchema = z.object({
-  templateId: creativeLayoutSchema,
-  imageMode: creativeImageModeSchema,
-  screenshotCrop: screenshotCropSchema,
-  tokens: z.object({
-    background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-    foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-    accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-    fontFamily: z.string().max(100),
-    radius: z.number().min(0).max(32).optional(),
-    spacing: z.number().min(4).max(40).optional(),
-    headingFontFamily: z.string().max(100).optional(),
-    bodyFontFamily: z.string().max(100).optional(),
-    usesGradient: z.boolean().optional(),
-  }),
-  text: z.object({
-    eyebrow: z.string().max(80),
-    headline: z.string().min(1).max(180),
-    subheadline: z.string().max(320),
-    body: z.string().max(520),
-    cta: z.string().max(80),
-    footer: z.string().max(120),
-  }),
-  icon: creativeIconSchema,
-  graphic: creativeGraphicSchema,
-  elements: z.array(creativeDesignElementSchema).min(1).max(16),
+  theme: creativeDesignThemeSchema,
+  elements: z.array(creativeElementSchema).min(1).max(32),
+}).superRefine((design, context) => {
+  const ids = new Set<string>();
+  design.elements.forEach((element, index) => {
+    if (ids.has(element.id)) {
+      context.addIssue({ code: "custom", path: ["elements", index, "id"], message: "Design layer IDs must be unique." });
+    }
+    ids.add(element.id);
+    if (element.kind === "image" && !element.src) {
+      context.addIssue({ code: "custom", path: ["elements", index, "src"], message: "Design image layers must reference a verified asset." });
+    }
+    if (element.kind === "text" && (!element.textRole || !element.text?.trim())) {
+      context.addIssue({ code: "custom", path: ["elements", index, "text"], message: "Design text layers need a role and non-empty text." });
+    }
+  });
 });
 
 export type CreativeDesignResult = z.infer<typeof creativeDesignResultSchema>;
 
+const generationV2ArtifactSchema = z
+  .record(z.string().max(80), z.json())
+  .refine((artifact) => JSON.stringify(artifact).length <= 100_000);
+
+export const generationV2ResultSchema = z.object({
+  strategy: generationV2ArtifactSchema,
+  designPlan: generationV2ArtifactSchema,
+  review: generationV2ArtifactSchema,
+});
+
+export const generationResultSchema = z.object({
+  angles: z.array(narrativeAngleSchema).min(1).max(3),
+  outputs: z.array(channelOutputSchema).min(1).max(9),
+  creativeDirections: z.array(creativeDirectionSchema).min(1).max(9),
+  creativeDesign: creativeDesignResultSchema.optional(),
+  mode: z.enum(["ai", "deterministic"]),
+  provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "compatible"]).optional(),
+  generationVersion: z.enum(["v1", "v2"]).optional(),
+  generationV2: generationV2ResultSchema.optional(),
+}).superRefine((generation, context) => {
+  if (
+    generation.generationVersion === "v2" &&
+    !generation.generationV2
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["generationV2"],
+      message: "Generation V2 results must retain their validated planning artifacts.",
+    });
+  }
+  if (generation.generationV2 && generation.generationVersion !== "v2") {
+    context.addIssue({
+      code: "custom",
+      path: ["generationVersion"],
+      message: "Generation V2 artifacts require the V2 generator version.",
+    });
+  }
+});
+
+export type GenerationResult = z.infer<typeof generationResultSchema>;
+
+export const scanJobResultSchema = z.object({
+  scan: scanResultSchema,
+});
+
+export type ScanJobResult = z.infer<typeof scanJobResultSchema>;
+
+export const generateJobResultSchema = z.object({
+  generation: generationResultSchema,
+});
+
+export type GenerateJobResult = z.infer<typeof generateJobResultSchema>;
+
 export const creativeDesignGenerationSchema = z.object({
   design: creativeDesignResultSchema,
-  code: creativeCodeBundleSchema,
-  provider: z.enum(["groq", "openrouter", "openai", "compatible"]),
+  provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "compatible"]),
 });
 export type CreativeDesignGeneration = z.infer<
   typeof creativeDesignGenerationSchema
 >;
+
+export const creativeDesignBrandSchema = brandProfileSchema.pick({
+  projectName: true,
+  tagline: true,
+  voice: true,
+  colors: true,
+  fonts: true,
+  fontAssets: true,
+  logoUrl: true,
+  faviconUrl: true,
+  imageUrl: true,
+  visualSystem: true,
+  productScreenshotCandidates: true,
+  brandIntelligence: true,
+});
 
 export const creativeDesignRequestSchema = z.object({
   projectName: z.string().min(1).max(120),
   context: z.string().max(2200),
   approvedFacts: z.array(z.string().min(1).max(400)).max(12),
   instruction: z.string().max(500).optional(),
+  brand: creativeDesignBrandSchema.optional(),
+  copyCandidates: z.array(z.string().min(1).max(1000)).max(24).optional(),
   composition: creativeCompositionSchema,
 });
 

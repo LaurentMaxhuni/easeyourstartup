@@ -1,0 +1,99 @@
+---
+workflow: product-launch-video
+flow: automation
+storyboard: yes
+message: "Turn every ship into a campaign."
+destination: website-embed
+aspect: 1920x1080
+language: en
+length: 33s
+angle: BAB
+narration: yes
+---
+
+# EaseYourStartup launch promo — proposal
+
+The user approved the seven-beat storyboard and selected sketches first. This brief records the approved website-embed, 16:9, 33-second English promo and BAB arc. Voice and audio provider remain unselected.
+
+## Intent
+
+Make a cinematic 33-second web promo for solo founders and lean product teams announcing a product or update without dedicated marketing support. The story moves from the founder's blank-page moment to an evidence-led, channel-ready launch kit. Warm, practical, quietly confident; use the product's existing off-white, graphite, and cobalt palette.
+
+## Assets
+
+- public/images/founder-launch-studio.png — existing 1677×938 founder-at-work image; proposed opening visual.
+- public/images/studio-capture.png — existing 1440×1000 capture of the real EaseYourStartup studio; proposed product proof and export visuals.
+- public/images/studio-capture-mobile.png — existing 390×844 mobile capture; optional only if a portrait cutdown is requested later.
+- src/components/logo.tsx — existing product mark and wordmark source for the brand resolve.
+- src/app/globals.css — existing color tokens: canvas #f4f3ef, ink #171917, accent #245cf0; Outfit is the app's declared font.
+
+## Customizations
+
+- BAB story: blank-page tension → campaign promise → source-led workflow → channel copy and faithful visuals → review/export → free-scan CTA.
+- Use only existing app copy and supplied project assets. Keep real UI screenshots visually faithful; do not invent metrics, customer logos, interface states, or automatic social publishing.
+- Proposed voiceover is in SCRIPT.md; no voice or audio provider has been selected.
+
+## Notes
+
+- Existing promise: “Turn every ship into a campaign.” Existing supporting copy includes “A launch kit built from your product, not a blank chat,” “Every publishable claim keeps its receipt,” and “Built for founders who keep shipping.”
+- Destination is inferred as a website embed, so the proposed master is 1920×1080. A square or portrait cutdown can be planned separately.
+- The working length is 33 seconds, inside the launch-video range, with no unsupported numeric performance claim.
+- No external media has been sourced. Music is only a proposed mood pending storyboard approval and provider selection.
+# SCRIPT — ease-your-startup-launch
+
+Draft narration for storyboard review. Voice/provider remain unselected; no audio has been generated.
+
+**Voice:** To be selected after storyboard approval
+**Voice settings:** Not set
+**Voice direction:** Warm, close, conversational, quietly confident; no hard-sell announcer read.
+
+---
+
+## Line 1 — Hook (Frame 1)
+
+**Time:** 0–4s
+**Delivery:** Personal and unhurried; let “blank page” land.
+
+    Every launch deserves more than a blank page.
+
+## Line 2 — Product promise (Frame 2)
+
+**Time:** 4–8s
+**Delivery:** Clear, assured, one clean thought.
+
+    Turn every ship into a campaign.
+
+## Line 3 — Source (Frame 3)
+
+**Time:** 8–13s
+**Delivery:** Plain and trustworthy; give each sentence a small pause.
+
+    Scan your public pages. Keep claims tied to their source.
+
+## Line 4 — Channels (Frame 4)
+
+**Time:** 13–18s
+**Delivery:** Light forward momentum through the channel names.
+
+    Build channel-ready copy for X, LinkedIn, Product Hunt, and email.
+
+## Line 5 — Faithful visuals (Frame 5)
+
+**Time:** 18–23s
+**Delivery:** Emphasize “real” and “yours”; stay conversational.
+
+    Keep the product screenshot real. Make the creative yours.
+
+## Line 6 — Review and export (Frame 6)
+
+**Time:** 23–28s
+**Delivery:** Three calm, distinct cues.
+
+    Review the evidence. Preview your visuals. Export the full launch kit.
+
+## Line 7 — CTA (Frame 7)
+
+**Time:** 28–33s
+**Delivery:** Warm close; keep the final action unmistakable.
+
+    Built for founders who keep shipping. Start with a free scan.

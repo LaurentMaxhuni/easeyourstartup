@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EaseYourStartup — sketch review</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #f4f3ef;
+        --surface: #faf9f5;
+        --ink: #171917;
+        --muted: #646960;
+        --line: #d0d1c9;
+        --accent: #245cf0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font: 16px/1.45 "Segoe UI", Arial, sans-serif;
+      }
+      header, main {
+        width: min(1180px, calc(100% - 32px));
+        margin-inline: auto;
+      }
+      header {
+        padding: 28px 0 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      header p { margin: 0; color: var(--muted); }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        padding-top: 16px;
+        font-size: 13px;
+      }
+      a { color: var(--accent); }
+      main { padding: 20px 0 56px; }
+      .frame {
+        padding: 20px 0 28px;
+        border-bottom: 1px solid var(--line);
+      }
+      .frame-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 16px;
+        margin-bottom: 10px;
+      }
+      h2 { margin: 0; font-size: 18px; }
+      .time, .kind {
+        color: var(--muted);
+        font: 12px/1.4 "Segoe UI", Arial, sans-serif;
+      }
+      .kind { margin-left: auto; }
+      .canvas {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        align-items: stretch;
+        min-height: 0;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .visual {
+        display: grid;
+        place-items: center;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        border-right: 1px solid var(--line);
+        background: #ebeae4;
+      }
+      .visual img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 16px;
+        padding: clamp(18px, 4vw, 56px);
+      }
+      .eyebrow {
+        margin: 0;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .headline {
+        margin: 0;
+        max-width: 12ch;
+        font-size: clamp(23px, 3.2vw, 46px);
+        line-height: 1.05;
+        font-weight: 650;
+      }
+      .support {
+        margin: 0;
+        color: var(--muted);
+        font-size: clamp(13px, 1.45vw, 18px);
+      }
+      .source-strip, .channel-grid, .actions {
+        display: grid;
+        gap: 8px;
+      }
+      .source-strip { grid-template-columns: repeat(4, 1fr); }
+      .channel-grid { grid-template-columns: repeat(2, 1fr); }
+      .actions { grid-template-columns: repeat(2, 1fr); }
+      .token, .action {
+        padding: 10px 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        text-align: center;
+        font-size: clamp(10px, 1vw, 14px);
+      }
+      .token:first-child, .action:first-child {
+        border-color: var(--accent);
+      }
+      .frame-wide .canvas { grid-template-columns: 1fr; }
+      .frame-wide .visual {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .frame-wide .visual img { object-position: center; }
+      .frame-wide .copy {
+        min-height: 0;
+        padding: clamp(14px, 2.5vw, 28px);
+      }
+      .frame-wide .headline { max-width: none; }
+      .frame-wide .copy-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr);
+        align-items: center;
+        gap: 20px;
+      }
+      .frame-photo .visual img { object-fit: cover; }
+      .frame-photo .canvas { grid-template-columns: 1.1fr .9fr; }
+      .frame-photo .copy { background: var(--surface); }
+      .end-card .copy { background: var(--ink); color: var(--surface); }
+      .end-card .support { color: #d3d5ce; }
+      .button {
+        align-self: flex-start;
+        padding: 10px 16px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .line-note {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      @media (max-width: 650px) {
+        header, main { width: min(100% - 24px, 560px); }
+        .frame-head { flex-wrap: wrap; }
+        .kind { margin-left: 0; }
+        .canvas, .frame-photo .canvas { grid-template-columns: 1fr; aspect-ratio: auto; }
+        .visual { min-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .copy { min-height: 220px; }
+        .frame-wide .copy-row { grid-template-columns: 1fr; }
+        .frame-wide .visual { min-height: 240px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>EaseYourStartup — sketch review</h1>
+      <p>Seven static 16:9 wireframes. Real supplied images are used as-is; no UI was redrawn or animated.</p>
+      <nav aria-label="Frame navigation">
+        <a href="#frame-1">01 Hook</a>
+        <a href="#frame-2">02 Promise</a>
+        <a href="#frame-3">03 Source</a>
+        <a href="#frame-4">04 Channels</a>
+        <a href="#frame-5">05 Real visuals</a>
+        <a href="#frame-6">06 Export</a>
+        <a href="#frame-7">07 CTA</a>
+        <a href="STORYBOARD.md">Storyboard</a>
+      </nav>
+    </header>
+    <main>
+      <section class="frame frame-photo" id="frame-1">
+        <div class="frame-head"><h2>01 — Beyond the blank page</h2><span class="time">0:00–0:04</span><span class="kind">Hook</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/founder-launch-studio.png" alt="Existing founder-at-work image" /></div>
+          <div class="copy">
+            <p class="eyebrow">For founders who keep shipping</p>
+            <p class="headline">Every launch deserves more than a blank page.</p>
+            <p class="support">Voiceover: “Every launch deserves more than a blank page.”</p>
+          </div>
+        </div>
+        <p class="line-note">Layout: founder image left; one outcome claim right.</p>
+      </section>
+
+      <section class="frame frame-wide" id="frame-2">
+        <div class="frame-head"><h2>02 — Turn every ship into a campaign</h2><span class="time">0:04–0:08</span><span class="kind">Product promise</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/studio-capture.png" alt="Existing EaseYourStartup studio screenshot, shown without edits" /></div>
+          <div class="copy">
+            <div class="copy-row">
+              <div>
+                <p class="eyebrow">EaseYourStartup</p>
+                <p class="headline">Turn every ship into a campaign.</p>
+              </div>
+              <p class="support">Voiceover: “Turn every ship into a campaign.”</p>
+            </div>
+          </div>
+        </div>
+        <p class="line-note">Layout: real studio screenshot with the promise as the single headline.</p>
+      </section>
+
+      <section class="frame frame-wide" id="frame-3">
+        <div class="frame-head"><h2>03 — Start with the source</h2><span class="time">0:08–0:13</span><span class="kind">Feature</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/studio-capture.png" alt="Existing EaseYourStartup studio screenshot showing its real stage labels" /></div>
+          <div class="copy">
+            <p class="eyebrow">A source-led workflow</p>
+            <p class="headline">Scan your public pages.</p>
+            <p class="support">Keep claims tied to their source.</p>
+            <div class="source-strip" aria-label="Existing product stages">
+              <span class="token">Scan</span><span class="token">Brand DNA</span><span class="token">Campaign</span><span class="token">Creative</span>
+            </div>
+          </div>
+        </div>
+        <p class="line-note">Layout: real UI remains intact; the stage strip repeats existing labels outside the screenshot.</p>
+      </section>
+
+      <section class="frame" id="frame-4">
+        <div class="frame-head"><h2>04 — Meet founders where they publish</h2><span class="time">0:13–0:18</span><span class="kind">Feature</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/studio-capture.png" alt="Existing EaseYourStartup studio screenshot" /></div>
+          <div class="copy">
+            <p class="eyebrow">Channel-ready copy</p>
+            <p class="headline">One update. The channels that matter.</p>
+            <div class="channel-grid">
+              <span class="token">X</span><span class="token">LinkedIn</span>
+              <span class="token">Product Hunt</span><span class="token">Email</span>
+            </div>
+            <p class="support">Voiceover: “Build channel-ready copy for X, LinkedIn, Product Hunt, and email.”</p>
+          </div>
+        </div>
+        <p class="line-note">Layout: product evidence left; four channel labels right. Labels are not presented as app controls.</p>
+      </section>
+
+      <section class="frame" id="frame-5">
+        <div class="frame-head"><h2>05 — Keep the product real</h2><span class="time">0:18–0:23</span><span class="kind">Benefit</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/studio-capture.png" alt="Existing Visual Studio screen with its real screenshot preview" /></div>
+          <div class="copy">
+            <p class="eyebrow">Visual studio</p>
+            <p class="headline">Keep the screenshot real.</p>
+            <p class="support">Make the creative yours.</p>
+            <p class="support">Voiceover: “Keep the product screenshot real. Make the creative yours.”</p>
+          </div>
+        </div>
+        <p class="line-note">Layout: complete real screenshot shown at contain; headline stays outside the UI.</p>
+      </section>
+
+      <section class="frame frame-wide" id="frame-6">
+        <div class="frame-head"><h2>06 — Review and export</h2><span class="time">0:23–0:28</span><span class="kind">Benefit</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/studio-capture.png" alt="Existing studio screen with its real Preview PNG and Campaign ZIP controls" /></div>
+          <div class="copy">
+            <div class="copy-row">
+              <div>
+                <p class="eyebrow">Ready to shape</p>
+                <p class="headline">Review. Preview. Export.</p>
+              </div>
+              <div>
+                <div class="actions"><span class="action">Preview PNG</span><span class="action">Campaign ZIP</span></div>
+                <p class="support">Voiceover: “Review the evidence. Preview your visuals. Export the full launch kit.”</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="line-note">Layout: controls match the screenshot; publishing remains the founder's choice.</p>
+      </section>
+
+      <section class="frame frame-photo end-card" id="frame-7">
+        <div class="frame-head"><h2>07 — Keep shipping</h2><span class="time">0:28–0:33</span><span class="kind">CTA</span></div>
+        <div class="canvas">
+          <div class="visual"><img src="../../public/images/founder-launch-studio.png" alt="Existing founder-at-work image, reused to bookend the story" /></div>
+          <div class="copy">
+            <p class="eyebrow">Built for founders who keep shipping</p>
+            <p class="headline">Turn every ship into a campaign.</p>
+            <p class="button">Free scan</p>
+            <p class="support">Voiceover: “Built for founders who keep shipping. Start with a free scan.”</p>
+          </div>
+        </div>
+        <p class="line-note">Layout: repeat the opening image, then resolve on the existing brand promise and CTA.</p>
+      </section>
+    </main>
+  </body>
+</html>

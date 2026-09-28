@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
 import { Logo } from "@/components/logo";
 import { SignInForm } from "@/components/auth/sign-in-form";
+import { safeLoginNextPath } from "@/app/login/navigation";
 
 export const metadata: Metadata = {
   title: "Sign in",
 };
 
-function safeNext(value: string | undefined) {
-  return value?.startsWith("/") && !value.startsWith("//")
-    ? value
-    : "/dashboard";
-}
-
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string | string[] }>;
 }) {
   const params = await searchParams;
   return (
@@ -32,10 +27,10 @@ export default async function LoginPage({
         <div className="relative z-10 flex flex-1 flex-col justify-between">
           <Logo />
           <div className="py-16">
-            <p className="font-sans text-xs uppercase tracking-[0.16em] text-[#b9d0ff]">
+            <p className="font-sans text-xs uppercase  text-[#b9d0ff]">
               Your launch history lives here
             </p>
-            <h1 className="mt-5 max-w-xl text-balance text-5xl font-semibold tracking-[-0.065em] sm:text-6xl">
+            <h1 className="mt-5 max-w-xl text-balance text-5xl font-semibold  sm:text-6xl">
               Pick up where your last ship left off.
             </h1>
           </div>
@@ -46,14 +41,14 @@ export default async function LoginPage({
       </section>
       <section className="flex items-center justify-center p-5 sm:p-10">
         <div className="w-full max-w-md rounded-container border border-line bg-surface-raised p-6 sm:p-8">
-          <h2 className="text-2xl font-semibold tracking-[-0.04em]">
+          <h2 className="text-2xl font-semibold ">
             Sign in or create an account
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             Use your email and password, or continue with Google.
           </p>
           <div className="mt-7">
-            <SignInForm nextPath={safeNext(params.next)} />
+            <SignInForm nextPath={safeLoginNextPath(params.next)} />
           </div>
         </div>
       </section>

@@ -54,7 +54,7 @@ export function CreativeWorkspace({
   onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
   regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
   regenerationBusyChannel?: ChannelOutput["channel"] | null;
-  generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
+  generationProvider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
   captureRef: RefObject<HTMLDivElement | null>;

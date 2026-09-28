@@ -25,9 +25,21 @@ describe("getAuthenticatedUser", () => {
     vi.unstubAllEnvs();
   });
 
-  it("retries one transient upstream 502 and accepts a recovered session", async () => {
+  it("retries repeated transient gateway responses before accepting a session", async () => {
     mocks.getSession
       .mockResolvedValueOnce({ data: null, error: { status: 502 } } as never)
+      .mockResolvedValueOnce({ data: null, error: { status: 502 } } as never)
+      .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
+
+    await expect(getAuthenticatedUser()).resolves.toEqual({
+      user: { id: "user-1" },
+    });
+    expect(mocks.getSession).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries one transient network error and accepts a recovered session", async () => {
+    mocks.getSession
+      .mockResolvedValueOnce({ data: null, error: { code: "NETWORK_ERROR" } } as never)
       .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
 
     await expect(getAuthenticatedUser()).resolves.toEqual({
@@ -36,9 +48,31 @@ describe("getAuthenticatedUser", () => {
     expect(mocks.getSession).toHaveBeenCalledTimes(2);
   });
 
-  it("retries one transient network error and accepts a recovered session", async () => {
+  it("retries a thrown fetch network error and accepts a recovered session", async () => {
     mocks.getSession
-      .mockResolvedValueOnce({ data: null, error: { code: "NETWORK_ERROR" } } as never)
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
+
+    await expect(getAuthenticatedUser()).resolves.toEqual({
+      user: { id: "user-1" },
+    });
+    expect(mocks.getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a thrown gateway error and accepts a recovered session", async () => {
+    mocks.getSession
+      .mockRejectedValueOnce(Object.assign(new Error("Bad Gateway"), { status: 502 }))
+      .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
+
+    await expect(getAuthenticatedUser()).resolves.toEqual({
+      user: { id: "user-1" },
+    });
+    expect(mocks.getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a gateway error reported under the SDK response", async () => {
+    mocks.getSession
+      .mockResolvedValueOnce({ data: null, error: { response: { status: 503 } } } as never)
       .mockResolvedValueOnce({ data: { user: { id: "user-1" } }, error: null } as never);
 
     await expect(getAuthenticatedUser()).resolves.toEqual({

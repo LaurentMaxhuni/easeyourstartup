@@ -1,4 +1,5 @@
 import { inngest } from "@/inngest/client";
+import { NonRetriableError } from "inngest";
 import { createHash, randomBytes } from "node:crypto";
 import JSZip from "jszip";
 import { z } from "zod";
@@ -8,8 +9,10 @@ import {
   generateCampaign,
   publicProviderError,
 } from "@/lib/server/campaign-generator";
+import { generateCampaignV2 } from "@/lib/server/generation-v2";
 import { createDatabase, requireDatabase } from "@/lib/server/database";
 import { scanWebsite } from "@/lib/server/scanner";
+import { analyzeBrandIntelligence } from "@/lib/server/brand-intelligence";
 import {
   createPrivateObjectReadUrl,
   deletePrivateObject,
@@ -22,9 +25,30 @@ import {
   serializeGenerateJobResult,
   serializeScanJobResult,
 } from "@/lib/job-results";
+import { failStaleGenerationJobs } from "@/lib/server/stale-generation-jobs";
 
 function database() {
   return requireDatabase();
+}
+
+export function parseStoredGenerationInput(value: unknown) {
+  const stored = typeof value === "string" ? JSON.parse(value) as unknown : value;
+  if (
+    typeof stored === "object" &&
+    stored !== null &&
+    "generatorVersion" in stored &&
+    stored.generatorVersion === "v2"
+  ) {
+    const record = stored as Record<string, unknown>;
+    return {
+      generatorVersion: "v2" as const,
+      brief: generateCampaignSchema.parse(record.brief),
+    };
+  }
+  return {
+    generatorVersion: "v1" as const,
+    brief: generateCampaignSchema.parse(stored),
+  };
 }
 
 export const scanProject = inngest.createFunction(
@@ -58,9 +82,11 @@ export const scanProject = inngest.createFunction(
       `;
     });
 
-    const result = await step.run("scan-public-pages", async () =>
-      curateScannedClaims(await scanWebsite(url)),
-    );
+    const result = await step.run("scan-public-pages", async () => {
+      const scan = await curateScannedClaims(await scanWebsite(url));
+      scan.profile.brandIntelligence = await analyzeBrandIntelligence(scan);
+      return scan;
+    });
 
     await step.run("persist-brand-dna", async () => {
       const database = requireDatabase();
@@ -85,7 +111,8 @@ export const scanProject = inngest.createFunction(
 export const generateCampaignAssets = inngest.createFunction(
   {
     id: "generate-campaign-assets",
-    retries: 2,
+    retries: 0,
+    timeouts: { finish: "15m" },
     onFailure: async ({ event, error }) => {
       const database = createDatabase();
       if (!database) return;
@@ -93,8 +120,8 @@ export const generateCampaignAssets = inngest.createFunction(
         ? publicProviderError(error)
         : "";
       const errorMessage = reason
-        ? `Campaign generation failed after retries: ${reason}`
-        : "Campaign generation failed after retries.";
+        ? `Campaign generation failed: ${reason}`
+        : "Campaign generation failed.";
       await database`
         select public.release_campaign_usage_reservation(
           ${event.data.event.data.workspaceId}::uuid,
@@ -108,6 +135,8 @@ export const generateCampaignAssets = inngest.createFunction(
           error_message = ${errorMessage},
           updated_at = now()
         where id = ${event.data.event.data.jobId}
+          and workspace_id = ${event.data.event.data.workspaceId}
+          and status in ('queued', 'generating')
       `;
     },
   },
@@ -122,68 +151,109 @@ export const generateCampaignAssets = inngest.createFunction(
         limit 1
       `;
       if (!data) throw new Error("Campaign not found.");
-      const input =
-        typeof data.generation_input === "string"
-          ? JSON.parse(data.generation_input)
-          : data.generation_input;
-      return generateCampaignSchema.parse(input);
+      return parseStoredGenerationInput(data.generation_input);
     });
 
     await step.run("mark-generating", async () => {
-      await database()`
+      const [activeJob] = await database()`
         update public.jobs
         set status = 'generating', progress = 35, updated_at = now()
         where id = ${jobId} and workspace_id = ${workspaceId}
+          and status in ('queued', 'generating')
+        returning id
       `;
+      if (!activeJob) {
+        throw new NonRetriableError("Campaign generation is no longer active.");
+      }
     });
 
-    const generated = await step.run("generate-source-backed-copy", () =>
-      generateCampaign(campaign),
-    );
+    const generated = await step.run("generate-source-backed-copy", async () => {
+      const onDesignStart = async () => {
+        await database()`
+          update public.jobs
+          set progress = 75, updated_at = now()
+          where id = ${jobId} and workspace_id = ${workspaceId}
+            and status = 'generating'
+        `;
+      };
+      try {
+        return await (campaign.generatorVersion === "v2"
+          ? generateCampaignV2(campaign.brief, {
+              onDesignStart,
+              includeCreativeDesign: false,
+            })
+          : generateCampaign(campaign.brief, {
+              onDesignStart,
+              includeCreativeDesign: false,
+            }));
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "OpenRouterFreeModelQuotaError"
+        ) {
+          throw new NonRetriableError(error.message);
+        }
+        throw error;
+      }
+    });
 
     await step.run("persist-success-and-consume-usage", async () => {
       const database = requireDatabase();
-      const outputQueries = generated.outputs.map((output) => database`
-        insert into public.channel_outputs (
-          workspace_id,
-          campaign_id,
-          channel,
-          output
-        )
-        values (
-          ${workspaceId},
-          ${campaignId},
-          ${output.channel},
-          ${JSON.stringify(output)}::jsonb
-        )
-        on conflict (campaign_id, channel) do update set
-          workspace_id = excluded.workspace_id,
-          output = excluded.output,
-          updated_at = now()
-      `);
-      const followUpQueries = [
+      const serializedResult = serializeGenerateJobResult(generated);
+      const serializedOutputs = JSON.stringify(generated.outputs);
+      const [savedRows] = await database.transaction([
         database`
-          update public.campaigns
-          set status = 'completed', completed_at = now(), updated_at = now()
-          where id = ${campaignId} and workspace_id = ${workspaceId}
+          with active_job as materialized (
+            update public.jobs
+            set status = 'completed',
+              progress = 100,
+              result = ${serializedResult}::jsonb,
+              updated_at = pg_catalog.now()
+            where id = ${jobId} and workspace_id = ${workspaceId}
+              and status = 'generating'
+            returning id
+          ),
+          saved_outputs as (
+            insert into public.channel_outputs (
+              workspace_id,
+              campaign_id,
+              channel,
+              output
+            )
+            select
+              ${workspaceId},
+              ${campaignId},
+              generated_output.output ->> 'channel',
+              generated_output.output
+            from active_job
+            cross join pg_catalog.jsonb_array_elements(${serializedOutputs}::jsonb)
+              as generated_output(output)
+            on conflict (campaign_id, channel) do update set
+              workspace_id = excluded.workspace_id,
+              output = excluded.output,
+              updated_at = pg_catalog.now()
+            returning id
+          )
+          select
+            (select pg_catalog.count(*) from active_job) as active_job_count,
+            (select pg_catalog.count(*) from saved_outputs) as output_count
         `,
         database`
           select public.consume_campaign_usage(
             ${workspaceId}::uuid,
             ${campaignId}::uuid
           )
-        `,
-        database`
-          update public.jobs
-          set
-          status = 'completed',
-          progress = 100,
-          result = ${serializeGenerateJobResult(generated)}::jsonb,
-            updated_at = now()
+          from public.jobs
           where id = ${jobId} and workspace_id = ${workspaceId}
+            and status = 'completed'
+            and result = ${serializedResult}::jsonb
+            and updated_at = pg_catalog.now()
         `,
-      ];
-      await database.transaction([...outputQueries, ...followUpQueries]);
+      ]);
+      const saved = savedRows?.[0];
+      if (Number(saved?.active_job_count ?? 0) !== 1) {
+        throw new NonRetriableError("Campaign generation is no longer active.");
+      }
     });
 
     return { campaignId, channelCount: generated.outputs.length };
@@ -218,7 +288,7 @@ export const regenerateCampaignChannel = inngest.createFunction(
   { event: "campaign/channel-regeneration.requested" },
   async ({ event, step }) => {
     const { jobId, workspaceId, campaignId, channel } = event.data;
-    const input = await step.run("load-campaign-brief", async () => {
+    const campaign = await step.run("load-campaign-brief", async () => {
       const [campaign] = await database()`
         select generation_input
         from public.campaigns
@@ -227,10 +297,7 @@ export const regenerateCampaignChannel = inngest.createFunction(
         limit 1
       `;
       if (!campaign) throw new Error("Campaign not found or is not ready.");
-      const value = typeof campaign.generation_input === "string"
-        ? JSON.parse(campaign.generation_input)
-        : campaign.generation_input;
-      return generateCampaignSchema.parse(value);
+      return parseStoredGenerationInput(campaign.generation_input);
     });
 
     await step.run("mark-regenerating", async () => {
@@ -241,8 +308,11 @@ export const regenerateCampaignChannel = inngest.createFunction(
       `;
     });
 
+    const input = { ...campaign.brief, channels: [channel] };
     const generated = await step.run("generate-replacement-channel-copy", () =>
-      generateCampaign({ ...input, channels: [channel] }),
+      campaign.generatorVersion === "v2"
+        ? generateCampaignV2(input, { includeCreativeDesign: false })
+        : generateCampaign(input, { includeCreativeDesign: false }),
     );
     const replacement = generated.outputs.find((output) => output.channel === channel);
     if (!replacement) throw new Error("The provider returned no replacement for this channel.");
@@ -634,13 +704,16 @@ export const dispatchJobOutbox = inngest.createFunction(
       if (outcome === "delivered") delivered += 1;
       else retried += 1;
     }
+    const recovered = await step.run("fail-stale-campaign-generations", () =>
+      failStaleGenerationJobs(requireDatabase()),
+    );
     await step.run("prune-old-job-outbox-receipts", async () =>
       database()`
         delete from public.job_outbox
         where delivered_at < pg_catalog.now() - interval '30 days'
       `,
     );
-    return { attempted: entries.length, delivered, retried };
+    return { attempted: entries.length, delivered, retried, recovered };
   },
 );
 

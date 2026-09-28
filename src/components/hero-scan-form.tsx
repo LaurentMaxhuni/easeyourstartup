@@ -5,21 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, GlobeSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-function normalizeUrl(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(
-      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
-    );
-    return ["http:", "https:"].includes(parsed.protocol)
-      ? parsed.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
+import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 
 export function HeroScanForm() {
   const router = useRouter();
@@ -28,7 +14,7 @@ export function HeroScanForm() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const normalized = normalizeUrl(url);
+    const normalized = normalizePublicWebsiteUrl(url);
     if (!normalized) {
       setError("Enter a public HTTP or HTTPS website.");
       return;

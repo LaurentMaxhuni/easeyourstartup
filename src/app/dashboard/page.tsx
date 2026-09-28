@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { AuthenticationUnavailable } from "@/components/auth/authentication-unavailable";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { requirePageAuthentication } from "@/lib/auth/page";
@@ -12,6 +13,9 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const user = await requirePageAuthentication("/dashboard");
+  if ("status" in user) {
+    return <AuthenticationUnavailable retryHref="/dashboard" />;
+  }
 
   return (
     <Suspense
@@ -21,7 +25,14 @@ export default async function DashboardPage() {
         </div>
       }
     >
-      <DashboardShell storageKey={getStudioStorageKey(user.id)} />
+      <DashboardShell
+        storageKey={getStudioStorageKey(user.id)}
+        profile={{
+          name: user.name ?? null,
+          email: user.email ?? null,
+          image: user.image ?? null,
+        }}
+      />
     </Suspense>
   );
 }

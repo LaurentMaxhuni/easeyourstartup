@@ -41,7 +41,7 @@ export default async function PricingPage() {
         <section className="border-b border-line py-20 sm:py-28">
           <div className="mx-auto max-w-5xl px-4 text-center sm:px-6">
             <Badge>Simple by design</Badge>
-            <h1 className="mx-auto mt-5 max-w-4xl text-balance text-5xl font-semibold tracking-[-0.07em] sm:text-7xl">
+            <h1 className="mx-auto mt-5 max-w-4xl text-balance text-5xl font-semibold  sm:text-7xl">
               One plan for founders who keep shipping.
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-muted">
@@ -71,7 +71,7 @@ export default async function PricingPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-6xl font-semibold tracking-[-0.07em]">
+                  <span className="text-6xl font-semibold ">
                     {foundingPriceEligible ? "$19" : "$29"}
                   </span>
                   <span className="text-sm text-muted"> / month{foundingPriceEligible ? " · founding price" : ""}</span>
@@ -113,7 +113,7 @@ export default async function PricingPage() {
         </section>
         <section className="border-t border-line bg-surface py-16">
           <div className="mx-auto max-w-5xl px-4 sm:px-6">
-            <h2 className="text-3xl font-semibold tracking-[-0.045em]">
+            <h2 className="text-3xl font-semibold ">
               How usage works
             </h2>
             <div className="mt-8 grid gap-8 text-sm leading-6 text-muted md:grid-cols-2">

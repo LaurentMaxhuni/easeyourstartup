@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/request-security";
 
 export const runtime = "nodejs";
+export const maxDuration = 180;
 
 const scopedDesignRequestSchema = creativeDesignRequestSchema.extend({
   projectId: z.uuid(),

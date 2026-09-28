@@ -12,8 +12,8 @@ export async function getUnallocatedFoundingSlots() {
       where workspace_id is null
     `;
     return Math.max(0, Number(row?.remaining ?? 0));
-  } catch (error) {
-    console.error("[founding-offer] Slot availability could not be loaded.", error);
+  } catch {
+    console.warn("[founding-offer] Slot availability could not be loaded.");
     return 0;
   }
 }
@@ -31,8 +31,8 @@ export async function hasUnredeemedFoundingSlot(userId: string) {
       ) as eligible
     `;
     return row?.eligible === true;
-  } catch (error) {
-    console.error("[founding-offer] Workspace eligibility could not be loaded.", error);
+  } catch {
+    console.warn("[founding-offer] Workspace eligibility could not be loaded.");
     return false;
   }
 }

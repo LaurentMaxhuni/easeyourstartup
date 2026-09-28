@@ -24,7 +24,7 @@ export function SiteFooter() {
           {supportEmail && <a href={`mailto:${supportEmail}`}>Contact</a>}
         </nav>
       </div>
-      <div className="border-t border-line px-4 py-5 text-center font-sans text-[11px] uppercase tracking-[0.12em] text-muted">
+      <div className="border-t border-line px-4 py-5 text-center font-sans text-[11px] uppercase  text-muted">
         Built for founders who keep shipping
       </div>
     </footer>

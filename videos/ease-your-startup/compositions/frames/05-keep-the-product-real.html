@@ -1,0 +1,200 @@
+<template>
+  <div id="root" data-composition-id="05-keep-the-product-real" data-duration="5.5" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Outfit";
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+        src: url("assets/fonts/Outfit-Regular.woff2") format("woff2");
+      }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        container-type: size;
+        color: #171917;
+        font-family: "Outfit", sans-serif;
+      }
+
+      #root .clip {
+        position: absolute;
+        box-sizing: border-box;
+      }
+
+      #scene-05-background {
+        inset: 0;
+        background: #f4f3ef;
+      }
+
+      #scene-05-surface {
+        left: 4.3cqw;
+        top: 7.5cqh;
+        width: 58.3cqw;
+        height: 72cqh;
+        overflow: hidden;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 14px;
+        background: #eeede8;
+      }
+
+      #scene-05-world {
+        position: absolute;
+        inset: 0;
+        transform: translate(0px, 0px) scale(1);
+        transform-origin: 50% 50%;
+        will-change: transform;
+      }
+
+      #scene-05-underlay,
+      #scene-05-image {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 50%;
+      }
+
+      #scene-05-underlay {
+        z-index: 1;
+        border-radius: 12px;
+        background: rgba(36, 92, 240, 0.04);
+      }
+
+      #scene-05-image {
+        z-index: 2;
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      #scene-05-copy {
+        left: 67cqw;
+        top: 25.5cqh;
+        width: 27.5cqw;
+      }
+
+      #scene-05-eyebrow {
+        margin: 0;
+        color: #245cf0;
+        font-size: 0.8cqw;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        line-height: 1.2;
+        text-transform: uppercase;
+      }
+
+      #scene-05-accent-line {
+        width: 60px;
+        height: 4px;
+        margin-top: 22px;
+        border-radius: 2px;
+        background: #245cf0;
+      }
+
+      #scene-05-headline {
+        margin: 28px 0 0;
+        color: #171917;
+        font-size: 3.05cqw;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.08;
+      }
+
+      #scene-05-subline {
+        max-width: 26cqw;
+        margin: 24px 0 0;
+        color: #245cf0;
+        font-size: 1.45cqw;
+        font-weight: 400;
+        line-height: 1.45;
+      }
+    </style>
+
+    <div id="scene-05-background" class="clip" data-start="0" data-duration="5.5" data-track-index="0"></div>
+
+    <div id="scene-05-surface" class="clip" data-start="0" data-duration="5.5" data-track-index="1">
+      <div id="scene-05-world" data-layout-allow-overflow>
+        <div id="scene-05-underlay" aria-hidden="true"></div>
+        <img id="scene-05-image" src="assets/studio-capture.png" alt="EaseYourStartup Visual Studio with the real campaign preview" />
+      </div>
+    </div>
+
+    <div id="scene-05-copy" class="clip" data-start="0" data-duration="5.5" data-track-index="2">
+      <p id="scene-05-eyebrow">Visual studio</p>
+      <div id="scene-05-accent-line" aria-hidden="true"></div>
+      <h1 id="scene-05-headline">Keep the product real.</h1>
+      <p id="scene-05-subline">Your creative, your call.</p>
+    </div>
+
+    <script>
+      (() => {
+        window.__timelines = window.__timelines || {};
+
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines["05-keep-the-product-real"] = tl;
+
+        const world = document.getElementById("scene-05-world");
+        const camera = { x: 0, y: 0, scale: 1 };
+        const applyCamera = () => {
+          world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+        };
+        applyCamera();
+
+        // Surface reveal: the empty canvas settles away as the authentic screenshot lands above it.
+        tl.to(
+          "#scene-05-underlay",
+          { scale: 0.74, opacity: 0, duration: 0.34, ease: "power2.in" },
+          0.02,
+        );
+        tl.fromTo(
+          "#scene-05-image",
+          { scale: 0.76, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.52, ease: "back.out(1.4)" },
+          0.18,
+        );
+
+        // Let the surface land, then reveal the short supporting copy on the first VO clause.
+        tl.fromTo(
+          "#scene-05-eyebrow",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" },
+          0.74,
+        );
+        tl.fromTo(
+          "#scene-05-accent-line",
+          { opacity: 0, scaleX: 0.2, transformOrigin: "0% 50%" },
+          { opacity: 1, scaleX: 1, duration: 0.42, ease: "power3.out" },
+          0.82,
+        );
+        tl.fromTo(
+          "#scene-05-headline",
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.56, ease: "power3.out" },
+          1.02,
+        );
+
+        // A gentle rightward pan through the captured pixels brings the real preview toward center.
+        tl.to(
+          camera,
+          {
+            x: -44,
+            duration: 1.48,
+            ease: "power3.inOut",
+            onUpdate: applyCamera,
+          },
+          1.72,
+        );
+
+        // Finish the second clause before the 3.5s still hold.
+        tl.fromTo(
+          "#scene-05-subline",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+          3.0,
+        );
+      })();
+    </script>
+  </div>
+</template>

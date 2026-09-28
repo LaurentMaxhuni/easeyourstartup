@@ -314,8 +314,19 @@ const RASTER_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
-export async function safeFetchImage(
+const WEB_FONT_TYPES = new Set([
+  "application/font-woff",
+  "application/vnd.ms-fontobject",
+  "font/otf",
+  "font/ttf",
+  "font/woff",
+  "font/woff2",
+]);
+
+async function safeFetchBinaryAsset(
   initialUrl: string,
+  assetType: "image" | "font",
+  allowedTypes: Set<string>,
   options: {
     timeoutMs?: number;
     maxBytes?: number;
@@ -339,7 +350,7 @@ export async function safeFetchImage(
           cache: "no-store",
           signal: controller.signal,
           headers: {
-            Accept: Array.from(RASTER_IMAGE_TYPES).join(","),
+            Accept: Array.from(allowedTypes).join(","),
             "User-Agent":
               "EaseYourStartupBot/0.1 (+https://easeyourstartup.com/bot)",
           },
@@ -347,13 +358,13 @@ export async function safeFetchImage(
         response = pinned.response;
         closeDispatcher = pinned.close;
       } catch {
-        throw new Error("The image did not respond in time.");
+        throw new Error(`The ${assetType} did not respond in time.`);
       }
 
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
         if (!location || redirectCount === maxRedirects) {
-          throw new Error("The image redirected too many times.");
+          throw new Error(`The ${assetType} redirected too many times.`);
         }
         await response.body?.cancel().catch(() => undefined);
         await closeDispatcher?.();
@@ -363,25 +374,25 @@ export async function safeFetchImage(
       }
 
       if (!response.ok) {
-        throw new Error(`The image returned HTTP ${response.status}.`);
+        throw new Error(`The ${assetType} returned HTTP ${response.status}.`);
       }
 
       const contentType =
         response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() ??
         "";
-      if (!RASTER_IMAGE_TYPES.has(contentType)) {
-        throw new Error("The source did not return a supported image.");
+      if (!allowedTypes.has(contentType)) {
+        throw new Error(`The source did not return a supported ${assetType}.`);
       }
 
       const declaredLength = Number(
         response.headers.get("content-length") ?? "0",
       );
       if (declaredLength > maxBytes) {
-        throw new Error("The source image is too large.");
+        throw new Error(`The source ${assetType} is too large.`);
       }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error("The source image was empty.");
+      if (!reader) throw new Error(`The source ${assetType} was empty.`);
       const chunks: Uint8Array[] = [];
       let total = 0;
       while (true) {
@@ -390,7 +401,7 @@ export async function safeFetchImage(
         total += value.byteLength;
         if (total > maxBytes) {
           await reader.cancel();
-          throw new Error("The source image is too large.");
+          throw new Error(`The source ${assetType} is too large.`);
         }
         chunks.push(value);
       }
@@ -408,5 +419,30 @@ export async function safeFetchImage(
     }
   }
 
-  throw new Error("The source image could not be loaded.");
+  throw new Error(`The source ${assetType} could not be loaded.`);
+}
+
+export async function safeFetchImage(
+  initialUrl: string,
+  options: {
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+  } = {},
+) {
+  return safeFetchBinaryAsset(initialUrl, "image", RASTER_IMAGE_TYPES, options);
+}
+
+export async function safeFetchFont(
+  initialUrl: string,
+  options: {
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+  } = {},
+) {
+  return safeFetchBinaryAsset(initialUrl, "font", WEB_FONT_TYPES, {
+    maxBytes: 4_000_000,
+    ...options,
+  });
 }

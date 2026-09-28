@@ -4,7 +4,10 @@ import { load, type CheerioAPI } from "cheerio";
 import { randomUUID } from "node:crypto";
 import type {
   BrandClaim,
+  BrandEvidenceItem,
+  BrandFontAsset,
   BrandVisualSystem,
+  ProductScreenshotCandidate,
   ScanResult,
   SourcePage,
 } from "@/lib/contracts";
@@ -180,16 +183,6 @@ function extractCssImageUrl(markup: string, base: string) {
 
 const SAFE_FONT_FALLBACK = "Trebuchet MS";
 const SAFE_HEADING_FALLBACK = "Georgia";
-const BANNED_FONT_NAMES = new Set([
-  "arial",
-  "dm sans",
-  "geist",
-  "inter",
-  "montserrat",
-  "poppins",
-  "roboto",
-  "space grotesk",
-]);
 
 function cleanFontFamily(value: string) {
   const family = value
@@ -199,8 +192,7 @@ function cleanFontFamily(value: string) {
       const normalized = item.toLowerCase();
       return (
         item &&
-        !/[()]/.test(item) &&
-        !BANNED_FONT_NAMES.has(normalized) &&
+        /^[\p{L}\p{N} _-]+$/u.test(item) &&
         !/^(?:sans-serif|serif|monospace|system-ui|ui-sans-serif|ui-serif|cursive|fantasy)$/.test(
           normalized,
         )
@@ -218,6 +210,66 @@ function extractFontFamilies(markup: string) {
         .filter((font): font is string => Boolean(font)),
     ),
   ).slice(0, 6);
+}
+
+function extractFontAssets(
+  markup: string,
+  base: string,
+): Array<Omit<BrandFontAsset, "url"> & { url: string }> {
+  const assets = new Map<string, Omit<BrandFontAsset, "url"> & { url: string }>();
+  for (const match of markup.matchAll(/@font-face\s*\{([^{}]*)\}/gi)) {
+    const declarations = match[1];
+    const familyValue = declarations.match(/font-family\s*:\s*([^;}]+)/i)?.[1];
+    const family = familyValue ? cleanFontFamily(familyValue) : null;
+    const source = declarations.match(/(?:^|;)\s*src\s*:\s*([^;}]+)/i)?.[1];
+    if (!family || !source) continue;
+
+    const rawWeight = declarations.match(/font-weight\s*:\s*([^;}]+)/i)?.[1]?.trim();
+    const weight = rawWeight && /^(?:normal|bold|[1-9]00|[1-9]00\s+[1-9]00)$/i.test(rawWeight)
+      ? rawWeight.toLowerCase()
+      : "normal";
+    const rawStyle = declarations.match(/font-style\s*:\s*([^;}]+)/i)?.[1]?.trim().toLowerCase();
+    const style: BrandFontAsset["style"] =
+      rawStyle && /^(?:normal|italic|oblique)$/.test(rawStyle)
+        ? rawStyle as BrandFontAsset["style"]
+        : "normal";
+    const rawUnicodeRange = declarations.match(/unicode-range\s*:\s*([^;}]+)/i)?.[1]?.trim();
+    const unicodeRange = rawUnicodeRange && /^[uU0-9a-fA-F?+,\s-]{1,400}$/.test(rawUnicodeRange)
+      ? rawUnicodeRange
+      : undefined;
+
+    for (const sourceMatch of source.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)) {
+      const url = absoluteAssetUrl(sourceMatch[2].trim(), base);
+      if (!url) continue;
+      const asset = { family, weight, style, ...(unicodeRange ? { unicodeRange } : {}), url };
+      assets.set(`${family.toLowerCase()}|${weight}|${style}|${unicodeRange ?? ""}|${url}`, asset);
+    }
+  }
+  return Array.from(assets.values());
+}
+
+function limitFontAssets(assets: BrandFontAsset[], maximum: number) {
+  const byFamily = new Map<string, BrandFontAsset[]>();
+  for (const asset of assets) {
+    const family = asset.family.toLowerCase();
+    const group = byFamily.get(family);
+    if (group) group.push(asset);
+    else byFamily.set(family, [asset]);
+  }
+  const families = Array.from(byFamily.values());
+  const limited: BrandFontAsset[] = [];
+  while (limited.length < maximum) {
+    let added = false;
+    for (const family of families) {
+      const asset = family.shift();
+      if (!asset) continue;
+      limited.push(asset);
+      added = true;
+      if (limited.length >= maximum) break;
+    }
+    if (!added) break;
+  }
+  return limited;
 }
 
 function extractCssLengths(markup: string, property: string) {
@@ -322,6 +374,10 @@ type ExtractedPage = {
   logo: string | null;
   imageUrl: string | null;
   stylesheetUrls: string[];
+  fontAssets: Array<Omit<BrandFontAsset, "url"> & { url: string }>;
+  pricingEvidence: BrandEvidenceItem[];
+  testimonialEvidence: BrandEvidenceItem[];
+  productScreenshotCandidates: Omit<ProductScreenshotCandidate, "sourceUrl">[];
 };
 
 export function extractPage(html: string, url: string): ExtractedPage {
@@ -346,6 +402,51 @@ export function extractPage(html: string, url: string): ExtractedPage {
   const heading = cleanText($("h1").first().text()).slice(0, 500);
   const body = cleanText($("body").text()).slice(0, 20_000);
   const excerpt = description || heading || body.slice(0, 800);
+  const evidenceFromText = (text: string): BrandEvidenceItem | null => {
+    const cleaned = cleanText(text);
+    if (!cleaned) return null;
+    return {
+      text: cleaned.slice(0, 400),
+      sourceUrl: url,
+      sourceExcerpt: cleaned.slice(0, 1200),
+    };
+  };
+  const pricingSignal =
+    /(?:[$€£]\s?\d|\b\d+(?:\.\d+)?\s?(?:USD|EUR|GBP)\b|\b\d+(?:\.\d+)?\s?(?:\/|per\s+)(?:mo(?:nth)?|yr|year)\b|\bfree\s+(?:plan|trial|forever)\b)/i;
+  const pricingEvidence = Array.from(
+    new Set(
+      $("[class], [id], [data-testid], h1, h2, h3, h4, p, li, span, strong")
+        .toArray()
+        .map((element) => cleanText($(element).text()))
+        .filter((text) => text.length >= 6 && pricingSignal.test(text)),
+    ),
+  )
+    .map(evidenceFromText)
+    .filter((item): item is BrandEvidenceItem => Boolean(item))
+    .slice(0, 8);
+  const testimonialSignal = /(?:testimonial|review|customer[-_ ]quote)/i;
+  const testimonialElements = $("blockquote, [class], [id], [data-testid]")
+    .toArray()
+    .filter((element) => {
+      const attributes = [
+        $(element).attr("class"),
+        $(element).attr("id"),
+        $(element).attr("data-testid"),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return element.tagName === "blockquote" || testimonialSignal.test(attributes);
+    });
+  const testimonialEvidence = Array.from(
+    new Set(
+      testimonialElements
+        .map((element) => cleanText($(element).text()))
+        .filter((text) => text.length >= 16),
+    ),
+  )
+    .map(evidenceFromText)
+    .filter((item): item is BrandEvidenceItem => Boolean(item))
+    .slice(0, 8);
   const cta =
     $("a, button")
       .map((_, element) => cleanText($(element).text()))
@@ -423,6 +524,35 @@ export function extractPage(html: string, url: string): ExtractedPage {
     .map((_, element) => imageSource($, element, url))
     .get()
     .find((value): value is string => Boolean(value));
+  const screenshotSignal =
+    /(?:screenshot|dashboard|product[-_ ]?(?:screen|shot|ui)|app[-_ ]?(?:screen|preview)|interface|mockup|feature[-_ ]?screen)/i;
+  const productScreenshotCandidates = $(
+    'img[src], img[srcset], img[data-src], img[data-lazy-src], img[data-original], source[srcset]',
+  )
+    .map((_, element) => {
+      const alt = cleanText($(element).attr("alt") ?? "").slice(0, 240);
+      const attributes = [
+        alt,
+        $(element).attr("class"),
+        $(element).attr("id"),
+        $(element).attr("src"),
+        $(element).attr("srcset"),
+        $(element).attr("data-src"),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      if (!screenshotSignal.test(attributes) || /\b(?:logo|avatar|icon)\b/i.test(attributes)) {
+        return null;
+      }
+      const candidateUrl = imageSource($, element, url);
+      return candidateUrl ? { url: candidateUrl, alt } : null;
+    })
+    .get()
+    .filter(
+      (candidate): candidate is Omit<ProductScreenshotCandidate, "sourceUrl"> =>
+        Boolean(candidate),
+    )
+    .slice(0, 8);
   const imageUrl =
     socialImage ??
     contentImage ??
@@ -451,6 +581,10 @@ export function extractPage(html: string, url: string): ExtractedPage {
     logo,
     imageUrl,
     stylesheetUrls,
+    fontAssets: extractFontAssets(paletteMarkup, url),
+    pricingEvidence,
+    testimonialEvidence,
+    productScreenshotCandidates,
   };
 }
 
@@ -481,6 +615,7 @@ async function extractStylesheetAssets(urls: string[]) {
         colors: extractColors(result.text),
         imageUrl: extractCssImageUrl(result.text, result.finalUrl),
         fonts: extractFontFamilies(result.text),
+        fontAssets: extractFontAssets(result.text, result.finalUrl),
         radii: extractCssLengths(result.text, "border-radius"),
         spacings: [
           ...extractCssLengths(result.text, "padding"),
@@ -599,6 +734,67 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
         : [],
     ),
   ];
+  const scannedPageData = [
+    { url: home.finalUrl, data: homeData },
+    ...secondary.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    ),
+  ];
+  const fontAssetCandidates = Array.from(
+    new Map(
+      [
+        ...scannedPageData.flatMap(({ data }) => data.fontAssets),
+        ...stylesheetAssets.flatMap((asset) => asset.fontAssets),
+      ].map((asset) => [
+        `${asset.family.toLowerCase()}|${asset.weight}|${asset.style}|${asset.unicodeRange ?? ""}|${asset.url}`,
+        asset,
+      ] as const),
+    ).values(),
+  );
+  const fontAssets = (
+    await Promise.all(
+      limitFontAssets(fontAssetCandidates as BrandFontAsset[], 24).map(async (asset) => {
+        const url = await validateAssetUrl(asset.url);
+        return url ? { ...asset, url } : null;
+      }),
+    )
+  ).filter((asset): asset is BrandFontAsset => Boolean(asset));
+  const collectEvidence = (key: "pricingEvidence" | "testimonialEvidence") => {
+    const seen = new Set<string>();
+    return scannedPageData
+      .flatMap(({ data }) => data[key])
+      .filter((item) => {
+        const normalized = item.text.toLowerCase();
+        if (seen.has(normalized)) return false;
+        seen.add(normalized);
+        return true;
+      })
+      .slice(0, 12);
+  };
+  const brandEvidence = {
+    pricing: collectEvidence("pricingEvidence"),
+    testimonials: collectEvidence("testimonialEvidence"),
+  };
+  const screenshotCandidates = Array.from(
+    new Map(
+      scannedPageData.flatMap(({ url: sourceUrl, data }) =>
+        data.productScreenshotCandidates.map((candidate) => [
+          candidate.url,
+          { ...candidate, sourceUrl },
+        ] as const),
+      ),
+    ).values(),
+  ).slice(0, 24);
+  const productScreenshotCandidates = (
+    await Promise.all(
+      screenshotCandidates.map(async (candidate) => {
+        const candidateUrl = await validateAssetUrl(candidate.url);
+        return candidateUrl ? { ...candidate, url: candidateUrl } : null;
+      }),
+    )
+  )
+    .filter((candidate): candidate is ProductScreenshotCandidate => Boolean(candidate))
+    .slice(0, 16);
 
   const candidateClaims = [
     claimFromText(homeData.description, home.finalUrl),
@@ -648,12 +844,15 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       voice: ["clear", "credible", "direct"],
       colors: colors.length > 0 ? colors : fallbackColors,
       fonts: fonts.length > 0 ? fonts : [visualSystem.bodyFont],
+      fontAssets,
       cta: homeData.cta.slice(0, 120),
       claims: candidateClaims.slice(0, 30),
       logoUrl,
       faviconUrl,
       imageUrl,
       visualSystem,
+      brandEvidence,
+      productScreenshotCandidates,
     },
     pages,
     readiness: [

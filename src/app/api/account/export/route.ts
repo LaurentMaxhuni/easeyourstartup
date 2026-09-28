@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const context = await requireWorkspaceContext();
     const [workspace, projects, brandProfiles, sourcePages, campaigns, outputs, editorStates, jobs, assets] = await Promise.all([
-      context.database`select id, name, created_at, updated_at from public.workspaces where id = ${context.workspaceId}`,
+      context.database`select id, name, onboarding_profile, onboarding_completed_at, created_at, updated_at from public.workspaces where id = ${context.workspaceId}`,
       context.database`select * from public.projects where workspace_id = ${context.workspaceId} order by created_at`,
       context.database`select bp.* from public.brand_profiles bp where bp.workspace_id = ${context.workspaceId}`,
       context.database`select sp.* from public.source_pages sp where sp.workspace_id = ${context.workspaceId} order by created_at`,

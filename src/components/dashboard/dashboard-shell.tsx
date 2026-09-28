@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Check,
   CheckCircle,
-  Code,
   FileText,
   GlobeSimple,
   Images,
@@ -15,12 +14,12 @@ import {
   Sparkle,
   TrendUp,
 } from "@phosphor-icons/react";
+import { AccountMenu, type AccountProfile } from "@/components/account/account-avatar-link";
+import { ProjectCampaignWorkspace, type DashboardProject } from "@/components/dashboard/project-campaign-workspace";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
-import { authClient } from "@/lib/auth/client";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import {
   studioStateSchema,
@@ -34,19 +33,6 @@ type DashboardStateResponse = {
   storageKey?: string;
 };
 
-type DashboardProject = {
-  id: string;
-  name: string;
-  publicUrl: string | null;
-  status: "active" | "archived";
-  sourcePageCount: number;
-  campaignCount: number;
-  campaigns: Array<{ id: string; title: string; status: string; updatedAt: string | null }>;
-  lastScannedAt: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-};
-
 type DashboardProjectsResponse = {
   projects?: DashboardProject[];
 };
@@ -57,17 +43,6 @@ function hostFromUrl(value: string) {
   } catch {
     return value;
   }
-}
-
-function formatProjectDate(value: string | null) {
-  if (!value) return "Not scanned yet";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Recently updated";
-  return `Scanned ${new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date)}`;
 }
 
 function readLocalState(storageKey: string | undefined) {
@@ -87,10 +62,10 @@ function stageComplete(state: StudioState, id: (typeof STUDIO_STAGES)[number]["i
   if (id === "scan") return Boolean(state.scan);
   if (id === "brand") return Boolean(state.brand);
   if (id === "campaign") return Boolean(state.generation);
-  return Boolean(state.generation && state.composition.codeBundle);
+  return Boolean(state.generation && state.composition.designSource);
 }
 
-export function DashboardShell({ storageKey }: { storageKey: string }) {
+export function DashboardShell({ storageKey, profile }: { storageKey: string; profile: AccountProfile }) {
   const [state, setState] = useState<StudioState | null>(null);
   const [projects, setProjects] = useState<DashboardProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,20 +140,20 @@ export function DashboardShell({ storageKey }: { storageKey: string }) {
   const totalClaims = state?.brand?.claims.length ?? 0;
   const sourcePages = state?.scan?.pages.length ?? 0;
   const generatedPosts = state?.outputs.length ?? 0;
-  const hasCode = Boolean(state?.composition.codeBundle);
+  const hasDesign = Boolean(state?.composition.designSource);
 
   return (
     <div className="min-h-[100dvh] bg-canvas">
-      <DashboardHeader />
+      <DashboardHeader profile={profile} />
 
       <main id="dashboard-content" tabIndex={-1}>
         <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
           <section className="flex flex-col gap-6 border-b border-line pb-8 md:flex-row md:items-end md:justify-between">
             <div className="max-w-2xl">
-              <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-accent">
+              <p className="font-sans text-[10px] uppercase  text-accent">
                 Launch desk
               </p>
-              <h1 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.065em] sm:text-5xl">
+              <h1 className="mt-3 text-balance text-4xl font-semibold  sm:text-5xl">
                 Make the next launch easier.
               </h1>
               <p className="mt-4 max-w-xl text-sm leading-6 text-muted sm:text-base">
@@ -212,7 +187,10 @@ export function DashboardShell({ storageKey }: { storageKey: string }) {
                   <p className="mt-2 text-sm text-muted">Your projects are still saved. Retry to load them.</p>
                 </section>
               ) : (
-                <ProjectsSection projects={projects} />
+                <ProjectCampaignWorkspace
+                  projects={projects}
+                  onCampaignChange={() => setReloadKey((value) => value + 1)}
+                />
               )}
               {state && project && progress ? (
                 <SavedLaunchDashboard
@@ -223,7 +201,7 @@ export function DashboardShell({ storageKey }: { storageKey: string }) {
                   totalClaims={totalClaims}
                   sourcePages={sourcePages}
                   generatedPosts={generatedPosts}
-                  hasCode={hasCode}
+                  hasDesign={hasDesign}
                 />
               ) : (
                 <EmptyDashboard />
@@ -236,189 +214,7 @@ export function DashboardShell({ storageKey }: { storageKey: string }) {
   );
 }
 
-function ProjectsSection({ projects }: { projects: DashboardProject[] }) {
-  return (
-    <section className="mt-8" aria-labelledby="projects-heading">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-accent">
-            Workspace
-          </p>
-          <h2 id="projects-heading" className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
-            Your projects
-          </h2>
-        </div>
-        <Badge>{projects.filter((project) => project.status === "active").length} active projects</Badge>
-      </div>
-
-      {projects.length > 0 ? (
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-5 rounded-container border border-dashed border-line bg-surface-raised p-6">
-          <p className="text-sm font-semibold">No saved projects yet</p>
-          <p className="mt-2 max-w-xl text-xs leading-5 text-muted">
-            Sign in, scan a public product URL, and the launch workspace will appear here with its source pages and campaign count.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ProjectCard({ project }: { project: DashboardProject }) {
-  const [name, setName] = useState(project.name);
-  const [campaigns, setCampaigns] = useState(project.campaigns);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState(project.status);
-  const [deleted, setDeleted] = useState(false);
-  const sourceHost = project.publicUrl ? hostFromUrl(project.publicUrl) : "No source URL";
-
-  async function deleteProject() {
-    if (!window.confirm("Delete this project, its campaigns, and saved editor work? This cannot be undone.")) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Project could not be deleted.");
-      setDeleted(true);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Project could not be deleted.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function updateProject(input: { name?: string; status?: "active" | "archived" }) {
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await fetch(`/api/projects/${project.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const result = await response.json() as { project?: { name: string; status: "active" | "archived" }; error?: string };
-      if (!response.ok || !result.project) throw new Error(result.error || "Project could not be updated.");
-      setName(result.project.name);
-      setStatus(result.project.status);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Project could not be updated.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function updateCampaign(campaignId: string, input: { title?: string; status?: "archived" | "restored" }) {
-    const response = await fetch(`/api/projects/${project.id}/campaigns/${campaignId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    const result = await response.json() as { campaign?: { id: string; title: string; status: string }; error?: string };
-    if (!response.ok || !result.campaign) throw new Error(result.error || "Campaign could not be updated.");
-    setCampaigns((current) => current.map((campaign) => campaign.id === campaignId
-      ? { ...campaign, title: result.campaign!.title, status: result.campaign!.status }
-      : campaign));
-  }
-
-  if (deleted) return null;
-
-  return (
-    <article className="group rounded-container border border-line bg-surface-raised p-5 transition-colors hover:border-accent/50">
-      <div className="flex items-start justify-between gap-4">
-        <span className="flex size-10 items-center justify-center rounded-control bg-accent/10 text-accent">
-          <GlobeSimple size={19} />
-        </span>
-        <Badge className={status === "active" ? "border-accent/20 bg-accent/10 text-accent" : ""}>{status}</Badge>
-      </div>
-      <h3 className="mt-5 truncate text-lg font-semibold tracking-[-0.035em]" title={project.name}>
-        {name}
-      </h3>
-      <p className="mt-1 truncate text-xs text-muted" title={project.publicUrl ?? undefined}>
-        {sourceHost}
-      </p>
-      <div className="mt-5 grid grid-cols-2 gap-3 border-y border-line py-4">
-        <div>
-          <p className="font-sans text-lg font-semibold tracking-[-0.04em]">{project.sourcePageCount}</p>
-          <p className="mt-1 text-[10px] text-muted">Source pages</p>
-        </div>
-        <div>
-          <p className="font-sans text-lg font-semibold tracking-[-0.04em]">{campaigns.length}</p>
-          <p className="mt-1 text-[10px] text-muted">Campaigns</p>
-        </div>
-      </div>
-      {campaigns.length > 0 && (
-        <div className="mt-4 space-y-2" aria-label="Recent campaigns">
-          {campaigns.map((campaign) => (
-            <div key={campaign.id} className="flex items-center gap-2 rounded-control px-2 py-2 text-xs hover:bg-canvas">
-              {campaign.status === "archived" ? (
-                <>
-                  <span className="min-w-0 flex-1 truncate font-medium text-muted">{campaign.title || "Untitled campaign"} <span className="ml-1">(archived)</span></span>
-                  <button className="shrink-0 text-accent" onClick={() => void updateCampaign(campaign.id, { status: "restored" }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Campaign could not be restored."))}>Restore</button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href={`/studio?projectId=${encodeURIComponent(project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-3"
-                  >
-                    <span className="truncate font-medium">{campaign.title || "Untitled campaign"}</span>
-                    <span className="shrink-0 capitalize text-muted">{campaign.status}</span>
-                  </Link>
-                  <details className="relative">
-                    <summary className="cursor-pointer px-1 text-muted" aria-label={`Edit ${campaign.title || "campaign"}`}>•••</summary>
-                    <div className="absolute right-0 z-10 mt-2 w-48 rounded-control border border-line bg-surface-raised p-3 shadow-lg">
-                      <button className="block w-full py-1 text-left" onClick={() => {
-                        const title = window.prompt("Campaign name", campaign.title);
-                        if (title?.trim()) void updateCampaign(campaign.id, { title: title.trim() }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Campaign could not be updated."));
-                      }}>Rename campaign</button>
-                      <button className="block w-full py-1 text-left text-danger" onClick={() => {
-                        if (window.confirm("Archive this campaign? You can restore it later.")) void updateCampaign(campaign.id, { status: "archived" }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Campaign could not be archived."));
-                      }}>Archive campaign</button>
-                    </div>
-                  </details>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      <details className="mt-3 border-t border-line pt-3">
-        <summary className="cursor-pointer text-xs text-muted">Project settings</summary>
-        <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void updateProject({ name }); }}>
-          <input aria-label="Project name" maxLength={120} value={name} onChange={(event) => setName(event.target.value)} className="min-w-0 flex-1 rounded-control border border-line bg-canvas px-3 py-2 text-xs" />
-          <Button size="sm" variant="secondary" disabled={busy}>Save</Button>
-        </form>
-        <button className="mt-3 text-xs text-danger" disabled={busy} onClick={() => {
-          if (status === "archived") void updateProject({ status: "active" });
-          else if (window.confirm("Archive this project? Its data will remain saved.")) void updateProject({ status: "archived" });
-        }}>{status === "archived" ? "Restore project" : "Archive project"}</button>
-        <button className="ml-4 mt-3 text-xs text-danger" disabled={busy} onClick={() => void deleteProject()}>Delete project and its data</button>
-        {message && <p role="alert" className="mt-2 text-xs text-danger">{message}</p>}
-      </details>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-[10px] text-muted">{formatProjectDate(project.lastScannedAt)}</span>
-        <div className="flex gap-2">
-          {status === "active" && <Button asChild size="sm"><Link href={`/studio?projectId=${encodeURIComponent(project.id)}&newCampaign=1`}>New campaign</Link></Button>}
-          <Button asChild variant="secondary" size="sm">
-            <Link href={`/studio?projectId=${encodeURIComponent(project.id)}`}>
-              Open
-              <ArrowRight size={14} />
-            </Link>
-          </Button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function DashboardHeader() {
+function DashboardHeader({ profile }: { profile: AccountProfile }) {
   return (
     <header className="border-b border-line bg-canvas/95 backdrop-blur-xl">
       <a
@@ -438,26 +234,9 @@ function DashboardHeader() {
             <Link href="/studio" className="text-muted transition-colors hover:text-ink">
               Launch studio
             </Link>
-            <Link href="/settings/billing" className="text-muted transition-colors hover:text-ink">
-              Billing
-            </Link>
-            <Link href="/settings/account" className="text-muted transition-colors hover:text-ink">
-              Account
-            </Link>
           </nav>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <ThemeToggle />
-          <button
-            type="button"
-            className="rounded-control px-2 py-2 text-xs text-muted transition-colors hover:text-ink"
-            onClick={async () => {
-              await authClient.signOut();
-              window.location.assign("/");
-            }}
-          >
-            Sign out
-          </button>
           <Button asChild size="sm">
             <Link href="/studio?new=1">
               <Plus size={15} weight="bold" />
@@ -465,6 +244,7 @@ function DashboardHeader() {
               <span className="sm:hidden">New</span>
             </Link>
           </Button>
+          <AccountMenu profile={profile} />
         </div>
       </div>
     </header>
@@ -497,7 +277,7 @@ function SavedLaunchDashboard({
   totalClaims,
   sourcePages,
   generatedPosts,
-  hasCode,
+  hasDesign,
 }: {
   state: StudioState;
   project: NonNullable<StudioState["brand"]>;
@@ -506,7 +286,7 @@ function SavedLaunchDashboard({
   totalClaims: number;
   sourcePages: number;
   generatedPosts: number;
-  hasCode: boolean;
+  hasDesign: boolean;
 }) {
   const currentStage =
     STUDIO_STAGES.find((stage) => stage.id === state.step) ?? STUDIO_STAGES[0];
@@ -528,7 +308,7 @@ function SavedLaunchDashboard({
                 </Badge>
               )}
             </div>
-            <h2 className="mt-6 max-w-2xl text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
+            <h2 className="mt-6 max-w-2xl text-3xl font-semibold  sm:text-4xl">
               {project.projectName}
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-[#d2ddf5]">
@@ -578,10 +358,10 @@ function SavedLaunchDashboard({
           detail="Across your channels"
         />
         <StatCard
-          icon={Code}
-          label="Editable prototype"
-          value={hasCode ? "Ready" : "Next"}
-          detail={hasCode ? "HTML, CSS, and JS" : "Generate in the studio"}
+          icon={Sparkle}
+          label="AI-designed canvas"
+          value={hasDesign ? "Ready" : "Next"}
+          detail={hasDesign ? "Validated visual plan" : "Generate in the studio"}
         />
       </section>
 
@@ -611,10 +391,10 @@ function ProgressCard({
     <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Workflow
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+          <h2 className="mt-2 text-xl font-semibold ">
             {currentStage.label}
           </h2>
           <p className="mt-1 text-xs leading-5 text-muted">
@@ -691,7 +471,7 @@ function StatCard({
         </span>
         <TrendUp size={16} className="text-muted" />
       </div>
-          <p className="mt-5 font-sans text-2xl font-semibold tracking-[-0.04em]">
+          <p className="mt-5 font-sans text-2xl font-semibold ">
         {value}
       </p>
       <p className="mt-1 text-xs font-semibold">{label}</p>
@@ -723,10 +503,10 @@ function LaunchChecklist({ state }: { state: StudioState }) {
       icon: FileText,
     },
     {
-      label: "Creative prototype",
-      detail: state.composition.codeBundle ? "HTML, CSS, and JS ready" : "Design the launch visual",
-      done: Boolean(state.composition.codeBundle),
-      icon: Code,
+      label: "Creative design",
+      detail: state.composition.designSource ? "AI design plan ready" : "Design the launch visual",
+      done: Boolean(state.composition.designSource),
+      icon: Sparkle,
     },
   ];
 
@@ -734,10 +514,10 @@ function LaunchChecklist({ state }: { state: StudioState }) {
     <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Launch checklist
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+          <h2 className="mt-2 text-xl font-semibold ">
             Keep the story moving
           </h2>
         </div>
@@ -770,10 +550,10 @@ function PostsCard({ state }: { state: StudioState }) {
     <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Recent outputs
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+          <h2 className="mt-2 text-xl font-semibold ">
             Your campaign drafts
           </h2>
         </div>
@@ -821,10 +601,10 @@ function SourcesCard({ state }: { state: StudioState }) {
     <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Source library
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+          <h2 className="mt-2 text-xl font-semibold ">
             The facts behind the launch
           </h2>
         </div>
@@ -865,10 +645,10 @@ function BrandCard({ project }: { project: NonNullable<StudioState["brand"]> }) 
     <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Brand snapshot
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+          <h2 className="mt-2 text-xl font-semibold ">
             {project.projectName}
           </h2>
         </div>
@@ -922,7 +702,7 @@ function EmptyDashboard() {
           <Badge className="border-white/20 bg-white/10 text-[#d2ddf5]">
             First launch workspace
           </Badge>
-          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
+          <h2 className="mt-6 text-3xl font-semibold  sm:text-4xl">
             Start with the product you already built.
           </h2>
           <p className="mt-4 text-sm leading-6 text-[#d2ddf5]">
@@ -939,10 +719,10 @@ function EmptyDashboard() {
       </article>
 
       <article className="rounded-container border border-line bg-surface-raised p-6 sm:p-8">
-        <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">
+        <p className="font-sans text-[10px] uppercase  text-muted">
           Your workflow
         </p>
-        <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">
+        <h2 className="mt-3 text-2xl font-semibold ">
           Four focused steps
         </h2>
         <div className="mt-6 space-y-4">

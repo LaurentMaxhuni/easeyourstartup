@@ -66,7 +66,7 @@ describe("POST /api/ai/design", () => {
       new Request("http://example.test/api/ai/design", { method: "POST" }),
     );
     const body = (await response.json()) as {
-      code?: { html?: string; css?: string; javascript?: string };
+      design?: unknown;
       mode?: string;
       warning?: string;
       error?: string;
@@ -74,20 +74,23 @@ describe("POST /api/ai/design", () => {
 
     expect(response.status).toBe(502);
     expect(body.mode).toBeUndefined();
-    expect(body.code).toBeUndefined();
+    expect(body.design).toBeUndefined();
     expect(body.error).toMatch(/failed temporarily/i);
   });
 
-  it("returns the provider's validated design and code bundle together", async () => {
-    const providerCode = {
-      html: '<main data-launch-preview>AI prototype</main>',
-      css: "main { color: #f4f3ef; }",
-      javascript:
-        'const preview = document.querySelector("[data-launch-preview]");',
+  it("returns the AI design plan and provider without raw model code", async () => {
+    const providerDesign = {
+      templateId: DEMO_COMPOSITION.templateId,
+      imageMode: DEMO_COMPOSITION.imageMode,
+      screenshotCrop: DEMO_COMPOSITION.screenshotCrop,
+      tokens: DEMO_COMPOSITION.tokens,
+      text: DEMO_COMPOSITION.text,
+      icon: DEMO_COMPOSITION.icon,
+      graphic: DEMO_COMPOSITION.graphic,
+      elements: [],
     };
     mocks.designCreativeComposition.mockResolvedValue({
-      design: { ...DEMO_COMPOSITION, elements: [] },
-      code: providerCode,
+      design: providerDesign,
       provider: "openrouter",
     });
 
@@ -95,14 +98,16 @@ describe("POST /api/ai/design", () => {
       new Request("http://example.test/api/ai/design", { method: "POST" }),
     );
     const body = (await response.json()) as {
-      code?: typeof providerCode;
+      design?: typeof providerDesign;
+      code?: unknown;
       mode?: string;
       provider?: string;
     };
 
     expect(response.status).toBe(200);
     expect(body.mode).toBe("ai");
-    expect(body.code).toEqual(providerCode);
+    expect(body.design).toEqual(providerDesign);
+    expect(body.code).toBeUndefined();
     expect(body.provider).toBe("openrouter");
   });
 

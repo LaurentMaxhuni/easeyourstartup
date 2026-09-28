@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f4f3ef;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="33"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="el-01-beyond-blank-page"
+        class="scene"
+        data-composition-id="01-beyond-blank-page"
+        data-composition-src="compositions/frames/01-beyond-blank-page.html"
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+      ></div>
+      <audio
+        id="el-01-beyond-blank-page-voice"
+        src="assets/voice/01.wav"
+        data-start="0"
+        data-duration="4"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-02-turn-every-ship-into-a-campaign"
+        class="scene"
+        data-composition-id="02-turn-every-ship-into-a-campaign"
+        data-composition-src="compositions/frames/02-turn-every-ship-into-a-campaign.html"
+        data-start="4"
+        data-duration="4.4"
+        data-track-index="1"
+      ></div>
+      <audio
+        id="el-02-turn-every-ship-into-a-campaign-voice"
+        src="assets/voice/02.wav"
+        data-start="4"
+        data-duration="4"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-03-start-with-the-source"
+        class="scene"
+        data-composition-id="03-start-with-the-source"
+        data-composition-src="compositions/frames/03-start-with-the-source.html"
+        data-start="8"
+        data-duration="5.5"
+        data-track-index="0"
+      ></div>
+      <audio
+        id="el-03-start-with-the-source-voice"
+        src="assets/voice/03.wav"
+        data-start="8"
+        data-duration="5"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-04-meet-founders-where-they-publish"
+        class="scene"
+        data-composition-id="04-meet-founders-where-they-publish"
+        data-composition-src="compositions/frames/04-meet-founders-where-they-publish.html"
+        data-start="13"
+        data-duration="5.5"
+        data-track-index="1"
+      ></div>
+      <audio
+        id="el-04-meet-founders-where-they-publish-voice"
+        src="assets/voice/04.wav"
+        data-start="13"
+        data-duration="5"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-05-keep-the-product-real"
+        class="scene"
+        data-composition-id="05-keep-the-product-real"
+        data-composition-src="compositions/frames/05-keep-the-product-real.html"
+        data-start="18"
+        data-duration="5.5"
+        data-track-index="0"
+      ></div>
+      <audio
+        id="el-05-keep-the-product-real-voice"
+        src="assets/voice/05.wav"
+        data-start="18"
+        data-duration="5"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-06-review-and-export"
+        class="scene"
+        data-composition-id="06-review-and-export"
+        data-composition-src="compositions/frames/06-review-and-export.html"
+        data-start="23"
+        data-duration="5.4"
+        data-track-index="1"
+      ></div>
+      <audio
+        id="el-06-review-and-export-voice"
+        src="assets/voice/06.wav"
+        data-start="23"
+        data-duration="5"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <div
+        id="el-07-keep-shipping"
+        class="scene"
+        data-composition-id="07-keep-shipping"
+        data-composition-src="compositions/frames/07-keep-shipping.html"
+        data-start="28"
+        data-duration="5"
+        data-track-index="0"
+      ></div>
+      <audio
+        id="el-07-keep-shipping-voice"
+        src="assets/voice/07.wav"
+        data-start="28"
+        data-duration="5"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
+
+      <!-- BGM -->
+      <audio
+        id="el-bgm"
+        src="assets/bgm/track.wav"
+        data-start="0"
+        data-duration="33"
+        data-track-index="11"
+        data-volume="0.12"
+      ></audio>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      // ── frame transitions (injected by transitions.mjs) ──
+      (function () { var tl = window.__timelines["main"];
+        tl.to("#el-01-beyond-blank-page", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 4);
+        tl.fromTo("#el-02-turn-every-ship-into-a-campaign", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 4);
+        tl.to("#el-02-turn-every-ship-into-a-campaign", { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 0.4, ease: "power3.in" }, 8);
+        tl.fromTo("#el-03-start-with-the-source", { scale: 0.5, opacity: 0, filter: "blur(8px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, 8);
+        tl.to("#el-03-start-with-the-source", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 13);
+        tl.fromTo("#el-04-meet-founders-where-they-publish", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 13);
+        tl.to("#el-04-meet-founders-where-they-publish", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 18);
+        tl.fromTo("#el-05-keep-the-product-real", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 18);
+        tl.to("#el-05-keep-the-product-real", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 23);
+        tl.fromTo("#el-06-review-and-export", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 23);
+        tl.to("#el-06-review-and-export", { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 0.4, ease: "power3.in" }, 28);
+        tl.fromTo("#el-07-keep-shipping", { scale: 0.5, opacity: 0, filter: "blur(8px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, 28);
+        tl.to({}, { duration: 33 }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)
+      })();
+    </script>
+  </body>
+</html>

@@ -38,8 +38,8 @@ export default function HelpPage() {
     <>
       <SiteHeader />
       <main id="main-content" tabIndex={-1} className="mx-auto min-h-[70vh] max-w-4xl px-4 py-16 sm:px-6 lg:py-24">
-        <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-accent">Support</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.06em] sm:text-5xl">Help with your launch</h1>
+        <p className="font-sans text-[10px] uppercase  text-accent">Support</p>
+        <h1 className="mt-3 text-4xl font-semibold  sm:text-5xl">Help with your launch</h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted">Answers about scanning, saving work, usage, exports, and subscriptions.</p>
         <div className="mt-10 divide-y divide-line border-y border-line">
           {helpItems.map((item) => (

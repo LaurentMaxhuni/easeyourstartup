@@ -15,6 +15,11 @@ import {
 type FormMode = "sign-in" | "sign-up";
 type FormStatus = "idle" | "loading" | "error" | "info";
 
+function getPostAuthenticationPath(nextPath: string) {
+  const search = new URLSearchParams({ next: nextPath });
+  return "/onboarding?" + search.toString();
+}
+
 export function SignInForm({ nextPath }: { nextPath: string }) {
   const [mode, setMode] = useState<FormMode>("sign-in");
   const [name, setName] = useState("");
@@ -44,7 +49,7 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
               email,
               password,
               name: name.trim(),
-              callbackURL: nextPath,
+              callbackURL: getPostAuthenticationPath(nextPath),
             });
       if (result.error) throw new Error(result.error.message);
 
@@ -61,7 +66,7 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
         return;
       }
 
-      redirectAfterAuthentication(nextPath);
+      redirectAfterAuthentication(getPostAuthenticationPath(nextPath));
     } catch (error) {
       setStatus("error");
       setMessage(
@@ -76,7 +81,7 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
     try {
       const result = await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${window.location.origin}${nextPath}`,
+        callbackURL: `${window.location.origin}${getPostAuthenticationPath(nextPath)}`,
       });
       if (result.error) throw new Error(result.error.message);
       const providerUrl = result.data?.url;
@@ -216,7 +221,7 @@ export function SignInForm({ nextPath }: { nextPath: string }) {
           onClick={async () => {
             setStatus("loading");
             try {
-              const result = await authClient.sendVerificationEmail({ email, callbackURL: `${window.location.origin}${nextPath}` });
+              const result = await authClient.sendVerificationEmail({ email, callbackURL: `${window.location.origin}${getPostAuthenticationPath(nextPath)}` });
               if (result.error) throw new Error(result.error.message);
               setStatus("info");
               setMessage("Verification email sent. Check your inbox.");

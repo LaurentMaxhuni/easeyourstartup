@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { AuthenticationUnavailable } from "@/components/auth/authentication-unavailable";
 import { StudioShell } from "@/components/studio/studio-shell";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { getAuthenticatedUser } from "@/lib/auth/server";
+import { userNeedsOnboarding } from "@/lib/server/onboarding";
 
 export const metadata: Metadata = {
   title: "Launch studio",
@@ -25,7 +27,13 @@ export default async function StudioPage({
   const nextPath = `/studio${query.toString() ? `?${query}` : ""}`;
   const auth = await getAuthenticatedUser();
   if (!auth.user) {
+    if (auth.status === 503) {
+      return <AuthenticationUnavailable retryHref={nextPath} />;
+    }
     redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  }
+  if (await userNeedsOnboarding(auth.user.id)) {
+    redirect(`/onboarding?next=${encodeURIComponent(nextPath)}`);
   }
 
   return (
@@ -36,7 +44,14 @@ export default async function StudioPage({
         </div>
       }
     >
-      <StudioShell initialAuthenticated />
+      <StudioShell
+        initialAuthenticated
+        profile={{
+          name: auth.user.name ?? null,
+          email: auth.user.email ?? null,
+          image: auth.user.image ?? null,
+        }}
+      />
     </Suspense>
   );
 }

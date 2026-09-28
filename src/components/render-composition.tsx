@@ -206,8 +206,6 @@ function RenderLayeredElement({
   if (element.hidden) return null;
   const effectClass = creativeLayerEffectClass(element);
   const shadow = creativeLayerShadow(element, composition.tokens.accent);
-  const bodyFont = composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily;
-  const headingFont = composition.tokens.headingFontFamily ?? composition.tokens.fontFamily;
   const sourceRadius = composition.tokens.radius ?? 8;
   const fontSize = Math.max(
     8,
@@ -242,29 +240,28 @@ function RenderLayeredElement({
               overflow: "hidden",
               whiteSpace: "pre-wrap",
               overflowWrap: "anywhere",
-              color: element.color ?? composition.tokens.foreground,
+              color:
+                element.color ??
+                (element.textRole === "cta"
+                  ? composition.tokens.background
+                  : composition.tokens.foreground),
               background:
                 element.textRole === "cta"
-                  ? composition.tokens.foreground
+                  ? element.fill ?? composition.tokens.foreground
                   : "transparent",
-              fontFamily:
-                element.textRole === "headline" ? headingFont : bodyFont,
               fontSize,
               fontWeight: element.fontWeight ?? 450,
-              lineHeight: element.textRole === "headline" ? 0.96 : 1.2,
+              lineHeight:
+                element.lineHeight ??
+                (element.textRole === "headline" ? 0.96 : 1.2),
               textAlign: element.align ?? "left",
               borderRadius:
                 element.textRole === "cta"
                   ? `${element.radius ?? sourceRadius}px`
                   : undefined,
-              letterSpacing:
-                element.textRole === "eyebrow"
-                  ? "0.08em"
-                  : element.textRole === "headline"
-                    ? "-0.035em"
-                    : "normal",
               textTransform:
-                element.textRole === "eyebrow" ? "uppercase" : undefined,
+                element.textTransform ??
+                (element.textRole === "eyebrow" ? "uppercase" : undefined),
               display: element.textRole === "cta" ? "flex" : undefined,
               alignItems: element.textRole === "cta" ? "center" : undefined,
               justifyContent:
@@ -293,16 +290,12 @@ function RenderLayeredElement({
           >
             <Image
               src={element.src}
-              alt=""
+              alt={element.alt ?? ""}
               fill
               unoptimized
               style={{
-                objectFit: "cover",
-                objectPosition:
-                  String(composition.screenshotCrop.x) +
-                  "% " +
-                  String(composition.screenshotCrop.y) +
-                  "%",
+                objectFit: element.imageFit ?? "cover",
+                objectPosition: `${element.imagePositionX ?? composition.screenshotCrop.x}% ${element.imagePositionY ?? composition.screenshotCrop.y}%`,
               }}
             />
           </div>
@@ -378,11 +371,13 @@ function RenderLayeredComposition({
         color: composition.tokens.foreground,
       }}
     >
-      <CreativeGraphic
-        name={composition.graphic}
-        color={composition.tokens.foreground}
-      />
-      {!hasRichBackdrop && (
+      {composition.designSource !== "ai" && (
+        <CreativeGraphic
+          name={composition.graphic}
+          color={composition.tokens.foreground}
+        />
+      )}
+      {composition.designSource !== "ai" && !hasRichBackdrop && (
         <div
           style={{
             position: "absolute",
@@ -422,7 +417,7 @@ export function RenderComposition({
 }: {
   composition: CreativeComposition;
 }) {
-  if (composition.elements?.length) {
+  if (composition.designSource === "ai" || composition.elements?.length) {
     return <RenderLayeredComposition composition={composition} />;
   }
 
@@ -434,8 +429,6 @@ export function RenderComposition({
   const borderWidth = Math.max(5, composition.output.width * 0.006);
   const sourceRadius = composition.tokens.radius ?? 8;
   const sourceSpacing = composition.tokens.spacing ?? 16;
-  const bodyFont = composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily;
-  const headingFont = composition.tokens.headingFontFamily ?? composition.tokens.fontFamily;
   const deviceContentWidth = composition.output.width * 0.86;
   const deviceTypography = {
     eyebrow: Math.max(8, deviceContentWidth * 0.02),
@@ -460,7 +453,6 @@ export function RenderComposition({
         color: composition.tokens.foreground,
         position: "relative",
         overflow: "hidden",
-        fontFamily: bodyFont,
         display: "flex",
         flexDirection: devices ? "column" : split ? "row" : "column",
         gap: devices ? `${Math.max(2, sourceSpacing / 8)}%` : undefined,
@@ -523,7 +515,6 @@ export function RenderComposition({
                 fontSize: devices
                   ? deviceTypography.eyebrow
                   : Math.max(13, composition.output.width * 0.012),
-                letterSpacing: "0.16em",
                 textTransform: "uppercase",
                 opacity: 0.75,
               }}
@@ -539,8 +530,6 @@ export function RenderComposition({
                 ? deviceTypography.headline
                 : Math.max(42, composition.output.width * 0.065),
               lineHeight: 0.95,
-              letterSpacing: "-0.035em",
-              fontFamily: headingFont,
             }}
           >
             {composition.text.headline}
@@ -607,7 +596,6 @@ export function RenderComposition({
               fontSize: devices
                 ? deviceTypography.footer
                 : Math.max(10, composition.output.width * 0.009),
-              letterSpacing: "0.08em",
               textTransform: "uppercase",
               opacity: 0.6,
             }}
@@ -677,7 +665,6 @@ export function RenderComposition({
           background: composition.tokens.foreground,
           color: composition.tokens.background,
           fontSize: 10,
-          letterSpacing: "0.12em",
           textTransform: "uppercase",
         }}
       >

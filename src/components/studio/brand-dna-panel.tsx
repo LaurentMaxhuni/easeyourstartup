@@ -31,6 +31,14 @@ export function BrandDnaPanel({
   const approvedCount = brand.claims.filter(
     (claim) => claim.approvalState !== "rejected",
   ).length;
+  const interpretationGroups = brand.brandIntelligence
+    ? [
+        { title: "Audience", items: [brand.brandIntelligence.audience] },
+        { title: "Pain points", items: brand.brandIntelligence.painPoints },
+        { title: "Benefits", items: brand.brandIntelligence.benefits },
+        { title: "Differentiators", items: brand.brandIntelligence.differentiators },
+      ]
+    : [];
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6 lg:py-14">
@@ -46,7 +54,7 @@ export function BrandDnaPanel({
               <Badge>{scan.curation.mode === "ai" ? "AI curated" : "Rules curated"}</Badge>
             )}
           </div>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-semibold  sm:text-5xl">
             Source profile, ready to use
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
@@ -69,6 +77,47 @@ export function BrandDnaPanel({
             </p>
           ))}
         </div>
+      )}
+
+      {brand.brandIntelligence && (
+        <section
+          aria-labelledby="brand-interpretation-title"
+          className="mt-6 rounded-container border border-line bg-surface-raised p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="brand-interpretation-title" className="text-lg font-semibold">
+                Brand interpretation
+              </h2>
+              <p className="mt-1 text-xs text-muted">
+                Guidance inferred from the scanned pages; these points are not verified product facts.
+              </p>
+            </div>
+            <Badge>AI guidance · not evidence</Badge>
+          </div>
+          <p className="mt-4 max-w-4xl text-sm leading-6">
+            {brand.brandIntelligence.productPurpose}
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {interpretationGroups.map(({ title, items }) => (
+              <div key={title} className="rounded-control border border-line bg-canvas p-3">
+                <h3 className="text-[10px] font-semibold uppercase  text-muted">
+                  {title}
+                </h3>
+                <ul className="mt-2 space-y-1 text-xs leading-5">
+                  {items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          {brand.brandIntelligence.unsupportedClaimsToAvoid.length > 0 && (
+            <p className="mt-4 border-t border-line pt-3 text-xs leading-5 text-muted">
+              Claims to avoid: {brand.brandIntelligence.unsupportedClaimsToAvoid.join(" · ")}
+            </p>
+          )}
+        </section>
       )}
 
       <section className="mt-6" aria-labelledby="readiness-title">
@@ -198,11 +247,11 @@ export function BrandDnaPanel({
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted">
                   <div className="rounded-control border border-line bg-canvas p-3">
-                    <span className="block text-[10px] uppercase tracking-[0.1em]">Shape</span>
+                    <span className="block text-[10px] uppercase ">Shape</span>
                     <span className="mt-1 block text-ink">{brand.visualSystem.radius}px corners · {brand.visualSystem.spacing}px rhythm</span>
                   </div>
                   <div className="rounded-control border border-line bg-canvas p-3">
-                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.1em]"><TextAa aria-hidden="true" size={13} /> Type</span>
+                    <span className="flex items-center gap-1 text-[10px] uppercase "><TextAa aria-hidden="true" size={13} /> Type</span>
                     <span className="mt-1 block text-ink">{brand.visualSystem.headingFont} + {brand.visualSystem.bodyFont}</span>
                   </div>
                 </div>
@@ -251,7 +300,7 @@ export function BrandDnaPanel({
             <h2 id="claims-title" className="text-lg font-semibold">
               Kept source facts
             </h2>
-            <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-muted">
+            <span className="font-sans text-[11px] uppercase  text-muted">
               {approvedCount} kept for copy
             </span>
           </div>
@@ -274,7 +323,7 @@ export function BrandDnaPanel({
                   <CheckCircle className="mt-0.5 shrink-0 text-accent" size={18} weight="fill" />
                   <div>
                     <p className="text-sm font-semibold leading-6">{claim.text}</p>
-                    <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-accent">Kept for campaign copy</p>
+                    <p className="mt-1 text-[11px] uppercase  text-accent">Kept for campaign copy</p>
                   </div>
                 </div>
                 <blockquote className="mt-3 border-l-2 border-line pl-3 text-xs leading-5 text-muted">

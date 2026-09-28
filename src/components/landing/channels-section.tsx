@@ -7,10 +7,10 @@ export function ChannelsSection() {
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
         <Reveal className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
           <div>
-            <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+            <p className="font-sans text-xs uppercase  text-accent">
               Start where founders publish
             </p>
-            <h2 className="mt-5 max-w-3xl text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
+            <h2 className="mt-5 max-w-3xl text-balance text-4xl font-semibold  sm:text-6xl">
               Start with the channels that move a launch.
             </h2>
           </div>

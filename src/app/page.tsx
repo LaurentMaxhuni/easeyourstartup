@@ -18,10 +18,10 @@ export default async function HomePage() {
         <section className="hero-surface noise overflow-hidden border-b border-line">
           <div className="mx-auto grid min-h-[calc(100svh-64px)] max-w-[1440px] items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:px-8 lg:py-12">
             <Reveal>
-              <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+              <p className="font-sans text-xs uppercase  text-accent">
                 Launch campaigns for every product update
               </p>
-              <h1 className="mt-5 max-w-3xl text-[clamp(2.5rem,4.8vw,4.2rem)] font-semibold leading-[.95] tracking-[-0.07em]">
+              <h1 className="mt-5 max-w-3xl text-[clamp(2.5rem,4.8vw,4.2rem)] font-semibold leading-[.95] ">
                 <span className="block">Paste your URL.</span>
                 <span className="block">Leave with a launch kit.</span>
               </h1>

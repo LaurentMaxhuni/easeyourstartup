@@ -3,8 +3,12 @@ import { List, X } from "@phosphor-icons/react/dist/ssr";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { AccountMenu } from "@/components/account/account-avatar-link";
+import { getCurrentUser } from "@/lib/auth/server";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const user = await getCurrentUser();
+
   return (
     <header className="relative sticky top-0 z-50 border-b border-line/80 bg-canvas/90 backdrop-blur-xl">
       <a
@@ -47,7 +51,7 @@ export function SiteHeader() {
               />
             </summary>
             <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[60] w-64 rounded-container border border-line bg-surface-raised p-2 shadow-[0_20px_50px_rgba(23,25,23,0.14)]">
-              <p className="px-3 py-2 font-sans text-[10px] uppercase tracking-[0.16em] text-muted">
+              <p className="px-3 py-2 font-sans text-[10px] uppercase  text-muted">
                 Explore EaseYourStartup
               </p>
               <nav aria-label="Mobile navigation" className="grid gap-1">
@@ -70,16 +74,30 @@ export function SiteHeader() {
                   Pricing
                 </Link>
               </nav>
-              <div className="mt-2 border-t border-line pt-2">
-                <ThemeToggle />
-              </div>
+              {!user ? (
+                <div className="mt-2 border-t border-line pt-2">
+                  <ThemeToggle />
+                </div>
+              ) : null}
             </div>
           </details>
-          <div className="hidden md:block">
-            <ThemeToggle />
-          </div>
+          {user ? (
+            <AccountMenu
+              profile={{
+                name: user.name ?? null,
+                email: user.email ?? null,
+                image: user.image ?? null,
+              }}
+            />
+          ) : (
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
+          )}
           <Button asChild size="sm" className="px-2 text-[11px] sm:px-3 sm:text-xs">
-            <Link href="/">
+            <Link
+              href={user ? "/studio?new=1" : "/login?next=%2Fstudio%3Fnew%3D1"}
+            >
               <span className="sm:hidden">Scan</span>
               <span className="hidden sm:inline">Free scan</span>
             </Link>

@@ -103,17 +103,38 @@ label:has(input[type="file"]) {
   cursor: pointer;
 }
 
-button:not(:disabled):active {
-  transform: translateY(1px) scale(0.985);
-}
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled),
+  a[href],
+  input,
+  textarea,
+  select {
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 200ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      box-shadow 200ms ease,
+      opacity 200ms ease;
+  }
 
-input,
-textarea,
-select {
-  transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease;
+  button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(0) scale(0.99);
+  }
+
+  a[href]:active {
+    opacity: 0.78;
+  }
+
+  input:not(:disabled):hover,
+  textarea:not(:disabled):hover,
+  select:not(:disabled):hover {
+    border-color: var(--muted);
+  }
 }
 
 button:focus-visible,
@@ -181,14 +202,15 @@ summary:focus-visible {
   .creative-layer-effect-hover,
   .creative-layer-effect-click {
     animation: none;
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .creative-layer-effect-hover:hover {
-    animation: creative-layer-pulse 1.8s ease-in-out infinite;
+    transform: scale(1.02);
   }
 
   .creative-layer-effect-click:active {
-    animation: creative-layer-pulse 420ms ease-out;
+    transform: scale(0.98);
   }
 }
 
@@ -205,12 +227,10 @@ summary:focus-visible {
 @keyframes creative-layer-pulse {
   0%,
   100% {
-    opacity: 0.92;
     transform: scale(1);
   }
   50% {
-    opacity: 1;
-    transform: scale(1.035);
+    transform: scale(1.02);
   }
 }
 
@@ -253,5 +273,10 @@ summary:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  button:not(:disabled),
+  a[href] {
+    transform: none !important;
   }
 }

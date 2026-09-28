@@ -146,12 +146,12 @@ export function ChannelOutputs({
           compact ? "min-h-[280px] p-3 text-xs leading-6" : "min-h-[420px] p-5",
         )}
       />
-      <p className="mt-2 text-right font-sans text-[10px] uppercase tracking-[0.1em] text-muted">
+      <p className="mt-2 text-right font-sans text-[10px] uppercase  text-muted">
         {output.primaryCopy.length} characters
       </p>
       {output.linkedClaimIds.length > 0 && (
         <div className="mt-3 space-y-2">
-          <p className="font-sans text-[10px] uppercase tracking-[0.1em] text-muted">
+          <p className="font-sans text-[10px] uppercase  text-muted">
             Source evidence
           </p>
           {output.linkedClaimIds.map((claimId) => {
@@ -168,7 +168,7 @@ export function ChannelOutputs({
                 <span className="mt-1 block truncate">{new URL(claim.sourceUrl).hostname}</span>
               </a>
             ) : (
-              <Badge key={claimId} className="normal-case tracking-normal">
+              <Badge key={claimId} className="normal-case ">
                 Source fact unavailable for {claimId.slice(0, 8)}
               </Badge>
             );

@@ -16,8 +16,8 @@ export default function CheckoutPage() {
         <Link href="/pricing" className="text-sm text-muted underline underline-offset-4">Back to pricing</Link>
       </div>
       <section className="my-auto py-16">
-        <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-accent">Secure payment</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em]">Start EaseYourStartup Pro</h1>
+        <p className="font-sans text-[10px] uppercase  text-accent">Secure payment</p>
+        <h1 className="mt-3 text-3xl font-semibold ">Start EaseYourStartup Pro</h1>
         <p className="mt-3 mb-7 text-sm leading-6 text-muted">Complete your subscription in Paddle’s secure checkout.</p>
         <CheckoutClient />
       </section>

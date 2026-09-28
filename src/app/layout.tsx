@@ -1,11 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit } from "next/font/google";
+import localFont from "next/font/local";
 import "@/app/globals.css";
 
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
+const outfitLatin = localFont({
+  src: "./fonts/outfit-latin.woff2",
+  weight: "100 900",
+  style: "normal",
+  variable: "--font-outfit-latin",
   display: "swap",
+  adjustFontFallback: false,
+});
+
+const outfitLatinExt = localFont({
+  src: "./fonts/outfit-latin-ext.woff2",
+  weight: "100 900",
+  style: "normal",
+  variable: "--font-outfit-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 export const dynamic = "force-dynamic";
@@ -51,7 +64,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={outfit.variable}
+      className={`${outfitLatin.variable} ${outfitLatinExt.variable}`}
+      style={{
+        "--font-outfit":
+          "var(--font-outfit-latin), var(--font-outfit-latin-ext), sans-serif",
+      } as React.CSSProperties}
       suppressHydrationWarning
     >
       <body>{children}</body>

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { AccountProfile } from "@/components/account/account-avatar-link";
 import {
-  creativeCodeBundleSchema,
   creativeDesignResultSchema,
   generateJobResultSchema,
   scanJobResultSchema,
@@ -27,6 +27,10 @@ import {
   type CampaignDraft,
 } from "@/components/studio/campaign-builder";
 import { CreativeWorkspace } from "@/components/studio/creative-workspace";
+import {
+  GenerationProgressScreen,
+  type GenerationScreenStage,
+} from "@/components/studio/generation-progress-screen";
 import { ScanPanel } from "@/components/studio/scan-panel";
 import { StudioContextBar } from "@/components/studio/studio-context-bar";
 import {
@@ -36,10 +40,17 @@ import {
 import { StudioHeader } from "@/components/studio/studio-header";
 import { toExportableImageUrl } from "@/lib/studio-export";
 import { applyCreativeDesign } from "@/lib/studio/editor-state";
-import { createDeterministicCreativeCodeBundle as createFallbackCodeBundle } from "@/lib/creative-code";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
+import {
+  CAMPAIGN_JOB_MAX_POLL_DURATION_MS,
+  isRetryableJobPollingError,
+  jobError,
+  waitForCompletedJob,
+  type DurableJob,
+} from "@/lib/studio/job-polling";
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
+import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 
 const EMPTY_DRAFT: CampaignDraft = {
   kind: "launch",
@@ -71,8 +82,7 @@ function blankComposition(): CreativeComposition {
     screenshotUrl: EMPTY_CANVAS_IMAGE,
     mockups: { desktop: EMPTY_CANVAS_IMAGE, tablet: EMPTY_CANVAS_IMAGE, phone: EMPTY_CANVAS_IMAGE },
     elements: undefined,
-    codeBundle: undefined,
-    codeSource: undefined,
+    designSource: undefined,
     text: {
       eyebrow: "",
       headline: "Your launch story",
@@ -178,18 +188,6 @@ async function migrateEditorImages(state: StudioState) {
   };
 }
 
-function normalizeUrl(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  try {
-    return new URL(
-      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
-    ).toString();
-  } catch {
-    return "";
-  }
-}
-
 type StudioSaveStatus = "idle" | "saving" | "saved" | "local" | "error";
 type AutoDesignStatus = "idle" | "loading" | "ai" | "error";
 type StudioPlan = "free" | "pro";
@@ -213,13 +211,6 @@ type StudioEventProperties = {
   durationMs?: number;
   mode?: "durable" | "direct" | "demo";
   format?: "png" | "zip";
-};
-type DurableJob = {
-  id: string;
-  status: "queued" | "scanning" | "analyzing" | "generating" | "rendering" | "completed" | "failed";
-  progress: number;
-  result?: unknown;
-  error_message?: string | null;
 };
 type RecoverableJob = {
   id: string;
@@ -258,30 +249,6 @@ function projectNameForUrl(url: string) {
   }
 }
 
-function jobError(value: unknown, fallback: string) {
-  if (!value || typeof value !== "object") return fallback;
-  const error = (value as { error?: unknown }).error;
-  return typeof error === "string" && error.length > 0 ? error : fallback;
-}
-
-async function waitForCompletedJob(jobId: string) {
-  for (let attempt = 0; attempt < 180; attempt += 1) {
-    if (attempt > 0) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
-    }
-    const response = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-    const data = (await response.json()) as { job?: DurableJob; error?: string };
-    if (!response.ok) throw new Error(jobError(data, "Job status could not be loaded."));
-    const job = data.job;
-    if (!job) throw new Error("Job status did not include a job record.");
-    if (job.status === "completed") return job.result;
-    if (job.status === "failed") {
-      throw new Error(job.error_message || "The background job failed. Try again.");
-    }
-  }
-  throw new Error("The job is taking longer than expected. Your progress is saved; try reopening the studio shortly.");
-}
-
 async function postWithNetworkRetry(url: string, init: RequestInit) {
   try {
     return await fetch(url, init);
@@ -297,13 +264,10 @@ function applyCreativeDirection(
 ): CreativeComposition {
   return {
     ...composition,
-    templateId: direction.layout,
-    icon: direction.icon,
-    graphic: direction.graphic,
-    imageMode: direction.imageMode,
+    templateId: "custom",
+    graphic: "none",
     elements: undefined,
-    codeBundle: undefined,
-    codeSource: undefined,
+    designSource: undefined,
     text: {
       ...composition.text,
       eyebrow: direction.eyebrow,
@@ -316,7 +280,13 @@ function applyCreativeDirection(
   };
 }
 
-export function StudioShell({ initialAuthenticated = true }: { initialAuthenticated?: boolean }) {
+export function StudioShell({
+  initialAuthenticated = true,
+  profile,
+}: {
+  initialAuthenticated?: boolean;
+  profile: AccountProfile;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const startFresh = searchParams.get("new") === "1";
@@ -358,6 +328,8 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     "idle" | "loading" | "error"
   >("idle");
   const [generateError, setGenerateError] = useState("");
+  const [generationScreenStage, setGenerationScreenStage] =
+    useState<GenerationScreenStage>("preparing");
   const [uploadStatus, setUploadStatus] = useState<
     "idle" | "loading" | "error"
   >("idle");
@@ -683,7 +655,23 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     if (!hydrated || !jobId || pollingJobId.current === jobId) return;
     let cancelled = false;
     pollingJobId.current = jobId;
-    void waitForCompletedJob(jobId)
+    void waitForCompletedJob(
+      jobId,
+      jobType === "generate"
+        ? (job) => {
+            setGenerationScreenStage(
+              job.status === "queued"
+                ? "queued"
+                : job.status === "completed"
+                  ? "visuals"
+                  : "writing",
+            );
+          }
+        : undefined,
+      jobType === "generate" || jobType === "regenerate"
+        ? CAMPAIGN_JOB_MAX_POLL_DURATION_MS
+        : undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         if (jobType === "export") {
@@ -747,7 +735,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
           setGenerateStatus("error");
           setGenerateError(error instanceof Error ? error.message : "Campaign generation failed.");
         }
-        if (!(error instanceof Error) || !error.message.includes("taking longer")) {
+        if (jobType !== "generate" || !isRetryableJobPollingError(error)) {
           setJobId(null);
           setJobType(null);
         }
@@ -849,8 +837,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     setComposition((current) => ({
       ...current,
       elements: undefined,
-      codeBundle: undefined,
-      codeSource: undefined,
+      designSource: undefined,
       screenshotUrl: scanImage,
       mockups: {
         desktop: scanImage,
@@ -931,7 +918,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
   applyScanResultRef.current = applyScanResult;
 
   const runScan = useCallback(async (url?: string) => {
-    const normalized = normalizeUrl(url ?? "");
+    const normalized = normalizePublicWebsiteUrl(url ?? "");
     if (!normalized) {
       setScanStatus("error");
       setScanError("Enter a valid public HTTP or HTTPS website.");
@@ -1076,6 +1063,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     campaignDraft: CampaignDraft,
     requestedRequestId?: number,
     targetCampaignId: string | null = campaignId,
+    copyCandidates: string[] = [],
   ) {
     const requestId = requestedRequestId ?? autoDesignRequest.current + 1;
     autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
@@ -1091,21 +1079,24 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
           .filter(Boolean)
           .join("\n"),
         approvedFacts: profile.claims
-          .filter((claim) => claim.approvalState !== "rejected")
+          .filter((claim) => claim.approvalState === "approved")
           .map((claim) => claim.text),
+        brand: profile,
+        copyCandidates: [profile.projectName, profile.tagline, ...copyCandidates].filter(
+          (value) => value.trim().length > 0,
+        ),
         instruction:
-          "Design the full launch canvas for this campaign and generate the editable HTML, CSS, and JavaScript preview now. Make the composition feel distinct from the starting template while keeping the curated product facts and screenshot assets.",
+          "Recompose this canvas as a complete, editable design based on the brand identity and selected campaign copy. Choose the visual structure, typography, colors, imagery, and icons from scratch.",
         composition: baseComposition,
       },
       requestId,
       targetCampaignId,
     );
     if (requestId !== autoDesignRequest.current) return;
-    setComposition((current) => ({
-      ...applyCreativeDesign(current, result.design),
-      codeBundle: result.code,
-      codeSource: "ai",
-    }));
+    setComposition({
+      ...applyCreativeDesign(baseComposition, result.design),
+      designSource: "ai",
+    });
   }
 
   async function runGeneration() {
@@ -1113,6 +1104,16 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     if (draft.goal.trim().length < 8 || draft.updateDetails.trim().length < 8) {
       setGenerateStatus("error");
       setGenerateError("Add a clear goal and update description.");
+      return;
+    }
+    if (draft.audience.trim().length < 2) {
+      setGenerateStatus("error");
+      setGenerateError("Add a target audience (at least 2 characters).");
+      return;
+    }
+    if (!draft.cta.trim()) {
+      setGenerateStatus("error");
+      setGenerateError("Add a call to action for readers.");
       return;
     }
     if (draft.channels.length === 0) {
@@ -1130,10 +1131,13 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
 
     setGenerateStatus("loading");
     setGenerateError("");
-    autoDesignRequest.current += 1;
+    setGenerationScreenStage("preparing");
+    const requestId = autoDesignRequest.current + 1;
+    autoDesignRequest.current = requestId;
     setAutoDesignStatus("idle");
     setAutoDesignWarning("");
     const startedAt = Date.now();
+    let activeJobId: string | null = null;
     trackStudioEvent("generation_started", {
       channelCount: draft.channels.length,
       approvedClaimCount: brand.claims.filter(
@@ -1157,32 +1161,56 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
       let generatedCampaignId: string | null = campaignId;
       const mode: "durable" | "direct" = projectId ? "durable" : "direct";
       if (projectId) {
-        const operationId = crypto.randomUUID();
-        const response = await postWithNetworkRetry("/api/jobs/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Idempotency-Key": operationId },
-          body: JSON.stringify({ projectId, campaign }),
-        });
-        const queued = (await response.json()) as {
-          job?: DurableJob;
-          campaignId?: string;
-          error?: string;
-        };
-        if (response.ok) {
+        const resumableJobId = jobType === "generate" ? jobId : null;
+        if (resumableJobId) {
+          activeJobId = resumableJobId;
+          pollingJobId.current = resumableJobId;
+          const result = await waitForCompletedJob(resumableJobId, (job) => {
+            setGenerationScreenStage(
+              job.status === "queued"
+                ? "queued"
+                : job.status === "completed" || job.progress >= 75
+                  ? "visuals"
+                  : "writing",
+            );
+          }, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
+          data = parseDurableJobResult(result, generateJobResultSchema).generation;
+        } else {
+          const operationId = crypto.randomUUID();
+          const response = await postWithNetworkRetry("/api/jobs/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Idempotency-Key": operationId },
+            body: JSON.stringify({ projectId, campaign }),
+          });
+          const queued = (await response.json()) as {
+            job?: DurableJob;
+            campaignId?: string;
+            error?: string;
+          };
+          if (!response.ok) throw new Error(jobError(queued, "Campaign generation failed."));
           if (!queued.job?.id) {
             throw new Error("The campaign job did not return an id.");
           }
           if (!queued.campaignId) throw new Error("The campaign job did not return its campaign id.");
-          pollingJobId.current = queued.job.id;
+          activeJobId = queued.job.id;
+          pollingJobId.current = activeJobId;
           saveRevision.current = null;
+          const campaignUrl = new URLSearchParams({ projectId, campaignId: queued.campaignId });
+          window.history.replaceState(null, "", `/studio?${campaignUrl}`);
           setCampaignId(queued.campaignId);
           generatedCampaignId = queued.campaignId;
-          setJobId(queued.job.id);
+          setJobId(activeJobId);
           setJobType("generate");
-          const result = await waitForCompletedJob(queued.job.id);
+          const result = await waitForCompletedJob(activeJobId, (job) => {
+            setGenerationScreenStage(
+              job.status === "queued"
+                ? "queued"
+                : job.status === "completed" || job.progress >= 75
+                  ? "visuals"
+                  : "writing",
+            );
+          }, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
           data = parseDurableJobResult(result, generateJobResultSchema).generation;
-        } else {
-          throw new Error(jobError(queued, "Campaign generation failed."));
         }
       } else {
         throw new Error("Save this project before generating a campaign.");
@@ -1196,6 +1224,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
         setEntitlementRefreshVersion((version) => version + 1);
       }
       const firstDirection = data.creativeDirections[0];
+      setGenerationScreenStage("visuals");
       setSelectedCreativeId(firstDirection?.id ?? "");
       let nextComposition = composition;
       if (firstDirection) {
@@ -1211,19 +1240,45 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
           },
         };
       }
-      setComposition(nextComposition);
-      try {
-        await runAutomaticDesign(nextComposition, brand, draft, undefined, generatedCampaignId);
-      } catch {
+      if (data.creativeDesign) {
+        let designedComposition = applyCreativeDesign(composition, data.creativeDesign);
+        if (projectId) {
+          const migrated = await migrateEditorImages({
+            ...buildStudioState(),
+            campaignId: generatedCampaignId,
+            composition: designedComposition,
+          });
+          designedComposition = migrated.state.composition;
+          setUploadStatus(migrated.failed ? "error" : "idle");
+          setUploadError(
+            migrated.failed
+              ? "Some brand images could not be saved to this project. They remain on the canvas, but may not export until replaced."
+              : "",
+          );
+        }
         setComposition({
-          ...nextComposition,
-          codeBundle: createFallbackCodeBundle(nextComposition),
-          codeSource: undefined,
+          ...designedComposition,
+          designSource: "ai",
         });
-        setAutoDesignStatus("error");
-        setAutoDesignWarning(
-          "AI layout is temporarily unavailable. A source-matched draft is ready; retry AI design when the provider is back.",
-        );
+      } else {
+        setComposition(nextComposition);
+        void runAutomaticDesign(
+          nextComposition,
+          brand,
+          draft,
+          requestId,
+          generatedCampaignId,
+          firstDirection
+            ? [
+                firstDirection.eyebrow,
+                firstDirection.headline,
+                firstDirection.subheadline,
+                firstDirection.body,
+                firstDirection.cta,
+                firstDirection.footer,
+              ].filter((value) => value.trim().length > 0)
+            : [],
+        ).catch(() => undefined);
       }
       setGenerateStatus("idle");
       setStep("creative");
@@ -1241,6 +1296,10 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
       });
     } catch (error) {
       pollingJobId.current = null;
+      if (!activeJobId || !isRetryableJobPollingError(error)) {
+        setJobId(null);
+        setJobType(null);
+      }
       setGenerateStatus("error");
       setGenerateError(
         error instanceof Error ? error.message : "Campaign generation failed.",
@@ -1253,31 +1312,37 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     }
   }
 
-  function selectCreativeDirection(id: string) {
+  async function selectCreativeDirection(id: string) {
     const direction = generation?.creativeDirections.find(
       (candidate) => candidate.id === id,
     );
     if (!direction) return;
-    autoDesignRequest.current += 1;
+    const requestId = autoDesignRequest.current + 1;
+    autoDesignRequest.current = requestId;
     setAutoDesignStatus("idle");
     setAutoDesignWarning("");
     setSelectedCreativeId(id);
     const nextComposition = applyCreativeDirection(composition, direction);
-    setComposition(nextComposition);
-    const requestId = autoDesignRequest.current + 1;
-    if (brand) {
-      void runAutomaticDesign(nextComposition, brand, draft, requestId).catch(() => {
-        if (autoDesignRequest.current !== requestId) return;
-        setComposition({
-          ...nextComposition,
-          codeBundle: createFallbackCodeBundle(nextComposition),
-          codeSource: undefined,
-        });
-        setAutoDesignWarning(
-          "AI layout is temporarily unavailable. This direction is still editable as a source-matched draft.",
-        );
-      });
+    if (autoDesignRequest.current !== requestId) return;
+    if (!brand) {
+      setComposition(nextComposition);
+      return;
     }
+    void runAutomaticDesign(
+      nextComposition,
+      brand,
+      draft,
+      requestId,
+      campaignId,
+      [
+        direction.eyebrow,
+        direction.headline,
+        direction.subheadline,
+        direction.body,
+        direction.cta,
+        direction.footer,
+      ].filter((value) => value.trim().length > 0),
+    ).catch(() => undefined);
   }
 
   function handleCompositionChange(nextComposition: CreativeComposition) {
@@ -1342,26 +1407,42 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     targetCampaignId: string | null = campaignId,
   ) {
     if (!projectId || !targetCampaignId) throw new Error("Save this campaign before using AI design.");
+    const designBrand = input.brand ?? brand;
+    const brandIdentity = designBrand
+      ? {
+          projectName: designBrand.projectName,
+          tagline: designBrand.tagline,
+          voice: designBrand.voice,
+          colors: designBrand.colors,
+          fonts: designBrand.fonts,
+          fontAssets: designBrand.fontAssets,
+          logoUrl: designBrand.logoUrl,
+          faviconUrl: designBrand.faviconUrl,
+          imageUrl: designBrand.imageUrl,
+          visualSystem: designBrand.visualSystem,
+          productScreenshotCandidates: designBrand.productScreenshotCandidates,
+          brandIntelligence: designBrand.brandIntelligence,
+        }
+      : undefined;
     autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
     if (requestId === autoDesignRequest.current) {
       setAutoDesignStatus("loading");
       setAutoDesignWarning("");
     }
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 75_000);
+    const timeout = window.setTimeout(() => controller.abort(), 165_000);
     try {
       const response = await fetch("/api/ai/design", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...input, projectId, campaignId: targetCampaignId }),
+        body: JSON.stringify({ ...input, brand: brandIdentity, projectId, campaignId: targetCampaignId }),
         signal: controller.signal,
       });
       const body = await response.text();
       let data: {
         design?: unknown;
-        code?: unknown;
         mode?: "ai";
-        provider?: "groq" | "openrouter" | "openai" | "compatible";
+        provider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
         error?: string;
       };
       try {
@@ -1371,7 +1452,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
           `AI design returned an invalid server response (${response.status}).`,
         );
       }
-      if (!response.ok || !data.design || !data.code || data.mode !== "ai") {
+      if (!response.ok || !data.design || data.mode !== "ai") {
         throw new Error(data.error || `AI design failed (${response.status}).`);
       }
       if (requestId === autoDesignRequest.current) {
@@ -1380,7 +1461,6 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
       }
       return {
         design: creativeDesignResultSchema.parse(data.design),
-        code: creativeCodeBundleSchema.parse(data.code),
         mode: data.mode,
         provider: data.provider,
       };
@@ -1432,7 +1512,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
       pollingJobId.current = activeJobId;
       setJobId(activeJobId);
       setJobType("regenerate");
-      const result = await waitForCompletedJob(activeJobId);
+      const result = await waitForCompletedJob(activeJobId, undefined, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
       const generation = parseDurableJobResult(result, generateJobResultSchema).generation;
       const replacement = generation.outputs.find((output) => output.channel === channel);
       if (!replacement) throw new Error("The provider returned no replacement for this channel.");
@@ -1551,6 +1631,21 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
         warnings: ["Scan a product before creating a launch kit."],
       };
 
+  if (
+    step === "campaign" &&
+    (generateStatus === "loading" ||
+      (generateStatus === "idle" && jobType === "generate" && jobId !== null)) &&
+    jobType !== "regenerate"
+  ) {
+    return (
+      <GenerationProgressScreen
+        projectName={brand?.projectName ?? "Your launch"}
+        channelCount={draft.channels.length}
+        stage={generationScreenStage}
+      />
+    );
+  }
+
   return (
     <div
       className={
@@ -1561,7 +1656,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
     >
       {step !== "creative" && (
         <>
-          <StudioHeader />
+          <StudioHeader profile={profile} plan={plan} />
           <StepNav current={step} available={available} onChange={setStep} />
           {step !== "scan" && scan && brand && (
             <StudioContextBar
@@ -1612,6 +1707,7 @@ export function StudioShell({ initialAuthenticated = true }: { initialAuthentica
             angles={generation?.angles ?? DEFAULT_ANGLES}
             status={(jobType === "generate" || jobType === "regenerate") && jobId && generateStatus === "idle" ? "loading" : generateStatus}
             error={generateError}
+            resumePendingJob={jobType === "generate" && jobId !== null && generateStatus === "error"}
             isAuthenticated={initialAuthenticated}
             onChange={setDraft}
             onBack={() => setStep("brand")}

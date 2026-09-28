@@ -8,7 +8,7 @@ export function LaunchPreview() {
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className="h-2 w-4 rounded-sm bg-accent" />
-          <span className="font-sans text-[10px] uppercase tracking-[0.16em] text-muted">
+          <span className="font-sans text-[10px] uppercase  text-muted">
             Campaign preview
           </span>
         </div>
@@ -27,10 +27,10 @@ export function LaunchPreview() {
             sizes="(max-width: 768px) 92vw, 34vw"
           />
           <div className="absolute inset-x-3 bottom-3 rounded-[10px] border border-white/20 bg-[#171917]/90 p-4 text-[#f4f3ef] backdrop-blur-sm">
-            <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-[#c8ccc5]">
+            <p className="font-sans text-[10px] uppercase  text-[#c8ccc5]">
               Real product screen
             </p>
-            <p className="mt-1.5 text-xl font-semibold tracking-[-0.04em]">
+            <p className="mt-1.5 text-xl font-semibold ">
               Turn every ship into a campaign.
             </p>
           </div>
@@ -57,7 +57,7 @@ export function LaunchPreview() {
             </div>
           </div>
           <div className="rounded-[10px] border border-line bg-accent p-4 text-accent-ink">
-            <div className="flex items-center gap-2 font-sans text-[10px] uppercase tracking-[0.14em]">
+            <div className="flex items-center gap-2 font-sans text-[10px] uppercase ">
               <ImageSquare size={15} />
               4 export sizes
             </div>

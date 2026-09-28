@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold transition-[transform,background-color,color,border-color] duration-200 hover:-translate-y-px disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 active:translate-y-px",
+  "inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold transition-[transform,background-color,color,border-color] duration-200 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {

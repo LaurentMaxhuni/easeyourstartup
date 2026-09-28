@@ -60,7 +60,7 @@ function PostCopy({
           </span>
           <p
             className={cn(
-              "font-sans text-[clamp(8px,1.2vw,13px)] uppercase tracking-[0.16em] opacity-75",
+              "font-sans text-[clamp(8px,1.2vw,13px)] uppercase  opacity-75",
               deviceMode && "text-[clamp(8px,2cqw,11px)]",
             )}
           >
@@ -69,14 +69,10 @@ function PostCopy({
         </div>
         <h2
           className={cn(
-            "mt-[8%] max-w-[13ch] text-balance text-[clamp(26px,5.4vw,62px)] font-semibold leading-[.94] tracking-[-0.06em]",
+            "mt-[8%] max-w-[13ch] text-balance text-[clamp(26px,5.4vw,62px)] font-semibold leading-[.94] ",
             deviceMode &&
               "mt-[4%] max-w-[14ch] text-[clamp(20px,7.4cqw,42px)] leading-[.95]",
           )}
-          style={{
-            fontFamily:
-              composition.tokens.headingFontFamily ?? composition.tokens.fontFamily,
-          }}
         >
           {composition.text.headline}
         </h2>
@@ -118,7 +114,7 @@ function PostCopy({
         </span>
         <span
           className={cn(
-              "max-w-[18ch] text-right font-sans text-[clamp(7px,.9vw,10px)] uppercase tracking-[0.08em] opacity-60",
+              "max-w-[18ch] text-right font-sans text-[clamp(7px,.9vw,10px)] uppercase  opacity-60",
             deviceMode && "text-[clamp(6px,1.5cqw,8px)]",
           )}
         >
@@ -286,8 +282,6 @@ export function CreativePreview({
           backgroundColor: composition.tokens.background,
           color: composition.tokens.foreground,
           borderRadius: composition.tokens.radius ?? 8,
-          fontFamily:
-            composition.tokens.bodyFontFamily ?? composition.tokens.fontFamily,
         }}
       >
         <CreativeGraphic
@@ -364,7 +358,7 @@ export function CreativePreview({
         )}
         {watermarked && (
           <div
-            className="absolute bottom-3 right-3 z-30 rounded px-2 py-1 font-sans text-[8px] uppercase tracking-[0.12em]"
+            className="absolute bottom-3 right-3 z-30 rounded px-2 py-1 font-sans text-[8px] uppercase "
             style={{
               backgroundColor: `color-mix(in srgb, ${composition.tokens.foreground} 85%, transparent)`,
               color: composition.tokens.background,

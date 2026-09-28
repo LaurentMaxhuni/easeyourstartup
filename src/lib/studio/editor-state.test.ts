@@ -112,13 +112,13 @@ describe("mini Canva editor state", () => {
 
   it("applies a structured AI design using only the composition assets", () => {
     const design = creativeDesignResultSchema.parse({
-      templateId: "split",
-      imageMode: "single",
-      screenshotCrop: { ...DEMO_COMPOSITION.screenshotCrop, x: 22 },
-      tokens: { ...DEMO_COMPOSITION.tokens, accent: "#e25b39" },
-      text: { ...DEMO_COMPOSITION.text, headline: "A complete visual system" },
-      icon: "target",
-      graphic: "grid",
+      theme: {
+        background: DEMO_COMPOSITION.tokens.background,
+        foreground: DEMO_COMPOSITION.tokens.foreground,
+        accent: "#e25b39",
+        headingFontFamily: "Outfit",
+        bodyFontFamily: "Outfit",
+      },
       elements: [
         {
           id: "ai-image",
@@ -131,7 +131,7 @@ describe("mini Canva editor state", () => {
           opacity: 1,
           locked: false,
           hidden: false,
-          asset: "primary",
+          src: DEMO_COMPOSITION.screenshotUrl,
           radius: 8,
         },
         {
@@ -161,7 +161,7 @@ describe("mini Canva editor state", () => {
 
     expect(applied).not.toBe(DEMO_COMPOSITION);
     expect(applied.tokens.accent).toBe("#e25b39");
-    expect(applied.screenshotCrop.x).toBe(22);
+    expect(applied.screenshotCrop.x).toBe(DEMO_COMPOSITION.screenshotCrop.x);
     expect(image?.src).toBe(DEMO_COMPOSITION.screenshotUrl);
     expect((image?.x ?? 0) + (image?.width ?? 0)).toBeLessThanOrEqual(100);
     expect(applied.text.headline).toBe("A complete visual system");

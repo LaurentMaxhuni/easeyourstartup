@@ -39,21 +39,10 @@ export async function POST(request: Request) {
     }
 
     const input = inputSchema.parse(await readJsonBody(request, 96_000));
-    const [project] = await context.database`
-      select id
-      from public.projects
-      where id = ${input.projectId}
-        and workspace_id = ${context.workspaceId}
-        and status = 'active'
-        and active_slot <= ${context.limits.activeProjects}
-      limit 1
-    `;
-    if (!project) throw new Error("Project not found.");
-
-    const periodKey = context.usagePeriodStart;
-    const periodEndKey = context.usagePeriodEnd;
-
     const campaign = input.campaign as GenerateCampaignInput;
+    const storedGenerationInput = process.env.GENERATION_VERSION?.trim().toLowerCase() === "v2"
+      ? { generatorVersion: "v2", brief: campaign }
+      : campaign;
     const suppliedKey = request.headers.get("idempotency-key")?.trim();
     if (!suppliedKey || suppliedKey.length > 200) {
       return NextResponse.json({ error: "An idempotency key is required for campaign generation." }, { status: 400 });
@@ -72,6 +61,36 @@ export async function POST(request: Request) {
         { status: 202 },
       );
     }
+
+    const [project] = await context.database`
+      select id, status, active_slot
+      from public.projects
+      where id = ${input.projectId}::uuid
+        and workspace_id = ${context.workspaceId}::uuid
+      limit 1
+    `;
+    if (!project) {
+      return NextResponse.json(
+        { error: "This project could not be found in your workspace. Reopen it from the dashboard and try again." },
+        { status: 404 },
+      );
+    }
+    if (project.status !== "active") {
+      return NextResponse.json(
+        { error: "This project is archived. Restore it before creating posts." },
+        { status: 409 },
+      );
+    }
+    const activeSlot = Number(project.active_slot);
+    if (!Number.isInteger(activeSlot) || activeSlot < 1 || activeSlot > context.limits.activeProjects) {
+      return NextResponse.json(
+        { error: "This project is outside this workspace’s current active-project limit. Check Billing to confirm the plan attached to this workspace before changing plans." },
+        { status: 403 },
+      );
+    }
+
+    const periodKey = context.usagePeriodStart;
+    const periodEndKey = context.usagePeriodEnd;
 
     const jobId = randomUUID();
     const eventId = randomUUID();
@@ -145,7 +164,7 @@ export async function POST(request: Request) {
           ${campaign.kind},
           ${campaign.updateDetails.slice(0, 180)},
           'queued',
-          ${JSON.stringify(campaign)}::jsonb,
+          ${JSON.stringify(storedGenerationInput)}::jsonb,
           ${campaign.angle ? JSON.stringify(campaign.angle) : null}::jsonb,
           ${campaign.launchDate || null},
           true,
@@ -214,12 +233,30 @@ export async function POST(request: Request) {
       { status: 202 },
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Generation job could not be queued.";
-    const status =
-      error instanceof AuthenticationRequiredError ? error.status : 400;
-    return NextResponse.json({ error: message }, { status });
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Check the project and campaign details and try again." },
+        { status: 400 },
+      );
+    }
+    if (error instanceof Error) {
+      if (error.message === "Cross-site request rejected." || error.message === "Request origin rejected.") {
+        return NextResponse.json({ error: "Request origin rejected." }, { status: 403 });
+      }
+      if (error.message === "Request body must be valid JSON.") {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      if (error.message === "Request body is too large.") {
+        return NextResponse.json({ error: error.message }, { status: 413 });
+      }
+    }
+    console.error("[campaign-generation] Could not queue generation job.", error);
+    return NextResponse.json(
+      { error: "Campaign generation could not be queued. Please try again." },
+      { status: 503 },
+    );
   }
 }

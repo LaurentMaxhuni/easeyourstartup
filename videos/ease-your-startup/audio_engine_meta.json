@@ -1,0 +1,64 @@
+{
+  "tts_provider": "kokoro",
+  "voice_id": "am_michael",
+  "bgm": {
+    "path": "assets/bgm/track.wav",
+    "volume": 0.12,
+    "mode": "detached-seed-loop",
+    "duration_s": 33
+  },
+  "bgm_pending": false,
+  "bgm_provider": "musicgen",
+  "bgm_pid": 53004,
+  "bgm_log": "C:\\github-projects\\easeyourstartup\\videos\\ease-your-startup\\assets\\bgm\\bgm-1790524609018.log",
+  "bgm_mode": "detached-seed-loop",
+  "bgm_target_duration_s": 33,
+  "bgm_seed_duration_s": 28,
+  "bgm_loop_count": 2,
+  "voices": [
+    {
+      "id": "01",
+      "path": "assets/voice/01.wav",
+      "duration_s": 2.795,
+      "words": []
+    },
+    {
+      "id": "02",
+      "path": "assets/voice/02.wav",
+      "duration_s": 2.005,
+      "words": []
+    },
+    {
+      "id": "03",
+      "path": "assets/voice/03.wav",
+      "duration_s": 3.904,
+      "words": []
+    },
+    {
+      "id": "04",
+      "path": "assets/voice/04.wav",
+      "duration_s": 4.501,
+      "words": []
+    },
+    {
+      "id": "05",
+      "path": "assets/voice/05.wav",
+      "duration_s": 3.776,
+      "words": []
+    },
+    {
+      "id": "06",
+      "path": "assets/voice/06.wav",
+      "duration_s": 4.373,
+      "words": []
+    },
+    {
+      "id": "07",
+      "path": "assets/voice/07.wav",
+      "duration_s": 3.819,
+      "words": []
+    }
+  ],
+  "sfx": [],
+  "total_duration_s": 25.173
+}

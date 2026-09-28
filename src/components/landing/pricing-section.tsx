@@ -26,10 +26,10 @@ export async function PricingSection() {
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-[.9fr_1.1fr]">
           <Reveal>
-            <p className="font-sans text-xs uppercase tracking-[0.16em] text-[#93adff]">
+            <p className="font-sans text-xs uppercase  text-[#93adff]">
               One paid plan
             </p>
-            <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
+            <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold  sm:text-6xl">
               Less than the cost of one forgotten launch.
             </h2>
             <p className="mt-6 max-w-md text-base leading-7 text-[#b7bcb4]">
@@ -49,7 +49,7 @@ export async function PricingSection() {
                 </p>
               </div>
               <div className="text-right">
-                <span className="text-5xl font-semibold tracking-[-0.06em]">
+                <span className="text-5xl font-semibold ">
                   {foundingPriceEligible ? "$19" : "$29"}
                 </span>
                 <span className="text-sm text-[#b7bcb4]"> / month{foundingPriceEligible ? " · founding price" : ""}</span>

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { Lightning } from "@phosphor-icons/react/dist/ssr";
+import { AccountMenu, type AccountProfile } from "@/components/account/account-avatar-link";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export function StudioHeader() {
+export function StudioHeader({ profile, plan }: { profile: AccountProfile; plan: "free" | "pro" }) {
   return (
     <header className="border-b border-line bg-canvas">
       <a
@@ -25,18 +25,14 @@ export function StudioHeader() {
         <div className="flex items-center gap-2">
           <Badge className="hidden sm:inline-flex">
             <Lightning size={12} weight="fill" className="mr-1 text-accent" />
-            Free preview
+            {plan === "pro" ? "Pro" : "Free preview"}
           </Badge>
-          <ThemeToggle />
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/settings/billing">Billing</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-            <Link href="/settings/account">Account</Link>
-          </Button>
-          <Button asChild variant="secondary" size="sm">
-            <Link href="/pricing">Upgrade</Link>
-          </Button>
+          {plan === "free" && (
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/pricing">Upgrade</Link>
+            </Button>
+          )}
+          <AccountMenu profile={profile} />
         </div>
       </div>
     </header>

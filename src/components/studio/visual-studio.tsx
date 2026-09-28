@@ -7,7 +7,6 @@ import {
 } from "@/components/studio/mini-canva-editor";
 import type {
   CreativeComposition,
-  CreativeCodeBundle,
   ChannelOutput,
   CreativeDirection,
   CreativeDesignInput,
@@ -23,7 +22,7 @@ export type VisualStudioProps = {
   onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
   regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
   regenerationBusyChannel?: ChannelOutput["channel"] | null;
-  generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
+  generationProvider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
   creativeDirections: CreativeDirection[];
@@ -52,9 +51,8 @@ export type VisualStudioProps = {
   }>;
   onAiDesign: (input: CreativeDesignInput) => Promise<{
     design: CreativeDesignResult;
-    code: CreativeCodeBundle;
     mode: "ai";
-    provider?: "groq" | "openrouter" | "openai" | "compatible";
+    provider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
   }>;
   saveStatus: "idle" | "saving" | "saved" | "local" | "error";
   saveError: string;

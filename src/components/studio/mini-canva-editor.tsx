@@ -31,7 +31,7 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import type { ChangeEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { ChangeEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChannelOutputs } from "@/components/studio/channel-outputs";
 import { CreativeGraphic } from "@/components/studio/creative-icons";
@@ -42,7 +42,6 @@ import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { ThinkingOrb } from "thinking-orbs";
 import {
-  creativeCodeBundleSchema,
   creativeElementEffectSchema,
   creativeElementShadowSchema,
   creativeGraphicSchema,
@@ -50,7 +49,6 @@ import {
   creativeImageModeSchema,
   type ChannelOutput,
   type BrandClaim,
-  type CreativeCodeBundle,
   type CreativeComposition,
   type CreativeDirection,
   type CreativeDesignInput,
@@ -61,10 +59,6 @@ import {
   type CreativeMockupDevice,
 } from "@/lib/contracts";
 import type { LaunchKitReadiness } from "@/lib/launch-kit";
-import {
-  buildSandboxedPreviewDocument,
-  isSafeCreativeCodeBundle,
-} from "@/lib/creative-code";
 import {
   addEditorElement,
   applyCreativeDesign,
@@ -104,6 +98,44 @@ const RATIOS = [
   { name: "1.91:1", width: 1200, height: 628 },
 ] as const;
 
+function JsonSyntax({ source }: { source: string }) {
+  const tokens = [
+    ...source.matchAll(
+      /"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}\[\],:]/g,
+    ),
+  ];
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  for (const token of tokens) {
+    const start = token.index ?? cursor;
+    if (start > cursor) nodes.push(source.slice(cursor, start));
+
+    const value = token[0];
+    const isString = value.startsWith('"');
+    const isKey = isString && source.slice(start + value.length).trimStart().startsWith(":");
+    const color = isKey
+      ? "text-[#9cdcfe]"
+      : isString
+        ? "text-[#ce9178]"
+        : /^(?:true|false|null)$/.test(value)
+          ? "text-[#dcdcaa]"
+          : /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+            ? "text-[#b5cea8]"
+            : "text-[#d4d4d4]";
+
+    nodes.push(
+      <span key={start} className={color}>
+        {value}
+      </span>,
+    );
+    cursor = start + value.length;
+  }
+
+  if (cursor < source.length) nodes.push(source.slice(cursor));
+  return <>{nodes}</>;
+}
+
 const TEXT_ROLES: Array<{ role: CreativeTextRole; label: string; sample: string }> = [
   { role: "headline", label: "Heading", sample: "A clear launch headline" },
   { role: "subheadline", label: "Subheading", sample: "A supporting line" },
@@ -137,7 +169,7 @@ type EditorTool =
   | "directions"
   | "export";
 type GestureMode = "move" | "resize";
-type EditorView = "canvas" | "code" | "preview";
+type EditorView = "canvas" | "spec" | "preview";
 
 type Gesture = {
   mode: GestureMode;
@@ -155,9 +187,8 @@ type AiRewriteResponse = {
 
 type AiDesignResponse = {
   design: CreativeDesignResult;
-  code: CreativeCodeBundle;
   mode: "ai";
-  provider?: "groq" | "openrouter" | "openai" | "compatible";
+  provider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
 };
 
 export type CreativeAiContext = {
@@ -188,9 +219,10 @@ function elementPreview(element: CreativeElement) {
 }
 
 function aiProviderLabel(
-  provider: "groq" | "openrouter" | "openai" | "compatible" | undefined,
+  provider: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible" | undefined,
 ) {
   if (provider === "groq") return "Groq AI";
+  if (provider === "nvidia-nim") return "NVIDIA NIM";
   if (provider === "openrouter") return "OpenRouter AI";
   if (provider === "openai") return "OpenAI";
   if (provider === "compatible") return "AI provider";
@@ -199,7 +231,7 @@ function aiProviderLabel(
 
 function canvasSourceLabel(
   status: "idle" | "loading" | "ai" | "error",
-  provider: "groq" | "openrouter" | "openai" | "compatible" | undefined,
+  provider: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible" | undefined,
 ) {
   if (status === "loading") {
     return `${aiProviderLabel(provider)} designing…`;
@@ -209,46 +241,8 @@ function canvasSourceLabel(
   return "AI canvas required";
 }
 
-function GeneratedCodeEditor({
-  code,
-  onChange,
-}: {
-  code: CreativeCodeBundle;
-  onChange: (field: keyof CreativeCodeBundle, value: string) => void;
-}) {
-  const fields = [
-    { field: "html", label: "HTML", maximum: 50_000 },
-    { field: "css", label: "CSS", maximum: 50_000 },
-    { field: "javascript", label: "JavaScript", maximum: 30_000 },
-  ] as const;
-
-  return (
-    <div className="grid h-full min-h-0 gap-3 overflow-auto md:grid-cols-3">
-      {fields.map(({ field, label, maximum }) => (
-        <label key={field} className="flex min-h-64 min-w-0 flex-col gap-2">
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-            {label}
-          </span>
-          <textarea
-            aria-label={`Generated ${label}`}
-            value={code[field]}
-            maxLength={maximum}
-            spellCheck={false}
-            onChange={(event) => onChange(field, event.target.value)}
-            className="min-h-64 flex-1 resize-y rounded-control border border-line bg-[#101216] p-3 font-mono text-[11px] leading-5 text-[#e8edf2] outline-none focus:border-accent"
-          />
-        </label>
-      ))}
-    </div>
-  );
-}
-
 function sameElements(first: CreativeElement[], second: CreativeElement[]) {
   return JSON.stringify(first) === JSON.stringify(second);
-}
-
-function resolveEditorFontFamily(composition?: CreativeComposition) {
-  return composition?.tokens.bodyFontFamily ?? composition?.tokens.fontFamily ?? "var(--font-body)";
 }
 
 function prepareDesignComposition(composition: CreativeComposition) {
@@ -442,28 +436,24 @@ function renderTextElement(
         isCta && "flex items-center justify-center whitespace-nowrap px-[5%]",
       )}
       style={{
-        color: element.color ?? composition.tokens.foreground,
-        fontFamily:
-          element.textRole === "headline"
-            ? composition.tokens.headingFontFamily ?? composition.tokens.fontFamily
-            : resolveEditorFontFamily(composition),
+        color:
+          element.color ??
+          (isCta ? composition.tokens.background : composition.tokens.foreground),
         backgroundColor: isCta
-          ? composition.tokens.foreground
+          ? element.fill ?? composition.tokens.foreground
           : "transparent",
         fontSize: `max(${minimumFontSize}px, ${element.fontSize ?? 1.5}cqw)`,
         fontWeight: element.fontWeight ?? 450,
-        lineHeight: element.textRole === "headline" ? 0.96 : 1.2,
+        lineHeight:
+          element.lineHeight ??
+          (element.textRole === "headline" ? 0.96 : 1.2),
         textAlign: element.align ?? "left",
         borderRadius: isCta
           ? `${element.radius ?? composition.tokens.radius ?? 8}px`
           : undefined,
-        letterSpacing:
-          element.textRole === "eyebrow"
-            ? "0.08em"
-            : element.textRole === "headline"
-              ? "-0.035em"
-              : "normal",
-        textTransform: element.textRole === "eyebrow" ? "uppercase" : undefined,
+        textTransform:
+          element.textTransform ??
+          (element.textRole === "eyebrow" ? "uppercase" : undefined),
       }}
     >
       {element.text}
@@ -503,22 +493,32 @@ function LayerVisual({
         {element.kind === "text" && renderTextElement(element, composition)}
         {element.kind === "image" && element.src && (
           <div
-            className="relative h-full w-full overflow-hidden bg-white/10"
+            className={cn(
+              "relative h-full w-full overflow-hidden",
+              composition.designSource !== "ai" && "bg-white/10",
+            )}
             style={{
               borderRadius: `${element.radius ?? sourceRadius}px`,
-              border: `1px solid color-mix(in srgb, ${composition.tokens.foreground} 30%, transparent)`,
-              boxShadow: `inset 0 1px 0 color-mix(in srgb, ${composition.tokens.foreground} 24%, transparent)`,
+              border:
+                composition.designSource === "ai"
+                  ? undefined
+                  : `1px solid color-mix(in srgb, ${composition.tokens.foreground} 30%, transparent)`,
+              boxShadow:
+                composition.designSource === "ai"
+                  ? undefined
+                  : `inset 0 1px 0 color-mix(in srgb, ${composition.tokens.foreground} 24%, transparent)`,
             }}
           >
             <Image
               src={element.src}
-              alt=""
+              alt={element.alt ?? ""}
               fill
               unoptimized
               draggable={false}
-              className="select-none object-cover"
+              className="select-none"
               style={{
-                objectPosition: `${composition.screenshotCrop.x}% ${composition.screenshotCrop.y}%`,
+                objectFit: element.imageFit ?? "cover",
+                objectPosition: `${element.imagePositionX ?? composition.screenshotCrop.x}% ${element.imagePositionY ?? composition.screenshotCrop.y}%`,
               }}
               sizes="720px"
             />
@@ -568,6 +568,72 @@ function LayerVisual({
   );
 }
 
+function CreativeScene({
+  composition,
+  elements,
+  canExportLaunchKit,
+  captureRef,
+}: {
+  composition: CreativeComposition;
+  elements: CreativeElement[];
+  canExportLaunchKit: boolean;
+  captureRef?: RefObject<HTMLDivElement | null>;
+}) {
+  const visibleElements = elements.filter((element) => !element.hidden);
+  const hasRichBackdrop = visibleElements.some(
+    (element) => element.kind === "gradient" || element.kind === "icon",
+  );
+
+  return (
+    <div
+      ref={captureRef}
+      className="absolute inset-0 overflow-hidden"
+      style={{
+        backgroundColor: composition.tokens.background,
+        containerType: "inline-size",
+      }}
+    >
+      {composition.designSource !== "ai" && (
+        <CreativeGraphic
+          name={composition.graphic}
+          color={composition.tokens.foreground}
+        />
+      )}
+      {composition.designSource !== "ai" && !hasRichBackdrop && (
+        <div
+          aria-hidden="true"
+          className="absolute right-[5%] top-[5%] flex size-[7%] items-center justify-center rounded-full"
+          style={{
+            backgroundColor: composition.tokens.foreground,
+            color: composition.tokens.accent,
+          }}
+        >
+          <CreativeIconGlyph
+            name={composition.icon}
+            size={22}
+            color="currentColor"
+            weight="bold"
+          />
+        </div>
+      )}
+      {visibleElements.map((element) => (
+        <LayerVisual key={element.id} element={element} composition={composition} />
+      ))}
+      {!canExportLaunchKit && (
+        <div
+          className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase "
+          style={{
+            backgroundColor: `color-mix(in srgb, ${composition.tokens.foreground} 85%, transparent)`,
+            color: composition.tokens.background,
+          }}
+        >
+          Free preview
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MiniCanvaEditor({
   composition,
   outputs,
@@ -608,7 +674,7 @@ export function MiniCanvaEditor({
   onRegenerateChannel?: (channel: ChannelOutput["channel"]) => Promise<void>;
   regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
   regenerationBusyChannel?: ChannelOutput["channel"] | null;
-  generationProvider?: "groq" | "openrouter" | "openai" | "compatible";
+  generationProvider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
   autoDesignStatus: "idle" | "loading" | "ai" | "error";
   autoDesignWarning?: string;
   creativeDirections: CreativeDirection[];
@@ -653,8 +719,6 @@ export function MiniCanvaEditor({
   const [future, setFuture] = useState<CreativeComposition[]>([]);
   const [zoom, setZoom] = useState(78);
   const [editorView, setEditorView] = useState<EditorView>("canvas");
-  const [codeDraft, setCodeDraft] = useState<CreativeCodeBundle | null>(null);
-  const [codeEditError, setCodeEditError] = useState("");
   const [aiInstruction, setAiInstruction] = useState(
     "Make this clearer, more direct, and easier to scan.",
   );
@@ -670,8 +734,8 @@ export function MiniCanvaEditor({
   const [designNotice, setDesignNotice] = useState("");
   const reduceMotion = useReducedMotion();
   const effectiveAutoDesignStatus =
-    autoDesignStatus === "idle" && composition.codeSource
-      ? composition.codeSource
+    autoDesignStatus === "idle" && composition.designSource
+      ? composition.designSource
       : autoDesignStatus;
 
   useEffect(() => {
@@ -720,8 +784,7 @@ export function MiniCanvaEditor({
         ...compositionRef.current,
         ...patch,
         elements: undefined,
-        codeBundle: undefined,
-        codeSource: undefined,
+        designSource: undefined,
       };
       commit(getEditorElements(base), { base });
     },
@@ -961,14 +1024,13 @@ export function MiniCanvaEditor({
         compositionRef.current,
         result.design,
       );
-      const compositionWithCode = {
+      const compositionWithAiDesign = {
         ...nextComposition,
-        codeBundle: result.code,
-        codeSource: "ai" as const,
+        designSource: "ai" as const,
       };
-      commit(compositionWithCode.elements ?? [], { base: compositionWithCode });
-      setCodeDraft(result.code);
-      setCodeEditError("");
+      commit(compositionWithAiDesign.elements ?? [], {
+        base: compositionWithAiDesign,
+      });
       setSelectedId(
         nextComposition.elements?.find(
           (element) => element.textRole === "headline",
@@ -987,35 +1049,38 @@ export function MiniCanvaEditor({
 
   const visibleElements = elements.filter((element) => !element.hidden);
   const overlayElements = [...visibleElements].reverse();
-  const hasRichBackdrop = visibleElements.some(
-    (element) => element.kind === "gradient" || element.kind === "icon",
+  const designSpec = JSON.stringify(
+    {
+      templateId: composition.templateId,
+      output: composition.output,
+      imageMode: composition.imageMode,
+      screenshotCrop: composition.screenshotCrop,
+      tokens: composition.tokens,
+      text: composition.text,
+      icon: composition.icon,
+      graphic: composition.graphic,
+      elements: visibleElements.map((element) => {
+        if (element.kind !== "image") return element;
+        const { src, ...layer } = element;
+        const asset =
+          src === composition.mockups.desktop
+            ? "desktop"
+            : src === composition.mockups.tablet
+              ? "tablet"
+              : src === composition.mockups.phone
+                ? "phone"
+                : "primary";
+        return { ...layer, asset };
+      }),
+    },
+    null,
+    2,
   );
-  const activeCodeBundle = codeDraft ?? composition.codeBundle;
-  const parsedCodeBundle = activeCodeBundle
-    ? creativeCodeBundleSchema.safeParse(activeCodeBundle)
-    : null;
-  const previewCodeBundle = parsedCodeBundle?.success
-    ? parsedCodeBundle.data
-    : null;
 
   function updateComposition(patch: Partial<CreativeComposition>) {
     const next = { ...compositionRef.current, ...patch };
     compositionRef.current = next;
     onChange(next);
-  }
-
-  function updateCodeBundle(field: keyof CreativeCodeBundle, value: string) {
-    const currentCode = codeDraft ?? compositionRef.current.codeBundle;
-    if (!currentCode) return;
-    const nextCode = { ...currentCode, [field]: value };
-    setCodeDraft(nextCode);
-    const parsed = creativeCodeBundleSchema.safeParse(nextCode);
-    if (!parsed.success) {
-      setCodeEditError("Each code field needs content before it can be previewed or saved.");
-      return;
-    }
-    setCodeEditError("");
-    updateComposition({ codeBundle: parsed.data });
   }
 
   function panelContent() {
@@ -1233,7 +1298,7 @@ export function MiniCanvaEditor({
           </button>
           {composition.imageMode === "devices" && (
             <div className="space-y-2 border-t border-line pt-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Device images</p>
+              <p className="text-[10px] font-semibold uppercase  text-muted">Device images</p>
               {(["desktop", "tablet", "phone"] as const).map((device) => (
                 <label key={device} className="flex cursor-pointer items-center justify-between rounded-control border border-line bg-canvas px-3 py-2 text-xs">
                   <span className="capitalize">{device}</span>
@@ -1410,8 +1475,8 @@ export function MiniCanvaEditor({
             note="Describe a direction and AI will design the whole canvas."
           />
           <div className="mt-3 rounded-control border border-accent/30 bg-accent/10 p-3 text-[11px] leading-5 text-muted">
-            AI builds the editable layer stack plus HTML, CSS, and JavaScript for an
-            isolated preview. Images stay limited to your selected uploads.
+            AI returns a validated visual plan. The editor renders its layers with
+            fixed React components; generated HTML, CSS, and JavaScript never run.
           </div>
           {effectiveAutoDesignStatus !== "idle" && (
             <div
@@ -1484,7 +1549,7 @@ export function MiniCanvaEditor({
           {selectedElement?.kind === "text" ? (
             <>
               <div className="mt-3 rounded-control border border-line bg-canvas p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                <p className="text-[10px] font-semibold uppercase  text-muted">
                   Selected layer
                 </p>
                 <p className="mt-2 text-xs font-semibold">
@@ -1540,7 +1605,7 @@ export function MiniCanvaEditor({
           </div>
           <Badge
             className={cn(
-              "max-w-44 normal-case tracking-normal",
+              "max-w-44 normal-case ",
               effectiveAutoDesignStatus === "ai" ||
                 effectiveAutoDesignStatus === "loading"
                 ? "border-accent/40 bg-accent/10 text-accent"
@@ -1590,20 +1655,24 @@ export function MiniCanvaEditor({
             aria-label="Editor views"
             className="flex rounded-control border border-line bg-canvas p-0.5"
           >
-            {(["canvas", "code", "preview"] as const).map((view) => (
+            {([
+              { id: "canvas", label: "Canvas" },
+              { id: "spec", label: "Spec" },
+              { id: "preview", label: "Preview" },
+            ] as const).map((view) => (
               <button
-                key={view}
+                key={view.id}
                 type="button"
-                aria-pressed={editorView === view}
-                onClick={() => setEditorView(view)}
+                aria-pressed={editorView === view.id}
+                onClick={() => setEditorView(view.id)}
                 className={cn(
                   "rounded-[5px] px-2 py-1 text-[10px] font-semibold capitalize transition-colors",
-                  editorView === view
+                  editorView === view.id
                     ? "bg-accent text-accent-ink"
                     : "text-muted hover:text-ink",
                 )}
               >
-                {view}
+                {view.label}
               </button>
             ))}
           </div>
@@ -1643,13 +1712,13 @@ export function MiniCanvaEditor({
               initial={reduceMotion ? false : { opacity: 0, x: -6 }}
               animate={{ opacity: 1, x: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, x: 6 }}
-              transition={{ duration: 0.16 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               {panelContent()}
             </motion.div>
           </AnimatePresence>
           <div className="mt-5 border-t border-line pt-4 lg:hidden">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            <p className="text-[10px] font-semibold uppercase  text-muted">
               Selected layer
             </p>
             <div className="mt-3">
@@ -1667,13 +1736,13 @@ export function MiniCanvaEditor({
         <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-canvas/70 p-3 sm:p-4">
           <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-muted">{composition.output.width} x {composition.output.height}</p>
+              <p className="font-sans text-[10px] uppercase  text-muted">{composition.output.width} x {composition.output.height}</p>
               <p className="mt-1 text-xs text-muted">
                 {editorView === "canvas"
                   ? "Select a layer to edit its position and style."
-                  : editorView === "code"
-                    ? "Edit the generated code. Unsafe capabilities are blocked from preview."
-                    : "This preview runs in an isolated sandbox with no network or parent access."}
+                  : editorView === "spec"
+                    ? "Inspect the validated design plan that drives the React canvas."
+                    : "Live preview rendered with the same React components as the canvas."}
               </p>
             </div>
             {editorView === "canvas" && (
@@ -1723,42 +1792,12 @@ export function MiniCanvaEditor({
                   canvasRef.current?.focus({ preventScroll: true });
                 }}
               >
-                <div
-                  ref={captureRef}
-                  className="absolute inset-0 overflow-hidden"
-                  style={{
-                    backgroundColor: composition.tokens.background,
-                    containerType: "inline-size",
-                  }}
-                >
-                  <CreativeGraphic name={composition.graphic} color={composition.tokens.foreground} />
-                  {!hasRichBackdrop && (
-                    <div
-                      aria-hidden="true"
-                      className="absolute right-[5%] top-[5%] flex size-[7%] items-center justify-center rounded-full"
-                      style={{
-                        backgroundColor: composition.tokens.foreground,
-                        color: composition.tokens.accent,
-                      }}
-                    >
-                      <CreativeIconGlyph name={composition.icon} size={22} color="currentColor" weight="bold" />
-                    </div>
-                  )}
-                  {visibleElements.map((element) => (
-                    <LayerVisual key={element.id} element={element} composition={composition} />
-                  ))}
-                  {!canExportLaunchKit && (
-                    <div
-                      className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase tracking-[0.12em]"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${composition.tokens.foreground} 85%, transparent)`,
-                        color: composition.tokens.background,
-                      }}
-                    >
-                      Free preview
-                    </div>
-                  )}
-                </div>
+                <CreativeScene
+                  composition={composition}
+                  elements={elements}
+                  canExportLaunchKit={canExportLaunchKit}
+                  captureRef={captureRef}
+                />
                 <div className="absolute inset-0">
                   {overlayElements.map((element) => (
                     <div
@@ -1794,36 +1833,32 @@ export function MiniCanvaEditor({
               </div>
             </div>
           </div>
-          ) : editorView === "code" ? (
-            activeCodeBundle ? (
-              <div className="min-h-0 flex-1 overflow-hidden rounded-control border border-line bg-surface p-3 sm:p-5">
-                <GeneratedCodeEditor
-                  code={activeCodeBundle}
-                  onChange={updateCodeBundle}
-                />
-              </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center rounded-control border border-dashed border-line bg-surface p-8 text-center text-sm leading-6 text-muted">
-                Generate an AI design to receive editable HTML, CSS, and JavaScript.
-              </div>
-            )
-          ) : previewCodeBundle ? (
-            <div className="min-h-0 flex-1 overflow-hidden rounded-control border border-line bg-surface">
-              <iframe
-                title="Generated creative preview"
-                sandbox="allow-scripts"
-                referrerPolicy="no-referrer"
-                srcDoc={buildSandboxedPreviewDocument(previewCodeBundle)}
-                className="size-full border-0 bg-white"
-              />
-            </div>
-          ) : activeCodeBundle ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-control border border-dashed border-danger/50 bg-surface p-8 text-center text-sm leading-6 text-muted">
-              Complete each code field before previewing the generated prototype.
+          ) : editorView === "spec" ? (
+            <div className="min-h-0 flex-1 overflow-auto rounded-control border border-line bg-[#101216] p-3 sm:p-5">
+              <pre
+                aria-label="Structured design specification"
+                className="min-h-full whitespace-pre-wrap break-words text-[12px] leading-5 text-[#e8edf2]"
+              >
+                <code className="font-mono">
+                  <JsonSyntax source={designSpec} />
+                </code>
+              </pre>
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-control border border-dashed border-line bg-surface p-8 text-center text-sm leading-6 text-muted">
-              Generate an AI design to preview its HTML, CSS, and JavaScript.
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-control border border-line bg-surface p-3 sm:p-5">
+              <div
+                className="relative w-full shrink-0"
+                style={{
+                  maxWidth: `min(640px, calc(62dvh * ${composition.output.width / composition.output.height}))`,
+                  aspectRatio: `${composition.output.width} / ${composition.output.height}`,
+                }}
+              >
+                <CreativeScene
+                  composition={composition}
+                  elements={elements}
+                  canExportLaunchKit={canExportLaunchKit}
+                />
+              </div>
             </div>
           )}
           {editorView === "canvas" ? (
@@ -1831,17 +1866,13 @@ export function MiniCanvaEditor({
             <span>Drag to move. Shift + arrow nudges faster. Delete removes a layer.</span>
             <span className="font-sans">{elements.length} layers</span>
           </div>
-          ) : codeEditError || (activeCodeBundle && !previewCodeBundle) ? (
-            <p role="alert" className="mt-3 text-xs leading-5 text-danger">
-              {codeEditError || "Each code field needs content before it can be previewed or saved."}
-            </p>
-          ) : previewCodeBundle && !isSafeCreativeCodeBundle(previewCodeBundle) ? (
-            <p role="alert" className="mt-3 text-xs leading-5 text-danger">
-              Preview blocked because the edited code uses unsupported capabilities.
+          ) : editorView === "spec" ? (
+            <p className="mt-3 text-xs leading-5 text-muted">
+              Screenshot URLs stay private; image layers reference the selected asset keys.
             </p>
           ) : (
             <p className="mt-3 text-xs leading-5 text-muted">
-              Preview is isolated from the app, browser storage, and network.
+              This preview uses the editor&apos;s React renderer and the same selected images as the canvas.
             </p>
           )}
         </main>

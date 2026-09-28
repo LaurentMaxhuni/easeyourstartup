@@ -1,0 +1,143 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="02-turn-every-ship-into-a-campaign"
+    data-start="0"
+    data-duration="4.4"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      @font-face {
+        font-family: "Outfit";
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+        src: url("assets/fonts/Outfit-Regular.woff2") format("woff2");
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        container-type: size;
+        font-family: "Outfit", sans-serif;
+      }
+
+      .f02-ground {
+        position: absolute;
+        inset: 0;
+        background: #f4f3ef;
+      }
+
+      .f02-mat {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        width: 1060px;
+        height: 744px;
+        margin-left: -530px;
+        box-sizing: border-box;
+        padding: 12px;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 14px;
+        background: rgba(36, 92, 240, 0.04);
+        transform-origin: 50% 50%;
+      }
+
+      .f02-placeholder {
+        z-index: 1;
+      }
+
+      .f02-screen {
+        z-index: 2;
+      }
+
+      .f02-screen img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .f02-copy {
+        position: absolute;
+        top: 782px;
+        left: 260px;
+        width: 1400px;
+        height: 104px;
+        color: #171917;
+      }
+
+      .f02-brand {
+        margin: 0 0 8px;
+        color: #245cf0;
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: 0.08em;
+      }
+
+      .f02-product {
+        margin: 0;
+        font-size: 52px;
+        font-weight: 600;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+      }
+    </style>
+
+    <div class="clip f02-ground" data-start="0" data-duration="4.4" data-track-index="0"></div>
+
+    <div
+      id="frame02-placeholder"
+      class="clip f02-mat f02-placeholder"
+      data-start="0"
+      data-duration="4.4"
+      data-track-index="1"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      id="frame02-screen"
+      class="clip f02-mat f02-screen"
+      data-start="0"
+      data-duration="4.4"
+      data-track-index="2"
+    >
+      <img src="assets/studio-capture.png" alt="EaseYourStartup Launch Studio, with the real campaign promise and product mark" />
+    </div>
+
+    <div
+      id="frame02-copy"
+      class="clip f02-copy"
+      data-start="0"
+      data-duration="4.4"
+      data-track-index="3"
+    >
+      <p class="f02-brand">EaseYourStartup</p>
+      <p class="f02-product">Turn every ship into a campaign.</p>
+    </div>
+
+    <script>
+      (() => {
+        window.__timelines = window.__timelines || {};
+        const frame02Timeline = gsap.timeline({ paused: true });
+
+        frame02Timeline.to(
+          "#frame02-placeholder",
+          { scale: 0.74, opacity: 0, duration: 0.42, ease: "power2.in" },
+          0.04,
+        );
+        frame02Timeline.fromTo(
+          "#frame02-screen",
+          { scale: 0.74, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.56, ease: "back.out(1.4)" },
+          0.31,
+        );
+
+        window.__timelines["02-turn-every-ship-into-a-campaign"] = frame02Timeline;
+      })();
+    </script>
+  </div>
+</template>

@@ -17,10 +17,10 @@ export function ProofSection() {
             />
           </Reveal>
           <Reveal delay={0.08} className="lg:pb-8">
-            <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+            <p className="font-sans text-xs uppercase  text-accent">
               Proof before polish
             </p>
-            <h2 className="mt-5 text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
+            <h2 className="mt-5 text-balance text-4xl font-semibold  sm:text-5xl">
               Every publishable claim keeps its receipt.
             </h2>
             <p className="mt-6 max-w-xl text-base leading-7 text-muted">
@@ -29,7 +29,7 @@ export function ProofSection() {
               reach a caption.
             </p>
             <div className="mt-10 rounded-container border border-line bg-surface-raised p-5">
-              <div className="flex items-center gap-2 font-sans text-[11px] uppercase tracking-[0.14em] text-muted">
+              <div className="flex items-center gap-2 font-sans text-[11px] uppercase  text-muted">
                 <LinkSimple size={16} />
                 Kept source fact
               </div>

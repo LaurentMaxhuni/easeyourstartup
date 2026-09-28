@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import { AuthenticationUnavailable } from "@/components/auth/authentication-unavailable";
 import { BillingPortalButton } from "@/components/billing/billing-portal-button";
 import { Button } from "@/components/ui/button";
 import { requirePageAuthentication } from "@/lib/auth/page";
@@ -16,14 +18,17 @@ function formatDate(value: unknown) {
 }
 
 export default async function BillingSettingsPage() {
-  await requirePageAuthentication("/settings/billing");
+  const user = await requirePageAuthentication("/settings/billing");
+  if ("status" in user) {
+    return <AuthenticationUnavailable retryHref="/settings/billing" />;
+  }
   const context = await requireWorkspaceContext();
   const [[subscription], [usage], [founding]] = await Promise.all([
     context.database`
-      select status, billing_price_id, current_period_start, current_period_end,
+      select billing_provider, status, billing_price_id, current_period_start, current_period_end,
         cancel_at_period_end, billing_customer_id
       from public.subscriptions
-      where workspace_id = ${context.workspaceId} and billing_provider = 'paddle'
+      where workspace_id = ${context.workspaceId}
       limit 1
     `,
     context.database`
@@ -40,6 +45,11 @@ export default async function BillingSettingsPage() {
   ]);
   const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim();
   const isFounding = Boolean(foundingPriceId && subscription?.billing_price_id === foundingPriceId);
+  const hasUnrecognizedActiveSubscription =
+    context.plan === "free" &&
+    ["active", "trialing"].includes(subscription?.status ?? "");
+  const hasNoActiveSubscription =
+    context.plan === "free" && !hasUnrecognizedActiveSubscription;
   const hasSubscription = Boolean(subscription?.billing_customer_id);
   const renewalDate = formatDate(subscription?.current_period_end);
   const used = Number(usage?.completed_campaigns ?? 0);
@@ -48,9 +58,12 @@ export default async function BillingSettingsPage() {
   return (
     <main id="main-content" className="min-h-[100dvh] bg-canvas px-4 py-12 sm:px-6">
       <div className="mx-auto max-w-3xl">
-        <Link href="/dashboard" className="text-sm font-semibold text-accent">← Dashboard</Link>
-        <p className="mt-8 font-sans text-[10px] uppercase tracking-[0.16em] text-accent">Workspace settings</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-[-0.06em]">Plan and billing</h1>
+        <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm font-semibold text-accent">
+          <ArrowLeft size={16} aria-hidden="true" />
+          Dashboard
+        </Link>
+        <p className="mt-8 font-sans text-[10px] uppercase  text-accent">Workspace settings</p>
+        <h1 className="mt-2 text-4xl font-semibold ">Plan and billing</h1>
         <section className="mt-7 rounded-container border border-line bg-surface-raised p-6 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -70,6 +83,18 @@ export default async function BillingSettingsPage() {
               <Button asChild><Link href="/pricing">View Pro</Link></Button>
             )}
           </div>
+          {hasUnrecognizedActiveSubscription && (
+            <p role="status" className="mt-5 rounded-lg border border-amber-300/40 bg-amber-50/5 px-4 py-3 text-sm leading-6 text-muted">
+              {subscription?.billing_provider === "stripe"
+                ? "An active legacy Stripe subscription is recorded for this workspace. This app currently grants Pro only for recognized Paddle subscriptions."
+                : "Paddle reports an active subscription for this workspace, but this environment could not match its price to Pro. Check the Paddle price IDs in the app configuration before changing plans."}
+            </p>
+          )}
+          {hasNoActiveSubscription && (
+            <p role="status" className="mt-5 rounded-lg border border-line bg-canvas px-4 py-3 text-sm leading-6 text-muted">
+              No active subscription is attached to this workspace. Pro access is workspace-specific; if you already have Pro, check the workspace that owns the subscription before purchasing again.
+            </p>
+          )}
           {context.plan === "pro" && (
             <div className="mt-6 border-t border-line pt-5 text-sm">
               {context.testProExpiresAt ? (

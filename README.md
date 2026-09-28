@@ -18,8 +18,9 @@ The working promise is: **Turn every ship into a campaign.**
   campaign briefs
 - Channel-specific copy for X, LinkedIn, Product Hunt, Reddit, Hacker News,
   Instagram, Threads, Facebook, and email
-- Structured provider output when configured, including whole-canvas AI design
-  for editable layouts, layers, styling, and selected image assets
+- Opt-in Generation V2 with AI brand interpretation, campaign strategy,
+  platform-specific copy, bounded design planning, and one critic-guided rewrite
+- Structured visual plans mapped to the existing editable campaign canvas
 - Provider failures preserve saved work and return a recoverable error
 - Raster screenshot upload with MIME limits, decode and re-encode, metadata
   stripping, and SVG rejection
@@ -55,13 +56,19 @@ available for retry. Deterministic example data is retained as test fixture data
    pnpm install
    ```
 
-4. Run the app:
+4. Run the app in one terminal:
 
    ```bash
    pnpm dev
    ```
 
-5. Open `http://localhost:3000`, sign in with email/password or Google, then
+5. Run the local Inngest worker in a second terminal:
+
+   ```bash
+   pnpm dev:inngest
+   ```
+
+6. Open `http://localhost:3000`, sign in with email/password or Google, then
    scan a public product URL. Open **Dashboard** to see the saved project.
 
 ## Service configuration
@@ -73,10 +80,10 @@ is unavailable or returns malformed output, the campaign is reported as failed,
 the previous saved output remains intact, and its quota reservation is released.
 `OPENAI_MODEL` defaults to
 `gpt-5.6-terra`. Generation uses strict structured output contracts. OpenAI
-uses the Responses API; Groq- and OpenRouter-compatible providers use
-Chat Completions JSON schema plus response healing. Only automatically curated
-website facts and the
-founder-provided update are allowed as factual sources.
+uses the Responses API; Groq, NVIDIA NIM, and OpenRouter use
+Chat Completions. OpenRouter adds JSON schema routing and response healing.
+Only automatically curated website facts and the founder-provided update are
+allowed as factual sources.
 Set `AI_GENERATION_ENABLED=false` to pause campaign generation, AI design, and
 AI rewrites across the app. Website scans continue with local factual curation
 while the switch is off.
@@ -89,13 +96,44 @@ values. OpenRouter is supported with `OPENROUTER_API_KEY`,
 `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`, and
 `OPENROUTER_MODEL=openrouter/free`. OpenRouter documents `openrouter/free` as
 a router over its currently available free models; free access still has
-provider rate limits and availability can change. The visual editor's **AI design** tool calls
-`POST /api/ai/design` to generate a validated, editable composition plus
-separate HTML, CSS, and JavaScript. It can choose the layout, layers, colors,
-crop, graphic treatment, and copy while mapping image layers back to selected
-uploaded assets. Generated code is editable and previewed only inside a
-sandboxed, network-isolated iframe. The focused **AI rewrite** tool calls
-`POST /api/ai/rewrite` for one selected text layer.
+provider rate limits and availability can change.
+
+NVIDIA NIM uses `NVIDIA_NIM_API_KEY` and `NVIDIA_NIM_MODEL`; its base URL
+defaults to `https://integrate.api.nvidia.com/v1` and can be overridden with
+`NVIDIA_NIM_BASE_URL` for a self-hosted NIM. Set a model ID from the NVIDIA NIM
+catalog, or use the served model ID from `/v1/models` for self-hosted NIM. For
+image-based brand analysis, configure `NVIDIA_NIM_BRAND_VISION_MODEL` with an
+image-capable model. NVIDIA NIM takes priority when multiple keys are set,
+followed by OpenRouter, Groq, then the legacy `OPENAI_*` settings.
+
+Campaign generation stays on the existing V1 flow by default. Set
+`GENERATION_VERSION=v2` to queue new campaigns through Generation V2; each
+V2 campaign stores a version marker, so existing and already queued campaigns
+keep using V1. V2 runs structured strategy, separate platform copy,
+design planning, and quality review, with at most one rewrite. It uses the
+existing editor and stores its strategy, design plan, and review with the job
+result. No schema migration is required.
+
+Task-specific model overrides use `OPENROUTER_BRAND_VISION_MODEL`,
+`OPENROUTER_BRAND_TEXT_MODEL`, `OPENROUTER_STRATEGY_MODEL`,
+`OPENROUTER_COPY_MODEL`, `OPENROUTER_DESIGN_PLANNER_MODEL`, and
+`OPENROUTER_CRITIC_MODEL`. `AI_<TASK>_MODEL` provides a provider-neutral
+fallback override; equivalent `GROQ_<TASK>_MODEL` and `OPENAI_<TASK>_MODEL`
+names are supported. Set `OPENROUTER_FALLBACK_MODELS` to a comma-separated list
+of backup model IDs; it defaults to `openrouter/free`. After OpenRouter reports
+its daily free-model limit, remaining free fallbacks are skipped and the job
+fails without retrying the exhausted quota; set a model your account can access
+to continue generation immediately.
+NVIDIA NIM supports the same task suffixes through `NVIDIA_NIM_<TASK>_MODEL`.
+
+The visual editor's **AI design** tool calls
+`POST /api/ai/design` to return one validated, editable visual plan. The AI
+chooses the layout, hierarchy, copy, crop, graphic treatment, and selected
+image assets. React renders the plan through the editor's fixed components and
+brand tokens; the Spec view shows the validated plan and Preview uses that same
+renderer. Model-authored HTML, CSS, and JavaScript are not generated or run.
+The focused **AI rewrite** tool calls `POST /api/ai/rewrite` for one selected
+text layer.
 
 ### Browserless
 
@@ -199,8 +237,10 @@ be shared with staging.
 
 ### Inngest
 
-Set the Inngest event and signing keys. The Next.js handler is available at
-`/api/inngest`. Scan and campaign generation functions use idempotent steps and
+For local development, set `INNGEST_DEV=1` and run `pnpm dev:inngest` alongside
+`pnpm dev`. The local Inngest Dev Server syncs the Next.js handler at
+`/api/inngest` and runs scheduled outbox dispatch. Set production event and
+signing keys in deployed environments. Scan and campaign generation functions use idempotent steps and
 persist progress in `jobs`. The scheduled private-object cleanup retries
 deletions queued when a customer removes an asset or project. Scan,
 generation, channel-regeneration, and export jobs are inserted with a transactional

@@ -1,0 +1,233 @@
+<template>
+  <div id="root" data-composition-id="03-start-with-the-source" data-width="1920" data-height="1080" data-duration="5.5">
+    <style>
+      @font-face {
+        font-family: "Outfit";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/Outfit-Regular.woff2") format("woff2");
+      }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        container-type: size;
+        font-family: "Outfit", sans-serif;
+        background: transparent;
+      }
+
+      .clip {
+        position: absolute;
+        box-sizing: border-box;
+      }
+
+      .source-03-ground {
+        inset: 0;
+        z-index: 0;
+        background: #f4f3ef;
+      }
+
+      .source-03-world {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        transform-origin: 50% 50%;
+        will-change: transform;
+      }
+
+      .source-03-studio {
+        left: 26.5625cqw;
+        top: 2cqh;
+        width: 46.875cqw;
+        height: 57.87cqh;
+        overflow: hidden;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 14px;
+        background: rgba(36, 92, 240, 0.04);
+        z-index: 1;
+      }
+
+      .source-03-studio img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        object-position: center;
+        transform-origin: center;
+      }
+
+      .source-03-copy {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .source-03-eyebrow {
+        left: 6.25cqw;
+        top: 61.25cqh;
+        color: #245cf0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        line-height: 1.2;
+        text-transform: uppercase;
+      }
+
+      .source-03-eyebrow > span,
+      .source-03-headline > span,
+      .source-03-support > span {
+        display: block;
+        opacity: 0;
+      }
+
+      .source-03-headline {
+        left: 6.25cqw;
+        top: 63.95cqh;
+        max-width: 78cqw;
+        color: #171917;
+        font-size: 60px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.08;
+      }
+
+      .source-03-support {
+        left: 6.25cqw;
+        top: 70.55cqh;
+        color: #245cf0;
+        font-size: 29px;
+        font-weight: 400;
+        line-height: 1.25;
+      }
+
+      .source-03-stage-strip {
+        position: absolute;
+        left: 6.25cqw;
+        right: 6.25cqw;
+        top: 75.55cqh;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .source-03-stage.clip {
+        position: relative;
+        display: flex;
+        min-width: 0;
+        height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 100px;
+        background: rgba(36, 92, 240, 0.04);
+        font-size: 27px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .source-03-stage-label {
+        opacity: 0;
+        color: #9a9a9a;
+      }
+
+      .source-03-stage[data-stage="scan"] .source-03-stage-label {
+        color: #245cf0;
+      }
+    </style>
+
+    <div class="clip source-03-ground" data-start="0" data-duration="5.5" data-track-index="0"></div>
+
+    <div class="source-03-world" id="03-start-with-the-source-world" data-layout-allow-overflow>
+      <div class="clip source-03-studio" id="03-start-with-the-source-studio" data-start="0" data-duration="5.5" data-track-index="1">
+        <img id="03-start-with-the-source-image" src="assets/studio-capture.png" alt="Real EaseYourStartup studio screen showing its Scan, Brand DNA, Campaign, and Creative stages" />
+      </div>
+
+      <div class="source-03-copy">
+        <p class="clip source-03-eyebrow" data-start="0" data-duration="5.5" data-track-index="2"><span id="03-start-with-the-source-eyebrow">A source-led workflow</span></p>
+        <h1 class="clip source-03-headline" data-start="0.35" data-duration="5.15" data-track-index="3"><span id="03-start-with-the-source-headline">Start with what’s live.</span></h1>
+        <p class="clip source-03-support" data-start="1.55" data-duration="3.95" data-track-index="4"><span id="03-start-with-the-source-support">Every claim has a source.</span></p>
+        <div class="source-03-stage-strip" aria-label="Existing product stages">
+          <span class="clip source-03-stage" data-stage="scan" data-start="0.45" data-duration="5.05" data-track-index="5"><span class="source-03-stage-label" id="03-start-with-the-source-stage-scan">Scan</span></span>
+          <span class="clip source-03-stage" data-stage="brand-dna" data-start="1.7" data-duration="3.8" data-track-index="6"><span class="source-03-stage-label" id="03-start-with-the-source-stage-brand-dna">Brand DNA</span></span>
+          <span class="clip source-03-stage" data-stage="campaign" data-start="3.45" data-duration="2.05" data-track-index="7"><span class="source-03-stage-label" id="03-start-with-the-source-stage-campaign">Campaign</span></span>
+          <span class="clip source-03-stage" data-stage="creative" data-start="4.1" data-duration="1.4" data-track-index="8"><span class="source-03-stage-label" id="03-start-with-the-source-stage-creative">Creative</span></span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+      window.__timelines = window.__timelines || {};
+      const timeline = gsap.timeline({ paused: true });
+      window.__timelines["03-start-with-the-source"] = timeline;
+
+      const world = document.getElementById("03-start-with-the-source-world");
+      const image = document.getElementById("03-start-with-the-source-image");
+      const eyebrow = document.getElementById("03-start-with-the-source-eyebrow");
+      const headline = document.getElementById("03-start-with-the-source-headline");
+      const support = document.getElementById("03-start-with-the-source-support");
+      const scan = document.getElementById("03-start-with-the-source-stage-scan");
+      const brandDna = document.getElementById("03-start-with-the-source-stage-brand-dna");
+      const campaign = document.getElementById("03-start-with-the-source-stage-campaign");
+      const creative = document.getElementById("03-start-with-the-source-stage-creative");
+
+      const camera = { scale: 1, x: 0, y: 0 };
+      const applyCamera = () => {
+        world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+      };
+      applyCamera();
+
+      timeline.fromTo(
+        image,
+        { opacity: 0, y: 12, scale: 0.99 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: "power3.out", immediateRender: false },
+        0,
+      );
+      timeline.fromTo(
+        eyebrow,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.28, ease: "power3.out", immediateRender: false },
+        0.08,
+      );
+      timeline.fromTo(
+        headline,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.38, ease: "power3.out", immediateRender: false },
+        0.35,
+      );
+      timeline.fromTo(
+        support,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.34, ease: "power3.out", immediateRender: false },
+        1.55,
+      );
+
+      timeline.fromTo(
+        camera,
+        { scale: 1, x: 0, y: 0 },
+        { scale: 1.02, x: -7, y: -3, duration: 1.05, ease: "power3.inOut", onUpdate: applyCamera, immediateRender: false },
+        0.35,
+      );
+      timeline.to(
+        camera,
+        { scale: 1.045, x: -16, y: -7, duration: 1.55, ease: "power3.inOut", onUpdate: applyCamera },
+        1.55,
+      );
+
+      timeline.set(scan, { opacity: 1 }, 0.45);
+      timeline.set(brandDna, { opacity: 1 }, 1.7);
+      timeline.set(scan, { color: "#9a9a9a" }, 1.7);
+      timeline.set(brandDna, { color: "#245cf0" }, 1.7);
+      timeline.set(brandDna, { color: "#9a9a9a" }, 3.45);
+      timeline.set(campaign, { opacity: 1, color: "#245cf0" }, 3.45);
+      timeline.set(campaign, { color: "#9a9a9a" }, 4.1);
+      timeline.set(creative, { opacity: 1, color: "#245cf0" }, 4.1);
+      })();
+    </script>
+  </div>
+</template>

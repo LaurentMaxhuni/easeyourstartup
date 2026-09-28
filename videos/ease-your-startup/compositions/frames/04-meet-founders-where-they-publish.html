@@ -1,0 +1,206 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="04-meet-founders-where-they-publish"
+    data-start="0"
+    data-duration="5.5"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      @font-face {
+        font-family: "Outfit";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/Outfit-Regular.woff2") format("woff2");
+      }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        container-type: size;
+        isolation: isolate;
+        font-family: "Outfit", sans-serif;
+        color: #171917;
+      }
+
+    #root .f04-clip {
+        position: absolute;
+        box-sizing: border-box;
+      }
+
+      #root .f04-ground {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #f4f3ef;
+      }
+
+      #root .f04-evidence {
+        left: 5cqw;
+        top: 10cqw;
+        right: auto;
+        bottom: auto;
+        width: 50cqw;
+        height: 34.72cqw;
+        overflow: hidden;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 14px;
+        background: #fff;
+      }
+
+      .f04-screen {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      #root .f04-copy {
+        left: 59cqw;
+        top: 11.5cqw;
+        right: auto;
+        bottom: auto;
+        width: 36cqw;
+        height: 34cqw;
+      }
+
+      .f04-accent {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3.125cqw;
+        height: 0.208cqw;
+        border-radius: 2px;
+        background: #245cf0;
+      }
+
+      .f04-eyebrow {
+        position: absolute;
+        top: 1.1cqw;
+        left: 0;
+        margin: 0;
+        color: #245cf0;
+        font-size: 0.8cqw;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        line-height: 1.3;
+        text-transform: uppercase;
+      }
+
+      .f04-headline {
+        position: absolute;
+        top: 2.35cqw;
+        left: 0;
+        width: 100%;
+        margin: 0;
+        color: #171917;
+        font-size: 2.25cqw;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.18;
+      }
+
+      .f04-headline span {
+        display: block;
+      }
+
+      #root .f04-list-stage {
+        top: 17cqw;
+        left: 0;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+        height: 10cqw;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, 4cqw);
+        align-content: center;
+        column-gap: 1cqw;
+        row-gap: 0.75cqw;
+      }
+
+      .f04-channel-chip {
+        position: relative;
+        display: flex;
+        width: 100%;
+        height: 4cqw;
+        align-items: center;
+        justify-content: center;
+        border: 1.5px solid rgba(36, 92, 240, 0.2);
+        border-radius: 100px;
+        background: rgba(36, 92, 240, 0.08);
+        color: #245cf0;
+        font-size: 1.45cqw;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+    </style>
+
+    <div class="clip f04-clip f04-ground" data-start="0" data-duration="5.5" data-track-index="0"></div>
+
+    <div class="clip f04-clip f04-evidence" data-start="0" data-duration="5.5" data-track-index="1">
+      <img
+        id="f04-studio-capture"
+        class="f04-screen"
+        src="assets/studio-capture.png"
+        alt="EaseYourStartup Studio campaign screen"
+      />
+    </div>
+
+    <div class="clip f04-clip f04-copy" data-start="0" data-duration="5.5" data-track-index="2">
+      <div id="f04-accent" class="f04-accent"></div>
+      <p id="f04-eyebrow" class="f04-eyebrow">Channel-ready copy</p>
+      <h1 id="f04-headline" class="f04-headline"><span>One update.</span><span>The channels that matter.</span></h1>
+
+      <div id="f04-list-stage" class="clip f04-clip f04-list-stage" data-start="0" data-duration="5.5" data-track-index="3">
+        <div id="f04-channel-x" class="f04-channel-chip">X</div>
+        <div id="f04-channel-linkedin" class="f04-channel-chip">LinkedIn</div>
+        <div id="f04-channel-product-hunt" class="f04-channel-chip">Product Hunt</div>
+        <div id="f04-channel-email" class="f04-channel-chip">Email</div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines["04-meet-founders-where-they-publish"] = tl;
+
+        const studio = document.getElementById("f04-studio-capture");
+        const accent = document.getElementById("f04-accent");
+        const eyebrow = document.getElementById("f04-eyebrow");
+        const headline = document.getElementById("f04-headline");
+        const channelChips = [
+          document.getElementById("f04-channel-x"),
+          document.getElementById("f04-channel-linkedin"),
+          document.getElementById("f04-channel-product-hunt"),
+          document.getElementById("f04-channel-email"),
+        ];
+
+        tl.set(accent, { opacity: 0, scaleX: 0.2 }, 0);
+        tl.set(eyebrow, { opacity: 0, y: 10 }, 0);
+        tl.set(headline, { opacity: 0, y: 14 }, 0);
+        tl.fromTo(studio, { opacity: 0, x: -18 }, { opacity: 1, x: 0, duration: 0.42, ease: "power3.out" }, 0);
+        tl.fromTo(accent, { opacity: 0, scaleX: 0.2, transformOrigin: "left center" }, { opacity: 1, scaleX: 1, duration: 0.38, ease: "power3.out", immediateRender: false }, 0.55);
+        tl.fromTo(eyebrow, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.38, ease: "power3.out", immediateRender: false }, 0.61);
+        tl.fromTo(headline, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.46, ease: "power3.out", immediateRender: false }, 0.7);
+
+        tl.set(channelChips, { opacity: 0, scale: 0.9, y: 8 }, 0);
+        const channelCues = [0.55, 1.45, 2.35, 3.25];
+        channelChips.forEach((chip, index) => {
+          tl.fromTo(
+            chip,
+            { opacity: 0, scale: 0.9, y: 8 },
+            { opacity: 1, scale: 1, y: 0, duration: 0.42, ease: "power3.out", immediateRender: false },
+            channelCues[index],
+          );
+        });
+      })();
+    </script>
+  </div>
+</template>

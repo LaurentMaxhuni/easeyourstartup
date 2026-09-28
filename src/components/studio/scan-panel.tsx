@@ -31,10 +31,10 @@ export function ScanPanel({
   return (
     <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:py-20">
       <div>
-        <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+        <p className="font-sans text-xs uppercase  text-accent">
           Start with your source
         </p>
-        <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
+        <h1 className="mt-4 text-balance text-4xl font-semibold  sm:text-6xl">
           Bring your product into the studio.
         </h1>
         <p className="mt-5 max-w-md text-base leading-7 text-muted">

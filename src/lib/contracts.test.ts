@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  creativeCodeBundleSchema,
+  brandIntelligenceSchema,
+  brandProfileSchema,
   creativeCompositionSchema,
   creativeDesignResultSchema,
   generateJobResultSchema,
@@ -17,6 +18,25 @@ import {
 } from "@/lib/demo-data";
 
 describe("application contracts", () => {
+  it("accepts saved brand profiles created before brand intelligence fields", () => {
+    expect(brandProfileSchema.parse(DEMO_BRAND)).toEqual(DEMO_BRAND);
+  });
+
+  it("validates structured brand interpretation separately from claims", () => {
+    const intelligence = brandIntelligenceSchema.parse({
+      productPurpose: "Launch planning workspace for small teams.",
+      audience: "Small product teams",
+      painPoints: ["Launch planning is scattered."],
+      benefits: ["Keeps launch tasks in one place."],
+      differentiators: ["Built around product launches."],
+      tone: ["clear", "direct"],
+      visualStyle: ["airy page spacing", "Gradient accents"],
+      unsupportedClaimsToAvoid: ["Guaranteed launch growth."],
+    });
+
+    expect(intelligence).not.toHaveProperty("claims");
+  });
+
   it("validates a versioned creative composition", () => {
     expect(creativeCompositionSchema.parse(DEMO_COMPOSITION)).toEqual(
       DEMO_COMPOSITION,
@@ -48,15 +68,15 @@ describe("application contracts", () => {
     ).toThrow();
   });
 
-  it("validates a whole-canvas design response without allowing model URLs", () => {
+  it("validates a normalized design with a theme and verified image asset", () => {
     const result = creativeDesignResultSchema.parse({
-      templateId: "split",
-      imageMode: "single",
-      screenshotCrop: DEMO_COMPOSITION.screenshotCrop,
-      tokens: DEMO_COMPOSITION.tokens,
-      text: DEMO_COMPOSITION.text,
-      icon: "target",
-      graphic: "grid",
+      theme: {
+        background: DEMO_COMPOSITION.tokens.background,
+        foreground: DEMO_COMPOSITION.tokens.foreground,
+        accent: DEMO_COMPOSITION.tokens.accent,
+        headingFontFamily: "Outfit",
+        bodyFontFamily: "Outfit",
+      },
       elements: [
         {
           id: "design-image",
@@ -69,7 +89,8 @@ describe("application contracts", () => {
           opacity: 1,
           locked: false,
           hidden: false,
-          asset: "primary",
+          src: DEMO_COMPOSITION.screenshotUrl,
+          alt: "Product screenshot",
           radius: 8,
         },
         {
@@ -94,19 +115,21 @@ describe("application contracts", () => {
       ],
     });
 
-    expect(result.elements[0]).not.toHaveProperty("src");
+    expect(result.elements[0]).toHaveProperty("src", DEMO_COMPOSITION.screenshotUrl);
     expect(result.elements[0].kind).toBe("image");
+    expect(result).not.toHaveProperty("tokens");
+    expect(result).not.toHaveProperty("text");
   });
 
   it("accepts rich visual layers without executable model code", () => {
     const result = creativeDesignResultSchema.parse({
-      templateId: "split",
-      imageMode: "single",
-      screenshotCrop: DEMO_COMPOSITION.screenshotCrop,
-      tokens: DEMO_COMPOSITION.tokens,
-      text: DEMO_COMPOSITION.text,
-      icon: "target",
-      graphic: "none",
+      theme: {
+        background: DEMO_COMPOSITION.tokens.background,
+        foreground: DEMO_COMPOSITION.tokens.foreground,
+        accent: DEMO_COMPOSITION.tokens.accent,
+        headingFontFamily: "Outfit",
+        bodyFontFamily: "Outfit",
+      },
       elements: [
         {
           id: "gradient-background",
@@ -152,20 +175,19 @@ describe("application contracts", () => {
     expect(result.elements[0]).not.toHaveProperty("script");
   });
 
-  it("keeps generated HTML, CSS, and JavaScript in a bounded code bundle", () => {
-    const code = creativeCodeBundleSchema.parse({
-      html: '<main data-launch-preview><h1>Ship with confidence</h1></main>',
-      css: "main { color: #f4f3ef; }",
-      javascript:
-        'const preview = document.querySelector("[data-launch-preview]");',
-    });
-
+  it("keeps AI design provenance without storing raw generated code", () => {
     const composition = creativeCompositionSchema.parse({
       ...DEMO_COMPOSITION,
-      codeBundle: code,
+      designSource: "ai",
+      codeBundle: {
+        html: "<main>legacy code</main>",
+        css: "main { color: red; }",
+        javascript: "alert(1)",
+      },
     });
 
-    expect(composition.codeBundle).toEqual(code);
+    expect(composition.designSource).toBe("ai");
+    expect(composition).not.toHaveProperty("codeBundle");
   });
 
   it("validates a completed durable scan result", () => {

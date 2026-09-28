@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/request-security";
 import { scanWebsite } from "@/lib/server/scanner";
 import { curateScannedClaims } from "@/lib/server/campaign-generator";
+import { analyzeBrandIntelligence } from "@/lib/server/brand-intelligence";
 import { requireWorkspaceContext } from "@/lib/server/workspace-access";
 import {
   createOrUpdateProjectForScan,
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
 
     const safeUrl = parsePublicHttpUrl(body.url).toString();
     const result = await curateScannedClaims(await scanWebsite(safeUrl));
+    result.profile.brandIntelligence = await analyzeBrandIntelligence(result);
     const database = createDatabase();
     if (!database) {
       return NextResponse.json({ error: "Database persistence is not configured." }, { status: 503 });

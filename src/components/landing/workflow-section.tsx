@@ -35,10 +35,10 @@ export function WorkflowSection() {
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
         <div className="grid gap-14 lg:grid-cols-[.8fr_1.2fr]">
           <Reveal>
-            <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+            <p className="font-sans text-xs uppercase  text-accent">
               A 15-minute launch kit
             </p>
-            <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">
+            <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold  sm:text-6xl">
               A launch kit built from your product, not a blank chat.
             </h2>
           </Reveal>
@@ -54,7 +54,7 @@ export function WorkflowSection() {
                   <span className="flex size-10 items-center justify-center rounded-control border border-line bg-surface-raised text-accent">
                     <Icon size={20} />
                   </span>
-                  <h3 className="text-lg font-semibold tracking-[-0.025em]">
+                  <h3 className="text-lg font-semibold ">
                     {step.title}
                   </h3>
                   <p className="max-w-xl text-sm leading-6 text-muted">

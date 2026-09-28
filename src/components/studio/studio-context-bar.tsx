@@ -91,7 +91,7 @@ export function StudioContextBar({
           </div>
         </div>
 
-        <p className="hidden shrink-0 text-right font-sans text-[10px] uppercase tracking-[0.12em] text-muted xl:block">
+        <p className="hidden shrink-0 text-right font-sans text-[10px] uppercase  text-muted xl:block">
           {progress.current} of {progress.total}
         </p>
       </div>

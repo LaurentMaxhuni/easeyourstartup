@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-27T15:59:38.767Z",
+  "enabled": true,
+  "provider": "musicgen",
+  "mode": "detached-seed-loop",
+  "path": "assets/bgm/track.wav",
+  "log": "C:\\github-projects\\easeyourstartup\\videos\\ease-your-startup\\assets\\bgm\\bgm-1790524609018.log",
+  "pid": 53004,
+  "target_duration_s": 33,
+  "seed_duration_s": 28,
+  "loop_count": 2,
+  "timeout_ms": 1000,
+  "status": "ready",
+  "ready": true,
+  "waited_ms": 0,
+  "size_bytes": 2112044,
+  "message": "BGM ready at assets/bgm/track.wav."
+}

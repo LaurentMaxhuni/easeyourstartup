@@ -28,6 +28,7 @@ export function CampaignBuilder({
   angles,
   status,
   error,
+  resumePendingJob,
   isAuthenticated,
   onChange,
   onBack,
@@ -37,6 +38,7 @@ export function CampaignBuilder({
   angles: NarrativeAngle[];
   status: "idle" | "loading" | "error";
   error: string;
+  resumePendingJob: boolean;
   isAuthenticated: boolean;
   onChange: (draft: CampaignDraft) => void;
   onBack: () => void;
@@ -44,6 +46,8 @@ export function CampaignBuilder({
 }) {
   const goalReady = draft.goal.trim().length >= 8;
   const updateReady = draft.updateDetails.trim().length >= 8;
+  const audienceReady = draft.audience.trim().length >= 2;
+  const ctaReady = draft.cta.trim().length >= 1;
   const channelsReady = draft.channels.length > 0;
 
   function toggleChannel(channel: Channel) {
@@ -66,10 +70,10 @@ export function CampaignBuilder({
     >
       <div className="grid gap-10 lg:grid-cols-[.65fr_1.35fr]">
         <div>
-          <p className="font-sans text-xs uppercase tracking-[0.16em] text-accent">
+          <p className="font-sans text-xs uppercase  text-accent">
             Give the update a story
           </p>
-          <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
+          <h1 className="mt-4 text-balance text-4xl font-semibold  sm:text-5xl">
             Tell us about this launch
           </h1>
           <p className="mt-5 max-w-md text-sm leading-6 text-muted">
@@ -77,7 +81,7 @@ export function CampaignBuilder({
             will stay within the source facts the scan kept.
           </p>
           <div className="mt-8 rounded-container border border-line bg-surface p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <p className="text-xs font-semibold uppercase  text-muted">
               Ready when
             </p>
             <ul className="mt-4 space-y-3 text-sm">
@@ -96,6 +100,22 @@ export function CampaignBuilder({
                   className={updateReady ? "text-accent" : "text-muted"}
                 />
                 <span>The update says what is available now.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle
+                  size={17}
+                  weight={audienceReady ? "fill" : "regular"}
+                  className={audienceReady ? "text-accent" : "text-muted"}
+                />
+                <span>Name who this update is for.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle
+                  size={17}
+                  weight={ctaReady ? "fill" : "regular"}
+                  className={ctaReady ? "text-accent" : "text-muted"}
+                />
+                <span>Add the action you want readers to take.</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle
@@ -179,6 +199,9 @@ export function CampaignBuilder({
                 <Input
                   className="mt-2"
                   value={draft.audience}
+                  required
+                  maxLength={400}
+                  placeholder="e.g. Founders preparing their first launch"
                   onChange={(event) =>
                     onChange({ ...draft, audience: event.target.value })
                   }
@@ -189,6 +212,9 @@ export function CampaignBuilder({
                 <Input
                   className="mt-2"
                   value={draft.cta}
+                  required
+                  maxLength={240}
+                  placeholder="e.g. Start your free trial"
                   onChange={(event) =>
                     onChange({ ...draft, cta: event.target.value })
                   }
@@ -232,7 +258,7 @@ export function CampaignBuilder({
           <section>
             <div className="flex items-end justify-between gap-3">
               <h2 className="text-lg font-semibold">Where should it go?</h2>
-              <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-muted">
+              <span className="font-sans text-[11px] uppercase  text-muted">
                 {draft.channels.length} selected
               </span>
             </div>
@@ -277,13 +303,17 @@ export function CampaignBuilder({
           <StudioActionBar
             backLabel="Back to facts"
             onBack={onBack}
-            nextLabel={isAuthenticated ? "Create posts" : "Sign in to create posts"}
+            nextLabel={isAuthenticated
+              ? resumePendingJob ? "Check campaign status" : "Create posts"
+              : "Sign in to create posts"}
             nextType="submit"
             loading={status === "loading"}
             helper={
-              isAuthenticated
-                ? "You can edit every caption and visual after generation."
-                : "Sign in is required before opening the launch studio."
+              resumePendingJob
+                ? "This campaign job is saved. Checking again resumes status checks without starting another generation."
+                : isAuthenticated
+                  ? "You can edit every caption and visual after generation."
+                  : "Sign in is required before opening the launch studio."
             }
           />
         </div>

@@ -18,8 +18,8 @@ export default function AppError({
   return (
     <main id="main-content" role="alert" className="grid min-h-[70dvh] place-items-center px-4 py-16">
       <div className="max-w-lg rounded-container border border-line bg-surface-raised p-7 text-center sm:p-10">
-        <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-danger">Page unavailable</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em]">Your saved work remains available.</h1>
+        <p className="font-sans text-[10px] uppercase  text-danger">Page unavailable</p>
+        <h1 className="mt-3 text-3xl font-semibold ">Your saved work remains available.</h1>
         <p className="mt-3 text-sm leading-6 text-muted">This page hit a temporary problem. Retry it, or return to your dashboard and reopen your project.</p>
         {error.digest && <p className="mt-3 text-xs text-muted">Reference: {error.digest}</p>}
         <div className="mt-6 flex flex-wrap justify-center gap-3">
