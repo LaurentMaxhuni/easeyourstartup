@@ -25,7 +25,7 @@ begin
 
   if not exists (
     select 1 from public.memberships m
-    where m.workspace_id = target_workspace_id and m.user_id = target_user_id
+    where m.workspace_id = target_workspace_id and m.user_id = target_user_id::uuid
   ) then
     return query select false, 'account_not_in_workspace'::text;
     return;
@@ -33,7 +33,7 @@ begin
 
   if exists (
     select 1 from public.memberships m
-    where m.workspace_id = target_workspace_id and m.user_id <> target_user_id
+    where m.workspace_id = target_workspace_id and m.user_id <> target_user_id::uuid
   ) then
     return query select false, 'workspace_is_shared'::text;
     return;
@@ -76,7 +76,7 @@ begin
   end if;
 
   insert into public.account_deletion_requests (user_id, workspace_id, expires_at)
-  values (target_user_id, target_workspace_id, pg_catalog.now() + interval '30 minutes')
+  values (target_user_id::uuid, target_workspace_id, pg_catalog.now() + interval '30 minutes')
   on conflict (user_id) do update set
     workspace_id = excluded.workspace_id,
     requested_at = pg_catalog.now(),

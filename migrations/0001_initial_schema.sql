@@ -17,14 +17,14 @@ create type public.job_status as enum (
 create table public.workspaces (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 120),
-  owner_user_id text not null references neon_auth."user"(id) on delete cascade,
+  owner_user_id uuid not null references neon_auth."user"(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table public.memberships (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  user_id text not null references neon_auth."user"(id) on delete cascade,
+  user_id uuid not null references neon_auth."user"(id) on delete cascade,
   role public.workspace_role not null default 'member',
   created_at timestamptz not null default now(),
   primary key (workspace_id, user_id)
@@ -182,7 +182,7 @@ create table public.jobs (
 create table public.audit_events (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid references public.workspaces(id) on delete cascade,
-  actor_user_id text references neon_auth."user"(id) on delete set null,
+  actor_user_id uuid references neon_auth."user"(id) on delete set null,
   event_type text not null check (char_length(event_type) between 1 and 160),
   external_event_id text unique,
   payload jsonb not null default '{}'::jsonb,
@@ -250,17 +250,17 @@ begin
   select m.workspace_id
   into workspace_id
   from public.memberships m
-  where m.user_id = target_user_id
+  where m.user_id = target_user_id::uuid
   order by m.created_at asc
   limit 1;
 
   if workspace_id is null then
     insert into public.workspaces (name, owner_user_id)
-    values (target_workspace_name, target_user_id)
+    values (target_workspace_name, target_user_id::uuid)
     returning id into workspace_id;
 
     insert into public.memberships (workspace_id, user_id, role)
-    values (workspace_id, target_user_id, 'owner');
+    values (workspace_id, target_user_id::uuid, 'owner');
   end if;
 
   return workspace_id;

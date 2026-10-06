@@ -136,7 +136,7 @@ begin
     job_id, workspace_id, requested_by, project_id, campaign_id,
     format, revision, snapshot_state, file_name
   ) values (
-    target_job_id, target_workspace_id, target_user_id, target_project_id, target_campaign_id,
+    target_job_id, target_workspace_id, target_user_id::uuid, target_project_id, target_campaign_id,
     target_format, target_revision, target_snapshot_state, target_file_name
   );
 

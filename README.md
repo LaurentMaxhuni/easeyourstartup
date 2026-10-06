@@ -167,6 +167,15 @@ the application runtime needs only its normal data permissions.
 pnpm db:migrate
 ```
 
+Application foreign keys use the UUID IDs in `neon_auth."user"`. Migration 0024
+repairs legacy text ownership columns without deleting data; incompatible IDs
+cause the migration transaction to roll back. Legacy studio snapshot keys remain text.
+The PostgreSQL integration suite requires `TEST_POSTGRES_BIN` pointing to the
+directory containing `psql`, plus a disposable server on localhost (port 55439,
+role `audit` by default; override with `TEST_POSTGRES_PORT` and `TEST_POSTGRES_USER`).
+Run `pnpm test -- src/lib/server/migrations.test.ts`; it creates and drops only
+randomly named test databases. Without this configuration, integration tests skip.
+
 For local feature QA, set `EASEYOURSTARTUP_TEST_MODE=true` and grant an
 account temporary Pro access with:
 
