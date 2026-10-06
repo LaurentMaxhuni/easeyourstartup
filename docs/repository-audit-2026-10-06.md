@@ -1,8 +1,8 @@
 # Repository audit — 6 October 2026
 
-Audited commit: `ef3c055` (`checkpoint-current-working-app`). No application fixes applied.
+Audited commit: `ef3c055` (`checkpoint-current-working-app`). Findings below describe that baseline. Remediation is recorded at the end of this report; no production database or provider configuration was changed.
 
-**Found 11 significant defects: eight P1 issues and three P2 issues.** P1 means a core operation fails, quota becomes unrecoverable, or an application safety boundary can be bypassed. P2 means a narrower correctness or verification failure. These findings are supported by executable probes, isolated PostgreSQL experiments, or an observed check failure; they are not a guarantee that every defect has been found.
+**Initial scan found 11 significant defects: eight P1 issues and three P2 issues.** A subsequent successful advisory lookup identified vulnerable dependencies, recorded as finding 12. P1 means a core operation fails, quota becomes unrecoverable, or an application safety boundary can be bypassed. P2 means a narrower correctness or verification failure. Application findings have executable probes, isolated PostgreSQL experiments, or an observed check failure; the dependency finding is supported by locked versions and published advisories. This is not a guarantee that every defect has been found.
 
 ## Findings
 
@@ -116,7 +116,15 @@ Audited commit: `ef3c055` (`checkpoint-current-working-app`). No application fix
 
 **Fix:** Exclude vendored distributions from application linting and verify the separate video project with its own configured checks.
 
-## Evidence and verification
+### 12. P1 — Locked dependencies have published runtime security vulnerabilities
+
+The original lockfile resolved Next.js 16.2.12 and Sharp 0.35.3. These fall within the affected ranges for [Windows-hosted Next.js remote code execution](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36), [image optimization remote code execution](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4), and [Sharp's vulnerable image-processing dependencies](https://github.com/lovell/sharp/security/advisories/GHSA-wq5f-xc86-pv6w). The application runs on a Windows development host and uses Sharp on uploads; production hosting and exploit reachability were not verified. No exploit was attempted.
+
+The public npm bulk advisory lookup also identified patchable advisories in Undici, gRPC, brace-expansion, JS-YAML, Nano ID, source-map-js, Vitest, and PostCSS. Upgraded within existing major versions, including Next.js 16.3.8, Sharp 0.35.5, Undici 7.29.1, Vitest 4.1.11, and PostCSS 8.5.23; updated transitive overrides and the lockfile. Kept dependency install scripts disabled.
+
+Final `pnpm audit --prod --json` reports zero known vulnerabilities across 613 production dependencies. The complete lockfile advisory lookup still flags `braces@3.0.3` ([deep-pattern stack exhaustion](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)); npm has no patched release. `pnpm why braces` locates it exclusively under development ESLint tooling via `eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch`. Runtime exploitation was not established. Treat malicious glob patterns in tooling as residual risk; do not mistake a clean production advisory result for an exhaustive security guarantee.
+
+## Evidence from the original audit
 
 - Existing suite: **38 test files, 223 tests passed**.
 - TypeScript: **passed**.
@@ -135,8 +143,38 @@ Review concentrated on authentication, workspace authorization, billing/webhooks
 
 No production database, real billing checkout, live deletion, AI generation request, or storage write was performed. Provider-side Neon deletion restrictions and Browserless network egress settings remain unverified. Browserless also requires destination confirmation headers that need checking against the actual deployed provider's response contract.
 
-Dependency vulnerability lookup could not complete: the network-enabled execution host fails before running commands because its PowerShell configuration resides in an unavailable OneDrive file. No claim of vulnerability-free dependencies is made.
+The original dependency lookup and commits were blocked by an unavailable OneDrive PowerShell configuration. Selecting `cmd.exe` with login disabled resolved that execution limitation. Advisory lookup and all remediation commits subsequently completed.
 
-Two further source-level concerns need targeted follow-up after the P1 blockers: regeneration saves replacement/counters and job completion in separate statements, so a failure between them may consume another reservation on retry; completed campaigns without a saved editor snapshot are not reconstructed from stored outputs by the studio-loading path. Neither was validated against a running end-to-end application, so neither is counted among the eleven findings.
+Regeneration's separate persistence/completion statements were replaced by an atomic query and replay tests, addressing the original retry concern. One further source-level concern remains: completed campaigns without a saved editor snapshot are not reconstructed from stored outputs by the studio-loading path. This was not validated against a running end-to-end application, so it is not counted as a confirmed defect.
 
 Fix order: identity schema and runtime casts; storage signatures; server deletion boundary and quota-safe deletion; regeneration and expiry cleanup; repeat checkout; render correctness; CI. Follow fixes with empty-database migration tests and sandbox end-to-end tests that scan, generate, upload, export, cancel, and repurchase.
+
+## Remediation and final validation
+
+All eleven original findings have local fixes and regression coverage where practical. Finding 12's patchable advisories are resolved; the development-only unpatched `braces` advisory remains.
+
+| Finding | Completed change | Commit |
+| --- | --- | --- |
+| 1 | UUID schema, safe forward repair, fresh migrations and legacy data tests; also repaired export function's text-to-UUID insert | `7b6ee22` |
+| 2 | UUID upload ownership and onboarding comparison; real image-processing route regression | `e26bb64` |
+| 3 | Correct canonical header termination; PUT/GET/DELETE and presigned signature regressions | `b9933ef` |
+| 4 | Atomic, idempotent regeneration persistence/failure release; stale channel quota recovery; PostgreSQL replay tests | `eaa6c5d` |
+| 5 | Auth deletion and callback preparation checks; public-table cascade guards; pending work guards; PostgreSQL billing/shared membership tests | `8578950`, `707705c` |
+| 6 | Database project deletion guard preserves active jobs/reservations; returns HTTP 409; PostgreSQL regression | `b4ec5a4` |
+| 7 | Retain old keys while clearing expiry metadata atomically; expiry and replay PostgreSQL regression | `fbc6b6e` |
+| 8 | Verify old transaction's subscription is canceled at Paddle before reclaiming a completed attempt; retain current payment protection | `ee8a677` |
+| 9 | Remove free watermark from the export renderer's fallback; server-rendered regression | `dbae236` |
+| 10 | Failed image decode prevents readiness; successful decode and unmount regressions | `5660eab` |
+| 11 | Exclude vendored distributions from lint | `1b71078` |
+| 12 | Patch runtime/tooling dependencies and regenerate lockfile | `6ff511b` |
+
+PostgreSQL tests now run in CI using a PostgreSQL 18 service (`6e62cd5`), instead of silently skipping without local configuration. Workflow YAML parsed successfully; the hosted workflow itself was not run. The migration test uses one `psql` invocation for the ordered files, removing its original timeout under full-suite parallel load (`9755035`). Lint configuration change is covered by running lint itself; an implementation-mirroring test was not added.
+
+Final checks on patched dependencies:
+
+- **44 test files, 253 tests passed**, including all 11 PostgreSQL integration tests. Regressions were observed failing before application fixes and passing afterward.
+- **Typecheck and production build passed** on Next.js 16.3.8.
+- **Lint passed** with zero errors and four navigation warnings introduced by the updated Next.js lint rules.
+- **Production dependency audit passed**, zero reported vulnerabilities; full lockfile scan retains the development-only advisory described above.
+
+Deployment requirements: apply pending migrations 0024–0026 with the migration runner; verify managed Neon Auth role permissions for public-table triggers and actual deletion confirmation in a disposable provider sandbox; verify S3 signing and Browserless capture against configured services; verify Paddle cancellation and repurchase using sandbox accounts. Repeat checkout now requires Paddle transaction/subscription read permissions. No production migrations, customer deletions, or payments were executed. Existing stranded usage from historical deletions was not reconciled automatically; repair such data only after inspecting its usage period and surviving reservations. Provider permissions, four lint warnings, and the unconfirmed editor recovery concern remain outside verified closure.
