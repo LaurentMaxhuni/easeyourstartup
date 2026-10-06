@@ -66,4 +66,24 @@ describe.skipIf(!postgresBin)("fresh UUID identity migrations", () => {
     expect(sql(`select allowed from public.enqueue_export_job('${workspaceId}', '${userId}'::text, '${projectId}', '${campaignId}', 1, 'png', 1, '{}'::jsonb, 'test.png', '${randomUUID()}', 'test-export', '${randomUUID()}')`)).toBe("t");
     expect(sql("select requested_by from public.export_requests")).toBe(userId);
   });
+
+  it("rejects deletion of a project with reserved generation and preserves its quota", () => {
+    const workspaceId = sql(`select workspace_id from public.memberships where user_id = '${userId}'`);
+    const projectId = randomUUID();
+    const campaignId = randomUUID();
+    sql(`
+      insert into public.projects (id, workspace_id, name) values ('${projectId}', '${workspaceId}', 'Reserved');
+      insert into public.usage_periods (workspace_id, period_start, period_end, reserved_campaigns) values ('${workspaceId}', '2026-10-01', '2026-11-01', 1);
+      insert into public.campaigns (id, workspace_id, project_id, kind, status, usage_reserved, usage_period_start, usage_period_end)
+      values ('${campaignId}', '${workspaceId}', '${projectId}', 'launch', 'queued', true, '2026-10-01', '2026-11-01');
+      insert into public.jobs (workspace_id, project_id, campaign_id, kind, idempotency_key)
+      values ('${workspaceId}', '${projectId}', '${campaignId}', 'generate', 'reserved-deletion');
+    `);
+    expect(() => sql(`delete from public.projects where id = '${projectId}'`)).toThrow(/Project has active work/);
+    expect(sql(`select reserved_campaigns from public.usage_periods where workspace_id = '${workspaceId}'`)).toBe("1");
+    expect(sql(`select count(*) from public.campaigns where id = '${campaignId}'`)).toBe("1");
+    sql(`update public.jobs set status = 'failed' where campaign_id = '${campaignId}'; select public.release_campaign_usage_reservation('${workspaceId}', '${campaignId}');`);
+    sql(`delete from public.projects where id = '${projectId}'`);
+    expect(sql(`select reserved_campaigns from public.usage_periods where workspace_id = '${workspaceId}'`)).toBe("0");
+  });
 });

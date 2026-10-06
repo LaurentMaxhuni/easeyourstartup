@@ -186,6 +186,7 @@ export async function DELETE(
     if (!deleted) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Project could not be deleted." }, { status: 400 });
+    const message = error instanceof Error ? error.message : "Project could not be deleted.";
+    return NextResponse.json({ error: message }, { status: message.includes("Project has active work") ? 409 : 400 });
   }
 }
