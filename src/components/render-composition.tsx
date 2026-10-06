@@ -654,22 +654,6 @@ export function RenderComposition({
           />
         </div>
       )}
-      <span
-        style={{
-          position: "absolute",
-          right: "7%",
-          bottom: "4%",
-          zIndex: 3,
-          borderRadius: Math.max(4, sourceRadius / 2),
-          padding: "6px 8px",
-          background: composition.tokens.foreground,
-          color: composition.tokens.background,
-          fontSize: 10,
-          textTransform: "uppercase",
-        }}
-      >
-        Free preview
-      </span>
     </div>
   );
 }
