@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         })}::jsonb,
         onboarding_completed_at = coalesce(onboarding_completed_at, now())
       where id = ${workspaceId}::uuid
-        and owner_user_id = ${auth.user.id}::text
+        and owner_user_id = ${auth.user.id}::uuid
       returning id
     `;
 

@@ -86,7 +86,7 @@ export async function POST(request: Request) {
           object_key, mime_type, width, height, byte_size, sha256
         )
         values (
-          ${id}::uuid, ${context.workspaceId}::uuid, ${context.user.id}::text,
+          ${id}::uuid, ${context.workspaceId}::uuid, ${context.user.id}::uuid,
           ${projectId.data}::uuid, ${campaignId?.success ? campaignId.data : null}::uuid,
           ${objectKey}, 'image/webp', ${info.width}, ${info.height},
           ${stored.byteSize}, ${stored.sha256}
