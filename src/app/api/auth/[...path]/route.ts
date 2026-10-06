@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { getNeonAuth } from "@/lib/auth/server";
+import { getAuthenticatedUser, getNeonAuth } from "@/lib/auth/server";
+import { createDatabase } from "@/lib/server/database";
+import { assertSameOrigin } from "@/lib/server/request-security";
 
 export const runtime = "nodejs";
 
@@ -76,8 +78,43 @@ async function getWithTransientRetry(request: Request, context: RouteContext) {
   }
 }
 
-export const GET = handlers?.GET ? getWithTransientRetry : unavailable;
-export const POST = handlers?.POST ?? unavailable;
-export const PUT = handlers?.PUT ?? unavailable;
-export const PATCH = handlers?.PATCH ?? unavailable;
-export const DELETE = handlers?.DELETE ?? unavailable;
+function withDeletionGuard(handler: typeof getWithTransientRetry | undefined) {
+  return async (request: Request, context: RouteContext) => {
+    if (!handler) return unavailable(request, context);
+    const { path } = await context.params;
+    if (path[0] === "delete-user") {
+      try {
+        if (request.method !== "GET") assertSameOrigin(request);
+        const auth = await getAuthenticatedUser();
+        if (!auth.user) return NextResponse.json({ error: auth.error }, { status: auth.status });
+        const database = createDatabase();
+        if (!database) return temporarilyUnavailable();
+        const [prepared] = await database`
+          select workspace_id from public.account_deletion_requests
+          where user_id = ${auth.user.id}::uuid and expires_at > pg_catalog.now()
+          limit 1
+        `;
+        if (!prepared) {
+          return NextResponse.json({ error: "Prepare account deletion in account settings before confirming it." }, { status: 409 });
+        }
+        const [check] = await database`
+          select * from public.prepare_account_deletion(
+            ${auth.user.id}::text, ${prepared.workspace_id}::uuid
+          )
+        `;
+        if (check?.allowed !== true) {
+          return NextResponse.json({ error: "Account deletion is blocked by billing, shared membership, or active jobs. Reopen account settings." }, { status: 409 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Account deletion could not be verified." }, { status: 503 });
+      }
+    }
+    return handler(request, context);
+  };
+}
+
+export const GET = withDeletionGuard(handlers?.GET ? getWithTransientRetry : undefined);
+export const POST = withDeletionGuard(handlers?.POST);
+export const PUT = withDeletionGuard(handlers?.PUT);
+export const PATCH = withDeletionGuard(handlers?.PATCH);
+export const DELETE = withDeletionGuard(handlers?.DELETE);
