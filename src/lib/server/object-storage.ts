@@ -52,7 +52,7 @@ async function requestObject(method: "PUT" | "GET" | "DELETE", key: string, body
   const shortDate = amzDate.slice(0, 8);
   const payloadHash = digest(body ?? new Uint8Array());
   const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}`;
+  const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
   const canonicalRequest = [method, url.pathname, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
   const scope = `${shortDate}/${config.region}/s3/aws4_request`;
   const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, digest(canonicalRequest)].join("\n");
@@ -122,7 +122,7 @@ export function createPrivateObjectReadUrl(key: string, expiresInSeconds = 300) 
     "GET",
     url.pathname,
     canonicalQuery,
-    `host:${url.host}`,
+    `host:${url.host}\n`,
     "host",
     "UNSIGNED-PAYLOAD",
   ].join("\n");
