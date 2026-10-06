@@ -42,6 +42,7 @@ const user = { id: "user_01test", name: "Founder", email: "founder@example.test"
 describe("POST /api/paddle/checkout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.paddleRequest.mockReset();
     vi.stubEnv("PADDLE_PRO_PRICE_ID", "pri_pro");
     vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "");
     mocks.getCurrentUser.mockResolvedValue(user);
@@ -109,5 +110,38 @@ describe("POST /api/paddle/checkout", () => {
 
     expect(response.status).toBe(409);
     expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it("starts a new checkout after Paddle confirms the completed attempt's subscription ended", async () => {
+    const checkoutUrl = "https://easeyourstartup.example/checkout?_ptxn=txn_new";
+    const { database } = recordingDatabase([
+      [], [], [],
+      [{ attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", status: "completed", paddle_transaction_id: "txn_old", claimed: false }],
+      [{ attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }],
+      [{ status: "creating", claimed: true }],
+      [{ checkout_url: checkoutUrl }],
+    ]);
+    mocks.createDatabase.mockReturnValue(database);
+    mocks.paddleRequest
+      .mockResolvedValueOnce({ data: { id: "txn_old", subscription_id: "sub_old" } })
+      .mockResolvedValueOnce({ data: { id: "sub_old", status: "canceled" } })
+      .mockResolvedValueOnce({ data: { id: "txn_new", checkout: { url: checkoutUrl } } });
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", { method: "POST" }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url: checkoutUrl });
+    expect(mocks.paddleRequest.mock.calls.map(([path]) => path)).toEqual(["/transactions/txn_old", "/subscriptions/sub_old", "/transactions"]);
+  });
+
+  it.each(["active", "trialing", "past_due", "paused"])("does not replace a completed payment whose subscription is %s", async (status) => {
+    const { database } = recordingDatabase([
+      [], [], [], [{ attempt_id: "old", status: "completed", paddle_transaction_id: "txn_old", claimed: false }],
+    ]);
+    mocks.createDatabase.mockReturnValue(database);
+    mocks.paddleRequest
+      .mockResolvedValueOnce({ data: { id: "txn_old", subscription_id: "sub_old" } })
+      .mockResolvedValueOnce({ data: { id: "sub_old", status } });
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", { method: "POST" }));
+    expect(response.status).toBe(409);
+    expect(mocks.paddleRequest.mock.calls.every(([path]) => path !== "/transactions")).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ export type PaddleApiResponse<T> = {
 
 export type PaddleTransaction = {
   id: string;
+  subscription_id?: string | null;
   checkout?: {
     url?: string | null;
   } | null;

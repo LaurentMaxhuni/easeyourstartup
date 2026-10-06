@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     }
 
     const attemptId = randomUUID();
-    const [attempt] = await database`
+    const claimAttempt = () => database`
       with lifecycle_lock as materialized (
         select pg_catalog.pg_advisory_xact_lock(
           pg_catalog.hashtextextended(${workspaceId}::text || ':account-lifecycle', 0)
@@ -115,6 +115,11 @@ export async function POST(request: Request) {
           select 1 from public.account_deletion_requests r
           where r.user_id = ${user.id} and r.expires_at > pg_catalog.now()
         )
+          and not exists (
+            select 1 from public.subscriptions s
+            where s.workspace_id = ${workspaceId}::uuid and s.billing_provider = 'paddle'
+              and s.status not in ('canceled', 'inactive')
+          )
         on conflict (workspace_id) do update set
           attempt_id = excluded.attempt_id,
           paddle_transaction_id = null,
@@ -140,6 +145,39 @@ export async function POST(request: Request) {
         and not exists (select 1 from claimed_attempt)
       limit 1
     `;
+    let [attempt] = await claimAttempt();
+    if (attempt?.status === "completed" && typeof attempt.paddle_transaction_id === "string") {
+      const oldTransaction = await paddleRequest<PaddleTransaction>(
+        `/transactions/${encodeURIComponent(attempt.paddle_transaction_id)}`,
+      );
+      const subscriptionId = oldTransaction.data.subscription_id;
+      if (oldTransaction.data.id === attempt.paddle_transaction_id && subscriptionId) {
+        const subscription = await paddleRequest<{ id: string; status: string }>(
+          `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        );
+        if (subscription.data.id === subscriptionId && subscription.data.status === "canceled") {
+          const [released] = await database`
+            with lifecycle_lock as materialized (
+              select pg_catalog.pg_advisory_xact_lock(
+                pg_catalog.hashtextextended(${workspaceId}::text || ':account-lifecycle', 0)
+              ) as locked
+            )
+            update public.checkout_attempts a
+            set status = 'failed', updated_at = pg_catalog.now()
+            from lifecycle_lock
+            where a.workspace_id = ${workspaceId}::uuid
+              and a.attempt_id = ${attempt.attempt_id}::uuid and a.status = 'completed'
+              and not exists (
+                select 1 from public.subscriptions s
+                where s.workspace_id = a.workspace_id and s.billing_provider = 'paddle'
+                  and s.status not in ('canceled', 'inactive')
+              )
+            returning a.attempt_id
+          `;
+          if (released) [attempt] = await claimAttempt();
+        }
+      }
+    }
     if (!attempt) {
       const [pendingDeletion] = await database`
         select user_id from public.account_deletion_requests
