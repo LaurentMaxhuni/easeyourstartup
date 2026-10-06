@@ -33,6 +33,7 @@ it("persists a processed upload with a UUID owner", async () => {
     workspaceId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", limits: { activeProjects: 1 },
   });
   mocks.put.mockResolvedValue({ byteSize: 100, sha256: "test" });
+  mocks.remove.mockResolvedValue(undefined);
   const image = await sharp({ create: { width: 8, height: 8, channels: 3, background: "white" } }).png().toBuffer();
   const form = new FormData();
   form.set("projectId", projectId);

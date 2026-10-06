@@ -27,9 +27,8 @@ describe.skipIf(!postgresBin)("fresh UUID identity migrations", () => {
   });
 
   it("applies the complete migration chain and provisions a workspace through both identity overloads", () => {
-    for (const migration of readdirSync("migrations").filter((name) => name.endsWith(".sql")).sort()) {
-      psql(databaseName, ["-f", resolve("migrations", migration)]);
-    }
+    const files = readdirSync("migrations").filter((name) => name.endsWith(".sql")).sort();
+    psql(databaseName, files.flatMap((migration) => ["-f", resolve("migrations", migration)]));
     sql(`insert into neon_auth."user" (id) values ('${userId}')`);
     const workspaceId = sql(`select public.ensure_workspace_for_user('${userId}'::uuid, 'Test')`);
     expect(workspaceId).toMatch(/^[0-9a-f-]{36}$/);
