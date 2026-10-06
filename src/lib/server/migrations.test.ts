@@ -86,4 +86,44 @@ describe.skipIf(!postgresBin)("fresh UUID identity migrations", () => {
     sql(`delete from public.projects where id = '${projectId}'`);
     expect(sql(`select reserved_campaigns from public.usage_periods where workspace_id = '${workspaceId}'`)).toBe("0");
   });
+
+  function createAccount() {
+    const id = randomUUID();
+    sql(`insert into neon_auth."user" values ('${id}')`);
+    return { id, workspaceId: sql(`select public.ensure_workspace_for_user('${id}'::uuid, 'Lifecycle')`) };
+  }
+
+  it("blocks provider-side user deletion while its workspace has live billing", () => {
+    const account = createAccount();
+    sql(`insert into public.subscriptions (workspace_id, billing_provider, billing_subscription_id, status) values ('${account.workspaceId}', 'paddle', 'sub_live', 'active')`);
+    expect(() => sql(`delete from neon_auth."user" where id = '${account.id}'`)).toThrow(/Account deletion blocked/);
+    expect(sql("select billing_subscription_id from public.subscriptions where billing_subscription_id = 'sub_live'")).toBe("sub_live");
+    expect(sql(`select count(*) from neon_auth."user" where id = '${account.id}'`)).toBe("1");
+    sql(`update public.subscriptions set status = 'canceled' where workspace_id = '${account.workspaceId}'`);
+    sql(`delete from neon_auth."user" where id = '${account.id}'`);
+    expect(sql(`select count(*) from public.workspaces where id = '${account.workspaceId}'`)).toBe("0");
+  });
+
+  it("blocks new jobs and checkout while confirmation is pending and permits them after cancellation", () => {
+    const account = createAccount();
+    const jobId = randomUUID();
+    expect(sql(`select allowed from public.prepare_account_deletion('${account.id}', '${account.workspaceId}')`)).toBe("t");
+    const insertJob = `insert into public.jobs (id, workspace_id, kind, idempotency_key) values ('${jobId}', '${account.workspaceId}', 'scan', 'pending-deletion')`;
+    expect(() => sql(insertJob)).toThrow(/Account deletion is pending/);
+    expect(() => sql(`insert into public.checkout_attempts (workspace_id, billing_price_id, status, expires_at) values ('${account.workspaceId}', 'pri_test', 'creating', now() + interval '10 minutes')`)).toThrow(/Account deletion is pending/);
+    sql(`delete from public.account_deletion_requests where user_id = '${account.id}'`);
+    sql(insertJob);
+    expect(() => sql(`delete from neon_auth."user" where id = '${account.id}'`)).toThrow(/Account deletion blocked/);
+    sql(`update public.jobs set status = 'failed' where id = '${jobId}'`);
+    sql(`delete from neon_auth."user" where id = '${account.id}'`);
+  });
+
+  it("blocks direct provider deletion of either member in a shared workspace", () => {
+    const owner = createAccount();
+    const memberId = randomUUID();
+    sql(`insert into neon_auth."user" values ('${memberId}'); insert into public.memberships (workspace_id, user_id) values ('${owner.workspaceId}', '${memberId}')`);
+    expect(() => sql(`delete from neon_auth."user" where id = '${memberId}'`)).toThrow(/Account deletion blocked/);
+    expect(() => sql(`delete from neon_auth."user" where id = '${owner.id}'`)).toThrow(/Account deletion blocked/);
+    expect(sql(`select count(*) from public.memberships where workspace_id = '${owner.workspaceId}'`)).toBe("2");
+  });
 });

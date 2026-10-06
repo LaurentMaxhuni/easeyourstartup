@@ -192,6 +192,12 @@ Enable the email/password and Google providers in the Neon Auth settings, plus
 the `delete-user` endpoint so account deletion can complete after its billing
 and background-job safety checks pass. Configure and verify email templates and
 OAuth callbacks before inviting customers.
+Deletion and confirmation requests through the application require a pending
+preparation request and recheck lifecycle conditions. Migration 0026 adds guards
+on public tables to block unsafe provider-side cascades and new jobs/checkouts
+while deletion is pending. Verify these triggers with the managed auth service's
+database role in a sandbox before enabling deletion for customers; the local
+integration suite verifies cascades but cannot validate provider role permissions.
 Neon Auth owns the `neon_auth` schema; the migration references `neon_auth."user"` and keeps
 product data in `public`. The first authenticated server request provisions a
 default workspace and membership for that user. Workspace authorization is

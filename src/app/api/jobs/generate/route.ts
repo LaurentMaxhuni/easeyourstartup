@@ -243,6 +243,9 @@ export async function POST(request: Request) {
       );
     }
     if (error instanceof Error) {
+      if (error.message.startsWith("Account deletion is pending.")) {
+        return NextResponse.json({ error: error.message }, { status: 409 });
+      }
       if (error.message === "Cross-site request rejected." || error.message === "Request origin rejected.") {
         return NextResponse.json({ error: "Request origin rejected." }, { status: 403 });
       }

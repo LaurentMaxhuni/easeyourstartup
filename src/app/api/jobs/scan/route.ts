@@ -69,7 +69,8 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "Scan job could not be queued.";
     const status =
-      error instanceof AuthenticationRequiredError ? error.status : 400;
+      error instanceof AuthenticationRequiredError ? error.status
+        : message.startsWith("Account deletion is pending.") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

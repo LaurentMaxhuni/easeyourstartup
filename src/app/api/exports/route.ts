@@ -49,6 +49,9 @@ function safeFilename(name: string, extension: "png" | "zip") {
 }
 
 function responseError(error: unknown) {
+  if (error instanceof Error && error.message.startsWith("Account deletion is pending.")) {
+    return NextResponse.json({ error: error.message }, { status: 409 });
+  }
   if (error instanceof AuthenticationRequiredError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
