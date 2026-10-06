@@ -549,15 +549,20 @@ export const cleanupDeletedPrivateObjects = inngest.createFunction(
   { cron: "*/15 * * * *" },
   async ({ step }) => {
     await step.run("queue-expired-export-files", async () => database()`
-      with expired as (
-        update public.export_requests
+      with expired as materialized (
+        select job_id, object_key from public.export_requests
+        where object_key is not null and download_expires_at <= pg_catalog.now()
+        for update
+      ), cleared as (
+        update public.export_requests r
         set object_key = null, mime_type = null, byte_size = null,
           download_expires_at = null, updated_at = pg_catalog.now()
-        where object_key is not null and download_expires_at <= pg_catalog.now()
-        returning object_key
+        from expired
+        where r.job_id = expired.job_id
+        returning expired.object_key
       )
       insert into public.object_cleanup_queue (object_key)
-      select object_key from expired
+      select object_key from cleared
       on conflict (object_key) do nothing
     `);
     await step.run("prune-expired-render-tokens-and-deletion-locks", async () => {
