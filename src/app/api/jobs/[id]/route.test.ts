@@ -38,6 +38,7 @@ describe("GET /api/jobs/:id", () => {
       [{ id: "job-1", kind: "generate", status: "generating", progress: 75, result: null, error_message: null, updated_at: "2026-09-20T00:00:00Z", stale_generation: true }],
       [{ id: "job-1" }],
       [],
+      [],
       [{ id: "job-1", kind: "generate", status: "failed", progress: 75, result: null, error_message: "Generation stopped after 20 minutes without a result. Try generating this campaign again.", updated_at: "2026-09-20T02:00:00Z", stale_generation: false }],
     ]);
     mocks.requireWorkspaceContext.mockResolvedValue({ database, workspaceId: "workspace-1" });

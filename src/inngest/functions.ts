@@ -269,19 +269,22 @@ export const regenerateCampaignChannel = inngest.createFunction(
       if (!database) return;
       const { jobId, workspaceId, campaignId, channel } = event.data.event.data;
       await database`
-        update public.channel_outputs
-        set regeneration_reserved = pg_catalog.greatest(regeneration_reserved - 1, 0),
+        with failed_job as (
+          update public.jobs
+          set status = 'failed',
+            error_message = 'Channel regeneration failed after retries.',
+            updated_at = pg_catalog.now()
+          where id = ${jobId} and workspace_id = ${workspaceId}
+            and campaign_id = ${campaignId} and regeneration_channel = ${channel}
+            and status in ('queued', 'generating')
+          returning workspace_id, campaign_id, regeneration_channel
+        )
+        update public.channel_outputs o
+        set regeneration_reserved = greatest(o.regeneration_reserved - 1, 0),
           updated_at = pg_catalog.now()
-        where workspace_id = ${workspaceId}
-          and campaign_id = ${campaignId}
-          and channel = ${channel}
-      `;
-      await database`
-        update public.jobs
-        set status = 'failed',
-          error_message = 'Channel regeneration failed after retries.',
-          updated_at = pg_catalog.now()
-        where id = ${jobId} and workspace_id = ${workspaceId}
+        from failed_job j
+        where o.workspace_id = j.workspace_id and o.campaign_id = j.campaign_id
+          and o.channel = j.regeneration_channel
       `;
     },
   },
@@ -305,6 +308,7 @@ export const regenerateCampaignChannel = inngest.createFunction(
         update public.jobs
         set status = 'generating', progress = 35, updated_at = now()
         where id = ${jobId} and workspace_id = ${workspaceId}
+          and status in ('queued', 'generating')
       `;
     });
 
@@ -320,25 +324,40 @@ export const regenerateCampaignChannel = inngest.createFunction(
     await step.run("save-regeneration-and-release-reservation", async () => {
       const database = requireDatabase();
       const [updated] = await database`
-        update public.channel_outputs
-        set output = ${JSON.stringify(replacement)}::jsonb,
-          regeneration_count = regeneration_count + 1,
-          regeneration_reserved = pg_catalog.greatest(regeneration_reserved - 1, 0),
-          updated_at = pg_catalog.now()
-        where workspace_id = ${workspaceId}
-          and campaign_id = ${campaignId}
-          and channel = ${channel}
-          and regeneration_reserved > 0
-        returning id
-      `;
-      if (!updated) throw new Error("The regeneration reservation is no longer available.");
-      await database`
-        update public.jobs
-        set status = 'completed', progress = 100,
-          result = ${serializeGenerateJobResult(generated)}::jsonb,
-          updated_at = pg_catalog.now()
+        with active_job as materialized (
+          select id from public.jobs
+          where id = ${jobId} and workspace_id = ${workspaceId}
+            and campaign_id = ${campaignId} and regeneration_channel = ${channel}
+            and status in ('queued', 'generating')
+          for update
+        ), updated_output as (
+          update public.channel_outputs
+          set output = ${JSON.stringify(replacement)}::jsonb,
+            regeneration_count = regeneration_count + 1,
+            regeneration_reserved = greatest(regeneration_reserved - 1, 0),
+            updated_at = pg_catalog.now()
+          where workspace_id = ${workspaceId} and campaign_id = ${campaignId}
+            and channel = ${channel} and regeneration_reserved > 0
+            and exists (select 1 from active_job)
+          returning id
+        ), completed_job as (
+          update public.jobs
+          set status = 'completed', progress = 100,
+            result = ${serializeGenerateJobResult(generated)}::jsonb,
+            updated_at = pg_catalog.now()
+          where id in (select id from active_job)
+            and exists (select 1 from updated_output)
+          returning id
+        )
+        select id from completed_job
+        union all
+        select id from public.jobs
         where id = ${jobId} and workspace_id = ${workspaceId}
+          and campaign_id = ${campaignId} and regeneration_channel = ${channel}
+          and status = 'completed'
+        limit 1
       `;
+      if (!updated) throw new NonRetriableError("The regeneration reservation is no longer available.");
     });
     return { campaignId, channel };
   },
