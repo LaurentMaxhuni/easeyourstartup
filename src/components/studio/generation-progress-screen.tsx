@@ -1,12 +1,14 @@
 "use client";
 
 import { Check } from "@phosphor-icons/react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { LogoMark } from "@/components/logo";
 
 export type GenerationScreenStage = "preparing" | "queued" | "writing" | "visuals";
 
-const stages = ["Brief ready", "Writing your posts", "Designing your canvas"];
+const stages = ["Request saved", "Writing your posts", "Creating your visual"];
 export function GenerationProgressScreen({
   projectName,
   channelCount,
@@ -16,6 +18,11 @@ export function GenerationProgressScreen({
   channelCount: number;
   stage: GenerationScreenStage;
 }) {
+  const [takingLonger, setTakingLonger] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTakingLonger(true), 90_000);
+    return () => window.clearTimeout(timer);
+  }, []);
   const activeStage = stage === "preparing" || stage === "queued"
     ? 0
     : stage === "writing"
@@ -27,24 +34,24 @@ export function GenerationProgressScreen({
       ? "composing"
       : "working";
   const activityLabel = stage === "visuals"
-    ? "Designing your canvas"
+    ? "Creating your visual"
     : stage === "writing"
       ? "Generating campaign copy"
       : "Preparing your campaign";
   const title = stage === "preparing"
-    ? "Sending your brief to the studio"
+    ? "Getting your posts started"
       : stage === "queued"
-        ? "Your brief is in the queue"
+        ? "Your request is saved"
       : stage === "writing"
         ? "Writing your posts"
-        : "Designing your canvas";
+        : "Creating your visual";
   const description = stage === "preparing"
-    ? "Your approved facts and selected channels are being lined up."
+    ? "We’re saving your announcement and the platforms you chose."
       : stage === "queued"
-        ? "The studio has your brief and is getting started."
+        ? "We’re getting started. Your posts will appear here when they’re ready."
       : stage === "writing"
         ? `Creating tailored copy for ${channelCount} selected ${channelCount === 1 ? "channel" : "channels"}.`
-        : "The studio is applying your brand colors and imagery to create the first editable design in Outfit.";
+        : "Using your brand colors and reviewed wording to make a matching image.";
 
   return (
     <main className="fixed inset-0 z-[80] min-h-[100dvh] overflow-y-auto bg-canvas text-ink">
@@ -109,8 +116,9 @@ export function GenerationProgressScreen({
             })}
           </ol>
           <p className="mt-8 text-xs text-muted">
-            Built from your brief and the facts you approved.
+            {takingLonger ? "This is taking longer than expected. Your saved request will keep running." : "You’ll be able to review and edit everything before sharing."}
           </p>
+          {stage !== "preparing" && <Link href="/dashboard" className="mt-5 rounded-control border border-line px-5 py-3 text-sm font-semibold hover:bg-surface">Back to my projects</Link>}
         </section>
       </div>
     </main>

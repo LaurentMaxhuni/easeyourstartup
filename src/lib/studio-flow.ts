@@ -1,23 +1,23 @@
 export const STUDIO_STAGES = [
   {
     id: "scan",
-    label: "Source",
-    description: "Scan your public site",
+    label: "Website",
+    description: "Add your website",
   },
   {
     id: "brand",
-    label: "Facts",
-    description: "Automatic source curation",
+    label: "Your product",
+    description: "Review what we found",
   },
   {
     id: "campaign",
-    label: "Brief",
-    description: "Describe the launch",
+    label: "Announcement",
+    description: "Tell us what’s new",
   },
   {
     id: "creative",
-    label: "Posts",
-    description: "Edit and export",
+    label: "Your posts",
+    description: "Review, copy, and download",
   },
 ] as const;
 

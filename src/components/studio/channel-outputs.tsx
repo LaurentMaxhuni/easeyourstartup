@@ -76,10 +76,10 @@ export function ChannelOutputs({
             id="copy-title"
             className={compact ? "text-sm font-semibold" : "text-xl font-semibold"}
           >
-            Channel copy
+            Your posts
           </h2>
           <p className="mt-1 text-xs text-muted">
-            Every line stays editable.
+            Choose a platform. Edit the text here, then copy your post.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -122,6 +122,18 @@ export function ChannelOutputs({
               key={item.channel}
               onClick={() => setActive(item.channel)}
               role="tab"
+              id={`channel-tab-${item.channel}`}
+              tabIndex={activeChannel === item.channel ? 0 : -1}
+              onKeyDown={(event) => {
+                const current = outputs.findIndex((entry) => entry.channel === item.channel);
+                const index = event.key === "ArrowRight" ? (current + 1) % outputs.length
+                  : event.key === "ArrowLeft" ? (current - 1 + outputs.length) % outputs.length
+                    : event.key === "Home" ? 0 : event.key === "End" ? outputs.length - 1 : null;
+                if (index === null) return;
+                event.preventDefault();
+                setActive(outputs[index].channel);
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus();
+              }}
               aria-selected={activeChannel === item.channel}
               aria-controls="active-channel-copy"
               className={cn(
@@ -136,8 +148,8 @@ export function ChannelOutputs({
           ))}
         </div>
       </div>
+      <div id="active-channel-copy" role="tabpanel" aria-labelledby={`channel-tab-${output.channel}`}>
       <textarea
-        id="active-channel-copy"
         aria-label={CHANNEL_LABELS[output.channel] + " campaign copy"}
         value={output.primaryCopy}
         onChange={(event) => updateCopy(event.target.value)}
@@ -146,14 +158,13 @@ export function ChannelOutputs({
           compact ? "min-h-[280px] p-3 text-xs leading-6" : "min-h-[420px] p-5",
         )}
       />
+      </div>
       <p className="mt-2 text-right font-sans text-[10px] uppercase  text-muted">
         {output.primaryCopy.length} characters
       </p>
       {output.linkedClaimIds.length > 0 && (
-        <div className="mt-3 space-y-2">
-          <p className="font-sans text-[10px] uppercase  text-muted">
-            Source evidence
-          </p>
+        <details className="mt-3 space-y-2">
+          <summary className="cursor-pointer text-xs font-semibold text-muted">Check the website sources</summary>
           {output.linkedClaimIds.map((claimId) => {
             const claim = sourceClaimsById.get(claimId);
             return claim ? (
@@ -173,7 +184,7 @@ export function ChannelOutputs({
               </Badge>
             );
           })}
-        </div>
+        </details>
       )}
       {output.warnings.map((warning) => (
         <p

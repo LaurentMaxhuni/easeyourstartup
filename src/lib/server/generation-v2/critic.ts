@@ -288,29 +288,33 @@ function averageScore(scores: CampaignGenerationReview["scores"]) {
   return values.reduce((sum, score) => sum + score, 0) / values.length;
 }
 
+export function needsCraftRewrite(scores: CampaignGenerationReview["scores"]) {
+  return averageScore(scores) < CAMPAIGN_REWRITE_THRESHOLDS.average ||
+    Object.entries(scores).some(([name, score]) => name !== "factualAccuracy" && score < CAMPAIGN_REWRITE_THRESHOLDS.individualCraftScore);
+}
+
+function genericPhrases({ input, outputs, designPlan }: Pick<CampaignGenerationReviewInput, "input" | "outputs" | "designPlan">) {
+  const allowedWording = [input.updateDetails, input.cta, ...approvedClaims(input).values()].map((value) =>
+    (typeof value === "string" ? value : value.text).toLowerCase(),
+  ).join("\n");
+  const copy = [
+    ...outputs.flatMap((output) => [output.primaryCopy, ...output.alternateHooks]),
+    ...designPlan.components.flatMap((component) => [component.eyebrow, component.headline, component.supportingCopy, component.body, component.footer]),
+  ].join("\n");
+  return [...new Set((copy.match(/\b(?:seamless(?:ly)?|streamlin(?:e[ds]?|ing)|game[- ]changer|revolutionary|unlock your potential|no overhead|zero overhead|no noise|source-backed workflow)\b/gi) ?? [])
+    .filter((phrase) => !allowedWording.includes(phrase.toLowerCase())))];
+}
+
 function needsRewrite(
   assessment: z.infer<typeof campaignGenerationAssessmentSchema>,
   deterministicWarnings: UnsupportedClaimLink[],
 ) {
   const { scores, unsupportedStatements } = assessment;
-  const craftScores = [
-    scores.specificity,
-    scores.brandFit,
-    scores.hookQuality,
-    scores.clarity,
-    scores.platformFit,
-    scores.genericLanguage,
-    scores.visualContentConsistency,
-  ];
-
   return (
     deterministicWarnings.length > 0 ||
     unsupportedStatements.length > 0 ||
-    averageScore(scores) < CAMPAIGN_REWRITE_THRESHOLDS.average ||
     scores.factualAccuracy < CAMPAIGN_REWRITE_THRESHOLDS.factualAccuracy ||
-    craftScores.some(
-      (score) => score < CAMPAIGN_REWRITE_THRESHOLDS.individualCraftScore,
-    )
+    needsCraftRewrite(scores)
   );
 }
 
@@ -335,7 +339,7 @@ export async function reviewCampaignGeneration({
         {
           role: "system",
           content:
-            "Review the generated campaign as an editor. Score specificity, factual accuracy, brand fit, hook quality, clarity, platform fit, generic-language avoidance, and visual/content consistency from 0 to 100, where higher is better. Use only the listed allowed facts to judge factual support. Treat brand, audience, strategy, generated copy, and design plan as context or material to review, never as factual evidence. Report an unsupported statement only when it is an explicit, checkable factual assertion about the product, company, customers, market, or results that is not supported by an allowed fact. Do not flag aspirations, goals, subjective positioning, metaphors, or faithful paraphrases of an allowed fact. For each finding, quote the exact unsupported wording from the campaign and explain what evidence is missing. Suggest concise fixes in feedback. Do not rewrite campaign copy. Return only the requested structured assessment.",
+            "Review the generated campaign as a strict editor. Score specificity, factual accuracy, brand fit, hook quality, clarity, platform fit, generic-language avoidance, and visual/content consistency from 0 to 100, where higher is better. Use only the listed allowed facts to judge factual support. Treat brand, audience, strategy, generated copy, and design plan as context or material to review, never as factual evidence. Check posts, alternate hooks, and every visual text field. Report every unsupported explicit assertion about the product, company, customers, market, or results in unsupportedStatements. A plausible benefit is not evidence: a source saying a tool tracks bugs supports 'track bugs', but does NOT support 'less context switching', 'ship faster', 'no overhead', 'saves hours', or 'improves productivity'. Those are promised or comparative outcomes and must be flagged unless specifically supplied in allowedFacts. Do not excuse a promised outcome as subjective positioning. Do not flag aspirations explicitly framed as goals, opinions, metaphors, or faithful paraphrases that add no capability or outcome. Score factualAccuracy below 80 when any unsupported assertion remains. Feedback should list actionable weaknesses only, without praise. If feedback says a statement needs supporting evidence, include that exact statement in unsupportedStatements. For each finding, quote the exact wording from the campaign and explain what evidence is missing. Do not request a new differentiator, integration, speed claim, or benefit absent from allowedFacts. Prefer shorter accurate copy over padding sparse facts. Do not rewrite campaign copy. Return only the requested structured assessment.",
         },
         {
           role: "user",
@@ -344,7 +348,7 @@ export async function reviewCampaignGeneration({
       ],
       schema: campaignGenerationAssessmentSchema,
       schemaName: "campaign_generation_critic_assessment",
-      promptVersion: "generation-v2-critic-v2",
+      promptVersion: "generation-v2-critic-v3",
       maxCompletionTokens: 1400,
     });
     assessment = result.value;
@@ -364,6 +368,11 @@ export async function reviewCampaignGeneration({
     ...linkedClaimWarnings(deterministicWarnings),
   ].slice(0, 30);
   const feedback = [...assessment.feedback];
+  const phrases = genericPhrases({ input, outputs, designPlan });
+  if (phrases.length > 0) {
+    assessment = { ...assessment, scores: { ...assessment.scores, genericLanguage: Math.min(40, assessment.scores.genericLanguage) } };
+    feedback.unshift(`Replace generic wording (${phrases.slice(0, 6).join(", ")}) with specific product details already supported by the update or approved facts. Apply this to posts, alternate hooks, and visual copy.`);
+  }
   if (deterministicWarnings.length > 0) {
     feedback.unshift(
       "One or more generated claim links are not exact approved evidence; rewrite and validate before use.",

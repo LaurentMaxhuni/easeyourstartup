@@ -1,39 +1,15 @@
 "use client";
 
-import { CheckCircle } from "@phosphor-icons/react";
 import { StudioActionBar } from "@/components/studio/studio-action-bar";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CAMPAIGN_KINDS, CHANNELS } from "@/lib/channels";
-import type {
-  CampaignKind,
-  Channel,
-  NarrativeAngle,
-} from "@/lib/contracts";
+import type { CampaignKind, Channel, NarrativeAngle, StudioDraft } from "@/lib/contracts";
 import { cn } from "@/lib/utils";
 
-export type CampaignDraft = {
-  kind: CampaignKind;
-  goal: string;
-  updateDetails: string;
-  audience: string;
-  launchDate: string;
-  cta: string;
-  angle: NarrativeAngle;
-  channels: Channel[];
-};
+export type CampaignDraft = StudioDraft;
 
-export function CampaignBuilder({
-  draft,
-  angles,
-  status,
-  error,
-  resumePendingJob,
-  isAuthenticated,
-  onChange,
-  onBack,
-  onGenerate,
-}: {
+export function CampaignBuilder({ draft, angles, status, error, resumePendingJob, isAuthenticated, onChange, onBack, onGenerate }: {
   draft: CampaignDraft;
   angles: NarrativeAngle[];
   status: "idle" | "loading" | "error";
@@ -44,280 +20,80 @@ export function CampaignBuilder({
   onBack: () => void;
   onGenerate: () => Promise<void>;
 }) {
-  const goalReady = draft.goal.trim().length >= 8;
-  const updateReady = draft.updateDetails.trim().length >= 8;
-  const audienceReady = draft.audience.trim().length >= 2;
-  const ctaReady = draft.cta.trim().length >= 1;
-  const channelsReady = draft.channels.length > 0;
-
   function toggleChannel(channel: Channel) {
-    const selected = draft.channels.includes(channel);
-    onChange({
-      ...draft,
-      channels: selected
-        ? draft.channels.filter((value) => value !== channel)
-        : [...draft.channels, channel],
-    });
+    onChange({ ...draft, channels: draft.channels.includes(channel)
+      ? draft.channels.filter((value) => value !== channel) : [...draft.channels, channel] });
   }
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onGenerate();
-      }}
-      className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6 lg:py-14"
-    >
-      <div className="grid gap-10 lg:grid-cols-[.65fr_1.35fr]">
-        <div>
-          <p className="font-sans text-xs uppercase  text-accent">
-            Give the update a story
-          </p>
-          <h1 className="mt-4 text-balance text-4xl font-semibold  sm:text-5xl">
-            Tell us about this launch
-          </h1>
-          <p className="mt-5 max-w-md text-sm leading-6 text-muted">
-            Give the campaign one clear job. The generated copy and visuals
-            will stay within the source facts the scan kept.
-          </p>
-          <div className="mt-8 rounded-container border border-line bg-surface p-5">
-            <p className="text-xs font-semibold uppercase  text-muted">
-              Ready when
-            </p>
-            <ul className="mt-4 space-y-3 text-sm">
-              <li className="flex items-start gap-2">
-                <CheckCircle
-                  size={17}
-                  weight={goalReady ? "fill" : "regular"}
-                  className={goalReady ? "text-accent" : "text-muted"}
-                />
-                <span>There is one clear campaign goal.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle
-                  size={17}
-                  weight={updateReady ? "fill" : "regular"}
-                  className={updateReady ? "text-accent" : "text-muted"}
-                />
-                <span>The update says what is available now.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle
-                  size={17}
-                  weight={audienceReady ? "fill" : "regular"}
-                  className={audienceReady ? "text-accent" : "text-muted"}
-                />
-                <span>Name who this update is for.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle
-                  size={17}
-                  weight={ctaReady ? "fill" : "regular"}
-                  className={ctaReady ? "text-accent" : "text-muted"}
-                />
-                <span>Add the action you want readers to take.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle
-                  size={17}
-                  weight={channelsReady ? "fill" : "regular"}
-                  className={channelsReady ? "text-accent" : "text-muted"}
-                />
-                <span>At least one channel is selected.</span>
-              </li>
-            </ul>
+    <form onSubmit={(event) => { event.preventDefault(); void onGenerate(); }}
+      aria-busy={status === "loading"} className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:py-14">
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Create your posts</p>
+      <h1 className="mt-3 text-balance text-3xl font-semibold sm:text-4xl">What would you like to share?</h1>
+      <p className="mt-3 text-sm leading-6 text-muted">Tell us what’s new in your own words. We’ll use your website to write the posts and make a matching visual.</p>
+
+      <fieldset disabled={status === "loading" || resumePendingJob} className="mt-8 space-y-7">
+        <label className="block">
+          <span className="text-sm font-semibold">What are you announcing?</span>
+          <select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CampaignKind })}
+            className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3.5 text-sm">
+            {CAMPAIGN_KINDS.map((kind) => <option key={kind.id} value={kind.id}>{kind.name}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold">What should people know?</span>
+          <Textarea className="mt-2 min-h-36" value={draft.updateDetails} required minLength={8} maxLength={2000}
+            aria-describedby="announcement-help" onChange={(event) => onChange({ ...draft, updateDetails: event.target.value })}
+            placeholder="We added shared project folders. Now your team can keep its work in one place. It’s available today." />
+          <span id="announcement-help" className="mt-2 block text-xs leading-5 text-muted">A few sentences are enough: what’s new, who it helps, and when it’s available. Include only details that are true.</span>
+        </label>
+
+        <section aria-labelledby="channels-title">
+          <h2 id="channels-title" className="text-sm font-semibold">Where will you share it?</h2>
+          <p className="mt-1 text-xs text-muted">Choose the places you use. You’ll get a separate post for each.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {CHANNELS.map((channel) => {
+              const selected = draft.channels.includes(channel.id);
+              return <label key={channel.id} className={cn("flex cursor-pointer items-center gap-3 rounded-control border p-3 text-sm", selected ? "border-accent bg-accent/10" : "border-line bg-surface-raised")}>
+                <input type="checkbox" checked={selected} onChange={() => toggleChannel(channel.id)} className="size-4 accent-[var(--accent)]" />
+                {channel.name}
+              </label>;
+            })}
           </div>
-        </div>
+          {draft.channels.length === 0 && <p role="status" className="mt-2 text-xs text-danger">Choose at least one place to share your post.</p>}
+        </section>
 
-        <div className="space-y-8">
-          <section className="rounded-container border border-line bg-surface-raised p-5 sm:p-7">
-            <h2 className="text-lg font-semibold">The brief</h2>
-            <div className="mt-6 grid gap-5 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-xs font-semibold">Campaign type</span>
-                <select
-                  value={draft.kind}
-                  onChange={(event) =>
-                    onChange({
-                      ...draft,
-                      kind: event.target.value as CampaignKind,
-                    })
-                  }
-                  className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3.5 text-sm"
-                >
-                  {CAMPAIGN_KINDS.map((kind) => (
-                    <option key={kind.id} value={kind.id}>
-                      {kind.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold">Launch date</span>
-                <Input
-                  className="mt-2"
-                  type="date"
-                  value={draft.launchDate}
-                  onChange={(event) =>
-                    onChange({ ...draft, launchDate: event.target.value })
-                  }
-                />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold">Campaign goal</span>
-                <Input
-                  className="mt-2"
-                  value={draft.goal}
-                  onChange={(event) =>
-                    onChange({ ...draft, goal: event.target.value })
-                  }
-                  placeholder="Get the first 50 founders to try the update"
-                />
-                <span className="mt-1 block text-[11px] text-muted">
-                  {draft.goal.length}/500
-                </span>
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold">
-                  What changed or launched?
-                </span>
-                <Textarea
-                  className="mt-2 min-h-36"
-                  value={draft.updateDetails}
-                  maxLength={2000}
-                  onChange={(event) =>
-                    onChange({ ...draft, updateDetails: event.target.value })
-                  }
-                  placeholder="Describe what is available, why you built it, and any important limitations."
-                />
-                <span className="mt-1 block text-[11px] text-muted">
-                  {draft.updateDetails.length}/2000
-                </span>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold">Target audience</span>
-                <Input
-                  className="mt-2"
-                  value={draft.audience}
-                  required
-                  maxLength={400}
-                  placeholder="e.g. Founders preparing their first launch"
-                  onChange={(event) =>
-                    onChange({ ...draft, audience: event.target.value })
-                  }
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold">Call to action</span>
-                <Input
-                  className="mt-2"
-                  value={draft.cta}
-                  required
-                  maxLength={240}
-                  placeholder="e.g. Start your free trial"
-                  onChange={(event) =>
-                    onChange({ ...draft, cta: event.target.value })
-                  }
-                />
-              </label>
-            </div>
-          </section>
+        <details className="rounded-container border border-line bg-surface-raised p-5">
+          <summary className="cursor-pointer text-sm font-semibold">Adjust audience, goal, or style <span className="font-normal text-muted">(optional)</span></summary>
+          <p className="mt-3 text-xs leading-5 text-muted">We filled these from your website. Change them if this announcement needs something different.</p>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            <label className="block sm:col-span-2"><span className="text-xs font-semibold">What do you want this post to achieve?</span>
+              <Input className="mt-2" value={draft.goal} maxLength={500} onChange={(event) => onChange({ ...draft, goal: event.target.value })} />
+            </label>
+            <label className="block"><span className="text-xs font-semibold">Who is this for?</span>
+              <Input className="mt-2" value={draft.audience} maxLength={400} onChange={(event) => onChange({ ...draft, audience: event.target.value })} />
+            </label>
+            <label className="block"><span className="text-xs font-semibold">What should readers do next?</span>
+              <Input className="mt-2" value={draft.cta} maxLength={240} onChange={(event) => onChange({ ...draft, cta: event.target.value })} />
+            </label>
+            <label className="block"><span className="text-xs font-semibold">Announcement date (optional)</span>
+              <Input className="mt-2" type="date" value={draft.launchDate} onChange={(event) => onChange({ ...draft, launchDate: event.target.value })} />
+            </label>
+            {angles.length > 1 && <label className="block"><span className="text-xs font-semibold">Story style</span>
+              <select value={draft.angle.id} onChange={(event) => { const angle = angles.find((item) => item.id === event.target.value); if (angle) onChange({ ...draft, angle }); }}
+                className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3.5 text-sm">
+                {angles.map((angle) => <option key={angle.id} value={angle.id}>{angle.title}</option>)}
+              </select>
+            </label>}
+          </div>
+        </details>
+      </fieldset>
 
-          <section>
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Choose the angle</h2>
-                <p className="mt-1 text-xs text-muted">
-                  This changes the story structure, not the source facts.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {angles.map((angle) => (
-                <button
-                  key={angle.id}
-                  type="button"
-                  onClick={() => onChange({ ...draft, angle })}
-                  aria-pressed={draft.angle.id === angle.id}
-                  className={cn(
-                    "rounded-container border p-4 text-left transition-colors",
-                    draft.angle.id === angle.id
-                      ? "border-accent bg-accent/10"
-                      : "border-line bg-surface-raised hover:border-muted",
-                  )}
-                >
-                  <span className="text-sm font-semibold">{angle.title}</span>
-                  <span className="mt-2 block text-xs leading-5 text-muted">
-                    {angle.summary}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <h2 className="text-lg font-semibold">Where should it go?</h2>
-              <span className="font-sans text-[11px] uppercase  text-muted">
-                {draft.channels.length} selected
-              </span>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {CHANNELS.map((channel) => {
-                const selected = draft.channels.includes(channel.id);
-                return (
-                  <label
-                    key={channel.id}
-                    className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-control border p-3 transition-colors",
-                      selected
-                        ? "border-accent bg-accent/10"
-                        : "border-line bg-surface-raised hover:border-muted",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleChannel(channel.id)}
-                      className="mt-0.5 size-4 accent-[var(--accent)]"
-                    />
-                    <span>
-                      <span className="block text-sm font-semibold">
-                        {channel.name}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-muted">
-                        {channel.note}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </section>
-
-          {error && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
-          <StudioActionBar
-            backLabel="Back to facts"
-            onBack={onBack}
-            nextLabel={isAuthenticated
-              ? resumePendingJob ? "Check campaign status" : "Create posts"
-              : "Sign in to create posts"}
-            nextType="submit"
-            loading={status === "loading"}
-            helper={
-              resumePendingJob
-                ? "This campaign job is saved. Checking again resumes status checks without starting another generation."
-                : isAuthenticated
-                  ? "You can edit every caption and visual after generation."
-                  : "Sign in is required before opening the launch studio."
-            }
-          />
-        </div>
-      </div>
+      {error && <div role="alert" className="mt-6 rounded-control border border-danger/30 bg-surface p-4 text-sm text-danger">{error}</div>}
+      <StudioActionBar backLabel="Review website details" onBack={onBack}
+        nextLabel={isAuthenticated ? resumePendingJob ? "Check my posts" : status === "error" ? "Try again" : "Create my posts" : "Sign in to create posts"}
+        nextType="submit" loading={status === "loading"}
+        helper={resumePendingJob ? "Your request is saved. Check its progress without starting again." : "Review, edit, and copy your posts before sharing. Nothing is published automatically."} />
     </form>
   );
 }

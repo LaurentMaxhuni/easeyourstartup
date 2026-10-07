@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { compositionImageUrls } from "@/lib/studio-export";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import { canExportLaunchKit } from "@/lib/entitlements";
@@ -25,18 +26,6 @@ function storedAssetId(value: string) {
   } catch {
     return null;
   }
-}
-
-function imageUrls(composition: ReturnType<typeof studioStateSchema.parse>["composition"]) {
-  return [
-    composition.screenshotUrl,
-    composition.mockups.desktop,
-    composition.mockups.tablet,
-    composition.mockups.phone,
-    ...(composition.elements ?? []).flatMap((element) =>
-      element.kind === "image" && element.src ? [element.src] : [],
-    ),
-  ];
 }
 
 function safeFilename(name: string, extension: "png" | "zip") {
@@ -154,7 +143,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The saved campaign is incomplete. Reopen it, save, and retry." }, { status: 409 });
     }
 
-    const assetIds = imageUrls(parsed.data.composition).map(storedAssetId);
+    const assetIds = compositionImageUrls(parsed.data.composition).map(storedAssetId);
     if (assetIds.some((id) => id === null)) {
       return NextResponse.json({ error: "Replace embedded or external screenshots with a saved project image before exporting." }, { status: 409 });
     }

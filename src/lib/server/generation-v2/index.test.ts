@@ -8,9 +8,14 @@ const mocks = vi.hoisted(() => ({
   campaignDesignPlanToDirections: vi.fn(),
   assertApprovedClaimLinks: vi.fn(),
   reviewCampaignGeneration: vi.fn(),
+  designCreativeComposition: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/server/campaign-generator", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/server/campaign-generator")>(),
+  designCreativeComposition: mocks.designCreativeComposition,
+}));
 vi.mock("./strategy", () => ({
   generateCampaignStrategy: mocks.generateCampaignStrategy,
 }));
@@ -22,7 +27,8 @@ vi.mock("./design-plan", () => ({
   fallbackCampaignDesignPlan: mocks.fallbackCampaignDesignPlan,
   campaignDesignPlanToDirections: mocks.campaignDesignPlanToDirections,
 }));
-vi.mock("./critic", () => ({
+vi.mock("./critic", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./critic")>(),
   assertApprovedClaimLinks: mocks.assertApprovedClaimLinks,
   reviewCampaignGeneration: mocks.reviewCampaignGeneration,
 }));
@@ -113,6 +119,26 @@ describe("Generation V2 orchestration", () => {
     });
     mocks.campaignDesignPlanToDirections.mockReturnValue([direction]);
     mocks.reviewCampaignGeneration.mockResolvedValue(assessment(false));
+    mocks.designCreativeComposition.mockResolvedValue({
+      design: {
+        theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit" },
+        elements: [{ id: "unreviewed", kind: "text", textRole: "headline", text: "Unreviewed replacement copy", x: 8, y: 10, width: 80, height: 30, rotation: 0, opacity: 1, locked: false, hidden: false }],
+      },
+    });
+  });
+
+  it("renders the reviewed visual copy without a second unreviewed AI design", async () => {
+    mocks.planCampaignDesign.mockResolvedValue({
+      version: "1",
+      brandAdaptation: {
+        tone: "editorial", rationale: "Use the brand palette.",
+        theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit", density: "comfortable", usesGradient: false },
+      },
+      components: [{ ...direction, order: 0, kind: "cover", layoutVariant: "editorial", supportingCopy: direction.subheadline, alignment: "left", emphasis: "headline", supportingClaimIds: [], screenshotRef: null }],
+    });
+    const result = await generateCampaignV2(input);
+    expect(result.creativeDesign?.elements.find((element) => element.textRole === "headline")?.text).toBe(direction.headline);
+    expect(mocks.designCreativeComposition).not.toHaveBeenCalled();
   });
 
   it("stores strategy, design plan, and review in the validated result", async () => {
@@ -155,7 +181,8 @@ describe("Generation V2 orchestration", () => {
       primaryCopy: `Original ${channel} copy.`,
     }));
     const firstReview = {
-      ...assessment(true, true),
+      ...assessment(false, true),
+      needsRewrite: true,
       unsupportedStatements: [
         {
           channel: "linkedin" as const,
@@ -178,6 +205,14 @@ describe("Generation V2 orchestration", () => {
     expect(mocks.generatePlatformContent.mock.calls[1]?.[4]).toEqual([
       "linkedin",
     ]);
+  });
+
+  it("rewrites all channels when weak writing accompanies a channel-specific factual finding", async () => {
+    mocks.reviewCampaignGeneration
+      .mockResolvedValueOnce(assessment(true, true))
+      .mockResolvedValueOnce(assessment(false));
+    await generateCampaignV2(input, { includeCreativeDesign: false });
+    expect(mocks.generatePlatformContent.mock.calls[1]?.[4]).toBeUndefined();
   });
 
   it("includes unsupported findings when reviewer feedback is empty", async () => {
@@ -239,6 +274,7 @@ describe("Generation V2 orchestration", () => {
     const result = await generateCampaignV2(input, { includeCreativeDesign: false });
 
     expect(result.outputs[0]?.primaryCopy).toBe("A clear launch.\n\nA useful close.");
+    expect(result.outputs[0]?.alternateHooks).toEqual([]);
     expect(result.generationV2?.review.needsRewrite).toBe(false);
     expect(mocks.fallbackCampaignDesignPlan).toHaveBeenCalledTimes(1);
     expect(mocks.reviewCampaignGeneration).toHaveBeenCalledTimes(3);

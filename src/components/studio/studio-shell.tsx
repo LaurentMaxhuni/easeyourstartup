@@ -38,7 +38,7 @@ import {
   type StudioStep,
 } from "@/components/studio/step-nav";
 import { StudioHeader } from "@/components/studio/studio-header";
-import { toExportableImageUrl } from "@/lib/studio-export";
+import { compositionImageUrls, toExportableImageUrl } from "@/lib/studio-export";
 import { applyCreativeDesign } from "@/lib/studio/editor-state";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
@@ -51,6 +51,9 @@ import {
 } from "@/lib/studio/job-polling";
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { normalizePublicWebsiteUrl } from "@/lib/url-input";
+import { campaignDraftWithDefaults } from "@/lib/studio/campaign-defaults";
+import { campaignDesignPlanToCanvas } from "@/lib/generation-v2/design-canvas";
+import { campaignDesignPlanSchema } from "@/lib/generation-v2/design-schema";
 
 const EMPTY_DRAFT: CampaignDraft = {
   kind: "launch",
@@ -130,13 +133,7 @@ async function storeProjectImage(source: string, projectId: string) {
 async function migrateEditorImages(state: StudioState) {
   if (!state.projectId) return { state, failed: false };
   const composition = state.composition;
-  const sources = [
-    composition.screenshotUrl,
-    composition.mockups.desktop,
-    composition.mockups.tablet,
-    composition.mockups.phone,
-    ...(composition.elements ?? []).flatMap((element) => element.kind === "image" && element.src ? [element.src] : []),
-  ];
+  const sources = compositionImageUrls(composition);
   const replacements = new Map<string, string>();
   let failed = false;
   const actualSource = state.scan?.desktopCaptureUrl || state.brand?.imageUrl || state.brand?.logoUrl || "";
@@ -368,6 +365,8 @@ export function StudioShell({
       composition,
     });
   }, [brand, campaignId, composition, draft, generation, jobId, jobType, outputs, projectId, scan, selectedCreativeId, step]);
+  const buildStudioStateRef = useRef(buildStudioState);
+  useEffect(() => { buildStudioStateRef.current = buildStudioState; }, [buildStudioState]);
 
   const persistStudioState = useCallback(
     async (options: { manual?: boolean; state?: StudioState } = {}) => {
@@ -672,7 +671,7 @@ export function StudioShell({
         ? CAMPAIGN_JOB_MAX_POLL_DURATION_MS
         : undefined,
     )
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         if (jobType === "export") {
           setExportDownloadUrl(`/api/exports/${jobId}/download`);
@@ -712,8 +711,19 @@ export function StudioShell({
             outputs: current.outputs.map((output) => output.channel === replacement.channel ? replacement : output),
           } : current);
         } else {
+          const firstDirection = generation.creativeDirections[0];
+          const currentState = buildStudioStateRef.current();
+          const generatedComposition = generation.creativeDesign
+            ? applyCreativeDesign(currentState.composition, generation.creativeDesign)
+            : firstDirection ? applyCreativeDirection(currentState.composition, firstDirection) : currentState.composition;
+          const migrated = await migrateEditorImages({ ...currentState, composition: generatedComposition });
+          if (cancelled) return;
           setGeneration(generation);
           setOutputs(generation.outputs);
+          setSelectedCreativeId(firstDirection?.id ?? "");
+          setComposition(migrated.state.composition);
+          setUploadStatus(migrated.failed ? "error" : "idle");
+          setUploadError(migrated.failed ? "This image could not be saved. Try uploading it in Edit visual before downloading." : "");
         }
         setJobId(null);
         setJobType(null);
@@ -1101,17 +1111,19 @@ export function StudioShell({
 
   async function runGeneration() {
     if (!brand) return;
-    if (draft.goal.trim().length < 8 || draft.updateDetails.trim().length < 8) {
+    const readyDraft = campaignDraftWithDefaults(draft, brand);
+    setDraft(readyDraft);
+    if (readyDraft.goal.trim().length < 8 || draft.updateDetails.trim().length < 8) {
       setGenerateStatus("error");
-      setGenerateError("Add a clear goal and update description.");
+      setGenerateError("Tell us what’s new in at least a few words.");
       return;
     }
-    if (draft.audience.trim().length < 2) {
+    if (readyDraft.audience.trim().length < 2) {
       setGenerateStatus("error");
       setGenerateError("Add a target audience (at least 2 characters).");
       return;
     }
-    if (!draft.cta.trim()) {
+    if (!readyDraft.cta.trim()) {
       setGenerateStatus("error");
       setGenerateError("Add a call to action for readers.");
       return;
@@ -1149,11 +1161,11 @@ export function StudioShell({
       const campaign = {
         brand,
         kind: draft.kind,
-        goal: draft.goal,
+        goal: readyDraft.goal,
         updateDetails: draft.updateDetails,
-        audience: draft.audience,
+        audience: readyDraft.audience,
         launchDate: draft.launchDate,
-        cta: draft.cta,
+        cta: readyDraft.cta,
         angle: draft.angle,
         channels: draft.channels,
       };
@@ -1322,6 +1334,15 @@ export function StudioShell({
     setAutoDesignStatus("idle");
     setAutoDesignWarning("");
     setSelectedCreativeId(id);
+    const reviewedPlan = campaignDesignPlanSchema.safeParse(generation?.generationV2?.designPlan);
+    if (reviewedPlan.success && brand) {
+      const next = applyCreativeDesign(composition, campaignDesignPlanToCanvas(reviewedPlan.data, composition, brand, id));
+      const migrated = await migrateEditorImages({ ...buildStudioState(), composition: next });
+      if (requestId !== autoDesignRequest.current) return;
+      setComposition(migrated.state.composition);
+      setUploadError(migrated.failed ? "This image could not be saved. Try uploading it in Edit visual before downloading." : "");
+      return;
+    }
     const nextComposition = applyCreativeDirection(composition, direction);
     if (autoDesignRequest.current !== requestId) return;
     if (!brand) {
@@ -1608,13 +1629,7 @@ export function StudioShell({
     ...(scan ? (["brand", "campaign"] as StudioStep[]) : []),
     ...(generation ? (["creative"] as StudioStep[]) : []),
   ];
-  const compositionImageRefs = [
-    composition.screenshotUrl,
-    composition.mockups.desktop,
-    composition.mockups.tablet,
-    composition.mockups.phone,
-    ...(composition.elements ?? []).flatMap((element) => element.kind === "image" && element.src ? [element.src] : []),
-  ];
+  const compositionImageRefs = compositionImageUrls(composition);
   const hasDurableCompositionImages = compositionImageRefs.every((source) => storedAssetId(source) !== null);
   const launchKitReadiness = brand
     ? (() => {
@@ -1703,7 +1718,7 @@ export function StudioShell({
         )}
         {step === "campaign" && brand && (
           <CampaignBuilder
-            draft={draft}
+            draft={campaignDraftWithDefaults(draft, brand)}
             angles={generation?.angles ?? DEFAULT_ANGLES}
             status={(jobType === "generate" || jobType === "regenerate") && jobId && generateStatus === "idle" ? "loading" : generateStatus}
             error={generateError}

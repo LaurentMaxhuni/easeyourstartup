@@ -125,6 +125,24 @@ describe("POST /api/exports", () => {
     expect(queries.some((query) => query.sql.includes("enqueue_export_job"))).toBe(false);
   });
 
+  it("exports a text-only visual without requiring unused screenshot placeholders", async () => {
+    mocks.safeParse.mockReturnValue({ success: true, data: { ...state, composition: {
+      ...state.composition, screenshotUrl: "/images/canvas-placeholder.svg", designSource: "ai",
+      elements: [{ id: "headline", kind: "text", text: "A reviewed announcement" }],
+    } } });
+    const { database } = recordingDatabase([
+      [], [{ project_status: "active", active_slot: 1, campaign_status: "completed" }],
+      [{ state: {}, revision: 4 }], [],
+      [{ job_id: jobId, status: "queued", progress: 0, created: true, allowed: true }],
+    ]);
+    mocks.requireWorkspaceContext.mockResolvedValue({ workspaceId, user: { id: "user_1" }, plan: "pro", limits: { activeProjects: 3 }, database });
+    const response = await POST(new Request("https://app.test/api/exports", {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "text-only-export" },
+      body: JSON.stringify({ format: "png", projectId, campaignId, expectedRevision: 4 }),
+    }));
+    expect(response.status).toBe(202);
+  });
+
   it("enforces Pro access even when called directly", async () => {
     mocks.requireWorkspaceContext.mockResolvedValue({
       workspaceId,

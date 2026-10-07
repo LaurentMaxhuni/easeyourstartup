@@ -11,8 +11,8 @@ import {
 } from "@/lib/contracts";
 import {
   createInitialCreativeCanvas,
-  designCreativeComposition,
 } from "@/lib/server/campaign-generator";
+import { campaignDesignPlanToCanvas } from "@/lib/generation-v2/design-canvas";
 import { generateCampaignStrategy } from "./strategy";
 import { generatePlatformContent } from "./content";
 import {
@@ -22,6 +22,7 @@ import {
 } from "./design-plan";
 import {
   assertApprovedClaimLinks,
+  needsCraftRewrite,
   reviewCampaignGeneration,
   type CampaignGenerationReview,
 } from "./critic";
@@ -99,12 +100,9 @@ function removeUnsupportedSentences(
       )
       .join("\n\n")
       .trim();
-    const alternateHooks = output.alternateHooks.filter(
-      (hook) =>
-        !channelFindings.some((finding) =>
-          hook.includes(finding.statement.trim()),
-        ),
-    );
+    // Optional hooks may repeat the same unsupported promise in different words.
+    // Keep the usable post; discard those alternatives during safety recovery.
+    const alternateHooks: string[] = [];
     if (
       primaryCopy === output.primaryCopy &&
       alternateHooks.length === output.alternateHooks.length
@@ -144,6 +142,7 @@ export async function generateCampaignV2(
   if (review.needsRewrite) {
     const rewriteChannels =
       review.unsupportedStatements.length > 0 &&
+      !needsCraftRewrite(review.scores) &&
       review.unsupportedStatements.every((finding) => finding.channel !== null)
         ? [...new Set(review.unsupportedStatements.map((finding) => finding.channel!))]
         : undefined;
@@ -195,33 +194,7 @@ export async function generateCampaignV2(
     const firstComponent = designPlan.components[0];
     if (!firstComponent) throw new Error("Campaign generation did not produce launch copy for its canvas.");
     const canvas = createInitialCreativeCanvas(brief, firstComponent.headline);
-    const creative = await designCreativeComposition({
-      projectName: brief.brand.projectName,
-      context: [
-        `Campaign goal: ${brief.goal}`,
-        `Product update: ${brief.updateDetails}`,
-        `Audience: ${brief.audience}`,
-        ...outputs.map((output) => `${output.channel}: ${output.primaryCopy}`),
-      ].join("\n"),
-      approvedFacts: strategy.evidence.approvedClaims.map((claim) => claim.text),
-      instruction: "Create the first finished campaign canvas from the brand identity. Compose it independently from any layout or template system.",
-      brand: brief.brand,
-      copyCandidates: [
-        brief.brand.projectName,
-        brief.brand.tagline,
-        firstComponent.eyebrow,
-        firstComponent.headline,
-        firstComponent.supportingCopy,
-        firstComponent.body,
-        brief.cta,
-        firstComponent.footer,
-      ].filter(
-        (value): value is string =>
-          typeof value === "string" && value.trim().length > 0,
-      ),
-      composition: canvas,
-    });
-    creativeDesign = creative.design;
+    creativeDesign = campaignDesignPlanToCanvas(designPlan, canvas, brief.brand);
   }
 
   return generationResultSchema.parse({

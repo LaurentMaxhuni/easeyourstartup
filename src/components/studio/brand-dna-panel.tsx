@@ -45,22 +45,17 @@ export function BrandDnaPanel({
       <div className="flex flex-col justify-between gap-5 border-b border-line pb-8 lg:flex-row lg:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>{scan.mode === "demo" ? "Demo scan" : "Live scan"}</Badge>
-            <Badge>{scan.pages.length} source pages</Badge>
+            <Badge>{scan.pages.length} pages read</Badge>
             <Badge>
-              {approvedCount} facts kept
+              {approvedCount} product facts found
             </Badge>
-            {scan.curation && (
-              <Badge>{scan.curation.mode === "ai" ? "AI curated" : "Rules curated"}</Badge>
-            )}
           </div>
           <h1 className="mt-4 text-4xl font-semibold  sm:text-5xl">
-            Source profile, ready to use
+            We found your product
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-            We scanned the source and filtered weak or duplicate snippets
-            automatically. Adjust the brand details if you need to steer the
-            launch story.
+            Check that this looks right, then tell us what you want to share.
+            You can review the website details below whenever you need them.
           </p>
         </div>
       </div>
@@ -79,6 +74,13 @@ export function BrandDnaPanel({
         </div>
       )}
 
+      <div className="mt-6 rounded-container border border-line bg-surface-raised p-5 sm:p-6">
+        <h2 className="text-xl font-semibold">{brand.projectName}</h2>
+        <p className="mt-2 text-sm leading-6">{brand.tagline}</p>
+        <p className="mt-3 text-sm text-muted">For {brand.audience || "people interested in your product"}</p>
+      </div>
+      <details className="mt-6">
+        <summary className="cursor-pointer text-sm font-semibold text-accent">Review or edit website details and sources (optional)</summary>
       {brand.brandIntelligence && (
         <section
           aria-labelledby="brand-interpretation-title"
@@ -347,15 +349,16 @@ export function BrandDnaPanel({
           </div>
         </section>
       </div>
+      </details>
       <StudioActionBar
         backLabel="Change source"
         onBack={onBack}
-        nextLabel="Continue to brief"
+        nextLabel="Write my announcement"
         onNext={onContinue}
         helper={
-          brand.claims.length === 0
-            ? "No source-backed facts found. Your brief can still use the update you enter."
-            : approvedCount + " source-backed facts will be available to the campaign."
+          approvedCount === 0
+            ? "We couldn’t confirm product details from the website. Tell us what’s new in the next step."
+            : `We’ll use ${approvedCount === 1 ? "the product fact" : "the product facts"} you approved when writing your posts.`
         }
       />
     </div>

@@ -146,6 +146,12 @@ describe("Generation V2 platform content", () => {
     ).toEqual(valid);
   });
 
+  it.each([["x", 280], ["threads", 500]] as const)("rejects %s copy that cannot fit a single post", (channel, limit) => {
+    const copy = { primaryCopy: "x".repeat(limit), alternateHooks: [], hashtags: [], linkedClaimIds: [] };
+    expect(platformCopyResponseSchema(channel).safeParse(copy).success).toBe(true);
+    expect(platformCopyResponseSchema(channel).safeParse({ ...copy, primaryCopy: "x".repeat(limit + 1) }).success).toBe(false);
+  });
+
   it("writes every supported channel with distinct platform instructions", async () => {
     const input = inputWithChannels();
     for (const channel of CHANNELS) {

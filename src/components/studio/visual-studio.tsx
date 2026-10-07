@@ -1,6 +1,7 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
+import { CampaignResults } from "@/components/studio/campaign-results";
 import {
   MiniCanvaEditor,
   type CreativeAiContext,
@@ -62,7 +63,8 @@ export type VisualStudioProps = {
   onExportZip: () => Promise<void>;
 };
 
-export function VisualStudio({
+export function VisualStudio(props: VisualStudioProps) {
+  const {
   composition,
   outputs,
   onRegenerateChannel,
@@ -96,12 +98,17 @@ export function VisualStudio({
   aiContext,
   onExportPng,
   onExportZip,
-}: VisualStudioProps) {
+  } = props;
+  const [editingVisual, setEditingVisual] = useState(false);
+  if (!editingVisual) return <CampaignResults {...props}
+    onEditVisual={() => setEditingVisual(true)} />;
   return (
     <section
       aria-labelledby="visual-title"
-      className="h-[100dvh] max-h-[100dvh] min-w-0 overflow-hidden"
+      className="relative h-[100dvh] max-h-[100dvh] min-w-0 overflow-hidden pt-10 [&>div]:h-full [&>div]:max-h-full"
     >
+      <button type="button" className="absolute inset-x-0 top-0 z-50 h-10 border-b border-line bg-surface-raised px-4 text-left text-sm font-semibold text-accent"
+        onClick={() => setEditingVisual(false)}>← Back to my posts</button>
       <h2 id="visual-title" className="sr-only">
         Visual studio editor
       </h2>

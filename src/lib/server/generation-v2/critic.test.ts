@@ -144,6 +144,26 @@ const metadata = {
   success: true,
 };
 
+describe("copy craft guard", () => {
+  beforeEach(() => requestStructuredAiJsonMock.mockReset());
+  it("requires a rewrite for generic promises even when the AI reviewer gives high scores", async () => {
+    const input = campaignInputForEvaluationFixture(GENERATION_V2_EVALUATION_FIXTURES[2]);
+    requestStructuredAiJsonMock.mockResolvedValue({ value: strongAssessment, metadata });
+    const outputs = outputFor(input).map((output) => ({ ...output, primaryCopy: `${output.primaryCopy}\nNo overhead. Works seamlessly.` }));
+    const result = await reviewCampaignGeneration({ input, strategy: strategyFor(input), outputs, designPlan: designPlanFor() });
+    expect(result.needsRewrite).toBe(true);
+    expect(result.scores.genericLanguage).toBeLessThan(55);
+    expect(result.feedback.join(" ")).toContain("No overhead");
+  });
+  it("allows exact wording that the founder supplied", async () => {
+    const fixtureInput = campaignInputForEvaluationFixture(GENERATION_V2_EVALUATION_FIXTURES[2]);
+    const input = { ...fixtureInput, updateDetails: "The new import runs seamlessly with the existing project." };
+    requestStructuredAiJsonMock.mockResolvedValue({ value: strongAssessment, metadata });
+    const result = await reviewCampaignGeneration({ input, strategy: strategyFor(input), outputs: outputFor(input), designPlan: designPlanFor() });
+    expect(result.needsRewrite).toBe(false);
+  });
+});
+
 describe("Generation V2 critic evaluation fixtures", () => {
   it("contains three distinct first-party, source-backed startup profiles", () => {
     expect(GENERATION_V2_EVALUATION_FIXTURES.map((fixture) => fixture.id)).toEqual([
@@ -297,14 +317,14 @@ describe("reviewCampaignGeneration", () => {
     });
 
     const request = requestStructuredAiJsonMock.mock.calls[0]?.[0];
-    expect(request?.promptVersion).toBe("generation-v2-critic-v2");
     expect(request?.messages[0]?.content).toContain(
-      "Report an unsupported statement only when it is an explicit, checkable factual assertion",
+      "Report every unsupported explicit assertion",
     );
     expect(request?.messages[0]?.content).toContain(
-      "quote the exact unsupported wording from the campaign",
+      "quote the exact wording from the campaign",
     );
-    expect(request?.messages[0]?.content).toContain("Do not flag aspirations, goals, subjective positioning");
+    expect(request?.messages[0]?.content).toContain("Do not flag aspirations explicitly framed as goals");
+    expect(request?.messages[0]?.content).toContain("Do not excuse a promised outcome as subjective positioning");
   });
 
   it("does not let perfect AI scores override an unapproved claim link", async () => {

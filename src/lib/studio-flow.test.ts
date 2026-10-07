@@ -7,10 +7,10 @@ import {
 describe("studio flow", () => {
   it("uses plain-language stages and reports progress", () => {
     expect(STUDIO_STAGES.map((stage) => stage.label)).toEqual([
-      "Source",
-      "Facts",
-      "Brief",
-      "Posts",
+      "Website",
+      "Your product",
+      "Announcement",
+      "Your posts",
     ]);
     expect(getStudioProgress("campaign")).toEqual({
       current: 3,

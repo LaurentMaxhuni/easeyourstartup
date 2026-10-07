@@ -18,6 +18,7 @@ import {
 } from "@/lib/generation-v2/design-schema";
 import {
   campaignDesignPlanToDirections,
+  fallbackCampaignDesignPlan,
   normalizeCampaignDesignPlan,
   planCampaignDesign,
 } from "./design-plan";
@@ -175,6 +176,14 @@ describe("campaign design plan schema", () => {
 });
 
 describe("campaign design plan normalization", () => {
+  it("keeps fallback headlines short without repeating the announcement or inventing copy", () => {
+    const input = { ...makeInput(), updateDetails: "Shared folders are available. Keep related projects in one folder." };
+    const plan = fallbackCampaignDesignPlan(input, makeStrategy(input), [{ ...DEMO_OUTPUTS[1], primaryCopy: "Shared folders are available.\n\nKeep related projects in one folder." }]);
+    expect(plan.components[0]).toMatchObject({
+      headline: "Shared folders are available.",
+      supportingCopy: "Keep related projects in one folder.",
+    });
+  });
   it("sorts components, renumbers order, and accepts only available screenshot refs", () => {
     const input = makeInput();
     const strategy = makeStrategy(input);
@@ -291,7 +300,7 @@ describe("planCampaignDesign", () => {
         id: "launch-message",
         order: 0,
         headline: input.updateDetails,
-        supportingCopy: input.updateDetails,
+        supportingCopy: "",
         cta: input.cta,
         supportingClaimIds: [],
         screenshotRef: null,

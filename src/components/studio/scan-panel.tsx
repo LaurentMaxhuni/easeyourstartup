@@ -32,14 +32,14 @@ export function ScanPanel({
     <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:py-20">
       <div>
         <p className="font-sans text-xs uppercase  text-accent">
-          Start with your source
+          Start with your website
         </p>
         <h1 className="mt-4 text-balance text-4xl font-semibold  sm:text-6xl">
-          Bring your product into the studio.
+          Turn your website into posts.
         </h1>
         <p className="mt-5 max-w-md text-base leading-7 text-muted">
-          Paste a public website. We will map the important pages, images, and
-          claims into an editable campaign workspace.
+          Paste your product’s website. We’ll learn what it does and how it looks,
+          then help you share your next announcement.
         </p>
       </div>
       <div className="rounded-container border border-line bg-surface-raised p-5 sm:p-8">
@@ -76,7 +76,7 @@ export function ScanPanel({
               ) : (
                 <ArrowRight size={18} />
               )}
-              {status === "loading" ? "Scanning" : "Scan site"}
+              {status === "loading" ? "Reading website" : "Use this website"}
             </Button>
           </div>
           <p className="mt-3 text-xs leading-5 text-muted">
