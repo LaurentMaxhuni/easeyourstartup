@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { NextResponse } from "next/server";
 import { absoluteUrl } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/server";
@@ -9,7 +10,7 @@ import {
 } from "@/lib/server/paddle";
 import { createDatabase } from "@/lib/server/database";
 import { getRequestIdentity, rateLimit } from "@/lib/server/rate-limit";
-import { assertSameOrigin } from "@/lib/server/request-security";
+import { assertSameOrigin, readJsonBody } from "@/lib/server/request-security";
 import { ensureWorkspaceForUser } from "@/lib/server/workspace-access";
 
 export const runtime = "nodejs";
@@ -17,6 +18,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
+    const { plan } = z.object({ plan: z.enum(["pro", "pro_lite"]).default("pro") })
+      .strict().parse(request.body ? await readJsonBody(request, 1_000) : {});
     const limit = await rateLimit(`checkout:${getRequestIdentity(request)}`, {
       limit: 8,
       windowMs: 60 * 60 * 1000,
@@ -86,13 +89,15 @@ export async function POST(request: Request) {
         and redeemed_at is null
       limit 1
     `;
-    const founding = Boolean(foundingSlot);
-    const price = (founding
+    const founding = plan === "pro" && Boolean(foundingSlot);
+    const price = (plan === "pro_lite"
+      ? process.env.PADDLE_PRO_LITE_PRICE_ID
+      : founding
       ? process.env.PADDLE_FOUNDING_PRICE_ID
       : process.env.PADDLE_PRO_PRICE_ID)?.trim();
     if (!price) {
       return NextResponse.json(
-        { error: founding ? "The founding price is not configured." : "The Pro price is not configured." },
+        { error: plan === "pro_lite" ? "The Pro Lite price is not configured." : founding ? "The founding price is not configured." : "The Pro price is not configured." },
         { status: 503 },
       );
     }
@@ -197,6 +202,9 @@ export async function POST(request: Request) {
     }
     if (attempt.claimed !== true) {
       if (attempt.status === "pending" && typeof attempt.checkout_url === "string") {
+        if (attempt.billing_price_id !== price) {
+          return NextResponse.json({ error: "A checkout for another plan is pending. Complete or cancel it before choosing a different plan." }, { status: 409 });
+        }
         return NextResponse.json({ url: attempt.checkout_url, reused: true });
       }
       return NextResponse.json(
@@ -217,7 +225,7 @@ export async function POST(request: Request) {
             custom_data: {
               neon_user_id: user.id,
               workspace_id: workspaceId,
-              founding_slot: foundingSlot?.slot ?? null,
+              founding_slot: founding ? foundingSlot?.slot ?? null : null,
               checkout_attempt_id: attemptId,
             },
             checkout: { url: absoluteUrl("/checkout") },

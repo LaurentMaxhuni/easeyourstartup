@@ -7,10 +7,10 @@ import { hasUnredeemedFoundingSlot } from "@/lib/server/founding-offer";
 import { getCurrentUser } from "@/lib/auth/server";
 
 const PRO_FEATURES = [
-  "Three active projects",
+  "Ten active projects",
   "Eight campaigns per billing period",
   "Editable channel copy and launch visuals",
-  "High resolution PNG and launch-kit exports",
+  "High resolution PNG and launch-kit exports without watermarks",
   "Source evidence in every exported kit",
   "Five successful AI copy regenerations per channel",
 ];
@@ -27,14 +27,17 @@ export async function PricingSection() {
         <div className="grid gap-12 lg:grid-cols-[.9fr_1.1fr]">
           <Reveal>
             <p className="font-sans text-xs uppercase  text-[#93adff]">
-              One paid plan
+              Free, Pro Lite, and Pro
             </p>
             <h2 className="mt-5 max-w-xl text-balance text-4xl font-semibold  sm:text-6xl">
               Less than the cost of one forgotten launch.
             </h2>
             <p className="mt-6 max-w-md text-base leading-7 text-[#b7bcb4]">
-              Sign in before scanning. Start with one project and one campaign
+              Sign in before scanning. Start with three projects and one campaign
               each UTC calendar month, then upgrade for repeat campaigns and exports.
+            </p>
+            <p className="mt-4 max-w-md text-sm leading-6 text-[#b7bcb4]">
+              Pro Lite: $13.99/month for five active projects, eight campaigns per billing period, and watermarked exports.
             </p>
           </Reveal>
           <Reveal

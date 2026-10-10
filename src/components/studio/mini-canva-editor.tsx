@@ -571,12 +571,12 @@ function LayerVisual({
 function CreativeScene({
   composition,
   elements,
-  canExportLaunchKit,
+  watermarked,
   captureRef,
 }: {
   composition: CreativeComposition;
   elements: CreativeElement[];
-  canExportLaunchKit: boolean;
+  watermarked: boolean;
   captureRef?: RefObject<HTMLDivElement | null>;
 }) {
   const visibleElements = elements.filter((element) => !element.hidden);
@@ -619,7 +619,7 @@ function CreativeScene({
       {visibleElements.map((element) => (
         <LayerVisual key={element.id} element={element} composition={composition} />
       ))}
-      {!canExportLaunchKit && (
+      {watermarked && (
         <div
           className="pointer-events-none absolute bottom-[3%] right-[3%] z-30 rounded px-[2%] py-[1%] font-sans text-[clamp(7px,1.4cqw,11px)] uppercase "
           style={{
@@ -627,7 +627,7 @@ function CreativeScene({
             color: composition.tokens.background,
           }}
         >
-          Free preview
+          Made with EaseYourStartup
         </div>
       )}
     </div>
@@ -685,7 +685,7 @@ export function MiniCanvaEditor({
   exportStatus: "idle" | "loading";
   exportError: string;
   exportDownloadUrl: string | null;
-  plan: "free" | "pro";
+  plan: "free" | "pro_lite" | "pro";
   canExportLaunchKit: boolean;
   campaignsRemaining: number | null;
   usagePeriodEndsAt: string | null;
@@ -1401,7 +1401,7 @@ export function MiniCanvaEditor({
               <p className="font-semibold">
                 {launchKitReadiness.ready ? "Ready to publish" : "Founder review needed"}
               </p>
-              <Badge>{plan === "pro" ? "Pro" : "Free preview"}</Badge>
+              <Badge>{plan === "pro" ? "Pro" : plan === "pro_lite" ? "Pro Lite" : "Free preview"}</Badge>
             </div>
             <p className="mt-2 text-muted">
               {launchKitReadiness.outputCount} channel draft{launchKitReadiness.outputCount === 1 ? "" : "s"} · {launchKitReadiness.approvedClaimCount} source fact{launchKitReadiness.approvedClaimCount === 1 ? "" : "s"} kept
@@ -1444,7 +1444,7 @@ export function MiniCanvaEditor({
           </div>
           ) : (
             <div className="rounded-control border border-accent/30 bg-accent/10 p-3 text-xs leading-5 text-muted">
-              Full-resolution visuals and the organized launch kit are available on Pro.
+              Full-resolution visuals and the organized launch kit are available on Pro Lite and Pro.
               <Link href="/pricing" className="mt-2 block font-semibold text-accent underline underline-offset-4">
                 Upgrade to export the launch kit
               </Link>
@@ -1795,7 +1795,7 @@ export function MiniCanvaEditor({
                 <CreativeScene
                   composition={composition}
                   elements={elements}
-                  canExportLaunchKit={canExportLaunchKit}
+                  watermarked={plan !== "pro"}
                   captureRef={captureRef}
                 />
                 <div className="absolute inset-0">
@@ -1856,7 +1856,7 @@ export function MiniCanvaEditor({
                 <CreativeScene
                   composition={composition}
                   elements={elements}
-                  canExportLaunchKit={canExportLaunchKit}
+                  watermarked={plan !== "pro"}
                 />
               </div>
             </div>

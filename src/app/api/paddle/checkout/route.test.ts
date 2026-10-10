@@ -22,7 +22,7 @@ vi.mock("@/lib/server/rate-limit", () => ({
   getRequestIdentity: mocks.getRequestIdentity,
   rateLimit: mocks.rateLimit,
 }));
-vi.mock("@/lib/server/request-security", () => ({ assertSameOrigin: mocks.assertSameOrigin }));
+vi.mock("@/lib/server/request-security", () => ({ assertSameOrigin: mocks.assertSameOrigin, readJsonBody: (request: Request) => request.json() }));
 vi.mock("@/lib/server/workspace-access", () => ({ ensureWorkspaceForUser: mocks.ensureWorkspaceForUser }));
 
 import { POST } from "@/app/api/paddle/checkout/route";
@@ -64,6 +64,7 @@ describe("POST /api/paddle/checkout", () => {
         attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         status: "pending",
         checkout_url: checkoutUrl,
+        billing_price_id: "pri_pro",
         claimed: false,
       }],
     ]);
@@ -100,6 +101,40 @@ describe("POST /api/paddle/checkout", () => {
     expect(mocks.paddleRequest.mock.calls[0][1].body.custom_data.checkout_attempt_id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(queries[3].sql).toContain("public.checkout_attempts");
     expect(queries[4].sql).toContain("paddle_transaction_id");
+  });
+
+  it("uses the Lite price even when a founding slot is reserved", async () => {
+    vi.stubEnv("PADDLE_PRO_LITE_PRICE_ID", "pri_lite");
+    const checkoutUrl = "https://easeyourstartup.example/checkout?_ptxn=txn_lite";
+    const { database } = recordingDatabase([[], [], [{ slot: 1 }], [{ status: "creating", claimed: true }], [{ checkout_url: checkoutUrl }]]);
+    mocks.createDatabase.mockReturnValue(database);
+    mocks.paddleRequest.mockResolvedValue({ data: { id: "txn_lite", checkout: { url: checkoutUrl } } });
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro_lite" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.paddleRequest.mock.calls[0][1].body).toMatchObject({
+      items: [{ price_id: "pri_lite", quantity: 1 }], custom_data: { founding_slot: null },
+    });
+  });
+
+  it("rejects an unsupported checkout plan", async () => {
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "admin" }),
+    }));
+    expect(response.status).toBe(400);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse another plan's pending checkout", async () => {
+    vi.stubEnv("PADDLE_PRO_LITE_PRICE_ID", "pri_lite");
+    const { database } = recordingDatabase([[], [], [], [{ status: "pending", claimed: false, billing_price_id: "pri_pro", checkout_url: "https://easeyourstartup.example/checkout" }]]);
+    mocks.createDatabase.mockReturnValue(database);
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro_lite" }),
+    }));
+    expect(response.status).toBe(409);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
   });
 
   it("blocks a new transaction while account deletion is pending", async () => {

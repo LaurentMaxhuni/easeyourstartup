@@ -11,7 +11,7 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-function renderCanvas(composition: ReturnType<typeof creativeCompositionSchema.parse>) {
+function renderCanvas(composition: ReturnType<typeof creativeCompositionSchema.parse>, watermarked: boolean) {
   return (
     <main
       id="campaign-render"
@@ -26,6 +26,7 @@ function renderCanvas(composition: ReturnType<typeof creativeCompositionSchema.p
     >
       <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important}*{animation-play-state:paused!important;transition:none!important}"}</style>
       <RenderComposition composition={composition} />
+      {watermarked && <span style={{ position: "absolute", bottom: "3%", right: "3%", zIndex: 100, background: "rgba(255,255,255,.9)", color: "#111", padding: "8px 16px", fontSize: Math.max(14, composition.output.width * 0.014), fontFamily: "sans-serif" }}>Made with EaseYourStartup</span>}
       <RenderReadinessSignal />
     </main>
   );
@@ -54,5 +55,6 @@ export default async function InternalRenderPage({
     : row.composition;
   const parsed = creativeCompositionSchema.safeParse(compositionValue);
   if (!parsed.success) notFound();
-  return renderCanvas(parsed.data);
+  const watermarked = !(compositionValue && typeof compositionValue === "object" && "watermarked" in compositionValue && compositionValue.watermarked === false);
+  return renderCanvas(parsed.data, watermarked);
 }

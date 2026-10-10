@@ -26,8 +26,10 @@ The working promise is: **Turn every ship into a campaign.**
   stripping, and SVG rejection
 - Browser, phone, launch card, and split visual templates at 1:1, 4:5, 16:9,
   and 1.91:1
-- Free watermarked visual previews, with unwatermarked PNG and full launch-kit
-  exports on Pro
+- Free: 3 active projects and watermarked previews. Pro Lite: $13.99/month,
+  5 active projects and watermarked exports. Pro: 10 active projects and
+  unwatermarked exports. Both paid plans include 8 campaigns per billing period
+  and 5 successful regenerations per channel.
 - Pro launch-kit exports with separate channel files, source evidence,
   a launch brief, and a creative PNG
 - Paddle Checkout, customer portal, signature-verified webhooks, and replay
@@ -206,7 +208,7 @@ enforced in the server-side queries before any user-scoped data is returned.
 ### Paddle Billing
 
 Create one recurring Paddle product and price. Set `PADDLE_ENVIRONMENT` to
-`sandbox` or `production`, then configure `PADDLE_PRO_PRICE_ID`,
+`sandbox` or `production`, then configure `PADDLE_PRO_PRICE_ID`, `PADDLE_PRO_LITE_PRICE_ID` ($13.99/month USD),
 `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, and the matching public client token
 in `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`. Set `NEXT_PUBLIC_PADDLE_ENVIRONMENT`
 to the same environment. The default Paddle payment link must use `/checkout`,

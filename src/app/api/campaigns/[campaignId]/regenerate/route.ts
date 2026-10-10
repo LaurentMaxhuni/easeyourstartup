@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   try {
     assertSameOrigin(request);
     const context = await requireWorkspaceContext();
-    if (context.plan !== "pro") return NextResponse.json({ error: "Channel regeneration is available on Pro." }, { status: 403 });
+    if (context.limits.regenerationsPerChannel === 0) return NextResponse.json({ error: "Channel regeneration is available on Pro Lite and Pro." }, { status: 403 });
     if (!process.env.INNGEST_EVENT_KEY) return NextResponse.json({ error: "Durable jobs are not configured." }, { status: 503 });
     const limit = await rateLimit(`channel-regenerate:${getRequestIdentity(request, context.workspaceId)}`, { limit: 30, windowMs: 60 * 60 * 1000 });
     if (!limit.allowed) return NextResponse.json({ error: "Regeneration limit reached. Try again later." }, { status: 429 });

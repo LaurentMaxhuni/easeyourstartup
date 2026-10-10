@@ -33,6 +33,7 @@ describe("workspace billing entitlements", () => {
 
   beforeEach(() => {
     vi.stubEnv("PADDLE_PRO_PRICE_ID", "pri_pro");
+    vi.stubEnv("PADDLE_PRO_LITE_PRICE_ID", "pri_lite");
     vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "pri_founding");
     mocks.requireCurrentUser.mockResolvedValue({ id: "user_01test", name: "Founder", email: "founder@example.test" });
   });
@@ -44,6 +45,22 @@ describe("workspace billing entitlements", () => {
     mocks.createDatabase.mockReturnValue(database);
 
     await expect(requireWorkspaceContext()).resolves.toMatchObject({ plan: "pro" });
+  });
+
+  it("grants Pro Lite with subscription billing periods", async () => {
+    const { database } = databaseWith({ status: "active", billing_price_id: "pri_lite",
+      current_period_start: "2026-10-05T00:00:00Z", current_period_end: "2026-11-05T00:00:00Z" });
+    mocks.createDatabase.mockReturnValue(database);
+    await expect(requireWorkspaceContext()).resolves.toMatchObject({
+      plan: "pro_lite", limits: { activeProjects: 5, watermarked: true },
+      usagePeriodStart: "2026-10-05", usagePeriodEnd: "2026-11-05",
+    });
+  });
+
+  it("denies Pro Lite for an inactive subscription", async () => {
+    const { database } = databaseWith({ status: "canceled", billing_price_id: "pri_lite" });
+    mocks.createDatabase.mockReturnValue(database);
+    await expect(requireWorkspaceContext()).resolves.toMatchObject({ plan: "free" });
   });
 
   it("does not grant the founding price to an unallocated workspace", async () => {

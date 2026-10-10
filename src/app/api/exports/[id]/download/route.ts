@@ -15,7 +15,7 @@ export async function GET(
   try {
     const context = await requireWorkspaceContext();
     if (!canExportLaunchKit(context.plan)) {
-      return NextResponse.json({ error: "Campaign exports are available on Pro." }, { status: 403 });
+      return NextResponse.json({ error: "Campaign exports are available on Pro Lite and Pro." }, { status: 403 });
     }
     const limit = await rateLimit(`export-download:${getRequestIdentity(request, context.workspaceId)}`, {
       limit: 20,
@@ -26,7 +26,8 @@ export async function GET(
     const id = z.uuid().parse((await params).id);
     const [exportRequest] = await context.database`
       select j.status, j.error_message, r.object_key, r.mime_type, r.byte_size,
-        r.file_name, r.download_expires_at
+        r.file_name, r.download_expires_at,
+        (r.snapshot_state->>'watermarked' = 'true') as watermarked
       from public.export_requests r
       join public.jobs j on j.id = r.job_id and j.workspace_id = r.workspace_id
       where r.job_id = ${id}::uuid
@@ -46,6 +47,9 @@ export async function GET(
       : new Date(String(exportRequest.download_expires_at));
     if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
       return NextResponse.json({ error: "This export has expired. Generate a new one from the saved campaign." }, { status: 410 });
+    }
+    if (context.limits.watermarked && exportRequest.watermarked !== true) {
+      return NextResponse.json({ error: "Generate a new watermarked export for your current plan." }, { status: 403 });
     }
     const bytes = await getPrivateObject(exportRequest.object_key);
     if (bytes.byteLength !== Number(exportRequest.byte_size)) {

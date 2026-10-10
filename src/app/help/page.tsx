@@ -13,15 +13,15 @@ const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
 const helpItems = [
   {
     question: "How many projects and campaigns can I keep?",
-    answer: "Free includes one active project and one campaign per UTC calendar month. Pro includes three active projects and eight campaigns per subscription billing period. Archived projects remain saved and can be restored when a project slot is available.",
+    answer: "Free includes three active projects and one campaign per UTC calendar month. Pro Lite ($13.99/month) includes five active projects and Pro includes ten. Both paid plans include eight campaigns per subscription billing period. Free and Pro Lite visuals carry a watermark; Pro visuals do not. Archived projects remain saved and can be restored when a project slot is available.",
   },
   {
     question: "Do edits use a campaign slot?",
     answer: "Manual edits do not use campaign allowance. A campaign is counted only after generation completes successfully. A failed campaign generation keeps the existing work and releases its reservation.",
   },
   {
-    question: "What does Pro include?",
-    answer: "Pro costs $29 per month and includes high-resolution exports and up to five successful AI copy regenerations per channel during each billing period. The $19 founding price is available only to eligible workspaces assigned one of the first ten slots, and continues while the subscription stays uninterrupted.",
+    question: "What do the paid plans include?",
+    answer: "Pro costs $29 per month and includes unwatermarked high-resolution exports and up to five successful AI copy regenerations per channel during each billing period. Pro Lite costs $13.99 per month with the same campaign, regeneration, and export allowances, five active projects, and watermarked visuals. The $19 founding price is available only to eligible workspaces assigned one of the first ten slots, and continues while the subscription stays uninterrupted.",
   },
   {
     question: "How do I cancel or update payment details?",

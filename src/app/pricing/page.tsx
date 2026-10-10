@@ -14,16 +14,16 @@ const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "One straightforward paid plan for repeatable launch campaigns.",
+  description: "Free, Pro Lite, and Pro plans for repeatable launch campaigns.",
 };
 
 export const dynamic = "force-dynamic";
 
 const FEATURES = [
-  "Three active projects",
+  "Ten active projects",
   "Eight new campaigns per billing period",
   "Editable channel copy and launch visuals",
-  "High resolution PNG and launch-kit exports",
+  "High resolution PNG and launch-kit exports without watermarks",
   "Source evidence bundled with every kit",
   "Five successful AI copy regenerations per channel",
 ];
@@ -42,25 +42,38 @@ export default async function PricingPage() {
           <div className="mx-auto max-w-5xl px-4 text-center sm:px-6">
             <Badge>Simple by design</Badge>
             <h1 className="mx-auto mt-5 max-w-4xl text-balance text-5xl font-semibold  sm:text-7xl">
-              One plan for founders who keep shipping.
+              Plans for founders who keep shipping.
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-muted">
-              Sign in before scanning. The Free plan includes one active project
+              Sign in before scanning. The Free plan includes three active projects
               and one campaign per UTC calendar month.
             </p>
           </div>
         </section>
         <section className="py-16 sm:py-24">
-          <div className="mx-auto grid max-w-5xl gap-8 px-4 sm:px-6 lg:grid-cols-[.65fr_1.35fr]">
+          <div className="mx-auto grid max-w-5xl gap-8 px-4 sm:px-6 lg:grid-cols-3">
             <div className="rounded-container border border-line bg-surface p-6">
               <p className="text-lg font-semibold">Free</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                One active project, editable Brand DNA, one source-backed
+                Three active projects, editable Brand DNA, one source-backed
                 campaign each calendar month, and watermarked previews.
               </p>
               <Button asChild variant="secondary" className="mt-8 w-full">
                 <Link href="/">Start a free scan</Link>
               </Button>
+            </div>
+            <div className="rounded-container border border-line bg-surface-raised p-6">
+              <h2 className="text-xl font-semibold">Pro Lite</h2>
+              <p className="mt-2 text-sm text-muted">More projects with watermarked visuals</p>
+              <p className="mt-6"><span className="text-5xl font-semibold">$13.99</span><span className="text-sm text-muted"> / month</span></p>
+              <ul className="my-8 space-y-4 text-sm leading-6">
+                <li>Five active projects</li>
+                <li>Eight campaigns per billing period</li>
+                <li>Five successful AI copy regenerations per channel</li>
+                <li>High resolution PNG and launch-kit exports</li>
+                <li>Watermark on previews and exported visuals</li>
+              </ul>
+              <CheckoutButton plan="pro_lite" label="Start Pro Lite" />
             </div>
             <div className="rounded-container border border-accent bg-surface-raised p-6 sm:p-9">
               <div className="flex flex-wrap items-start justify-between gap-6">
@@ -78,7 +91,7 @@ export default async function PricingPage() {
                 </div>
               </div>
               <div className="my-8 h-px bg-line" />
-              <ul className="grid gap-4 sm:grid-cols-2">
+              <ul className="grid gap-4 sm:grid-cols-1">
                 {FEATURES.map((feature) => (
                   <li
                     key={feature}
@@ -124,8 +137,8 @@ export default async function PricingPage() {
                 quota.
               </p>
               <p>
-                Free usage resets each UTC calendar month. Pro usage renews with
-                your subscription. Cancel through the customer portal; Pro
+                Free usage resets each UTC calendar month. Paid usage renews with
+                your subscription. Cancel through the customer portal; paid plan
                 access continues through the paid period and your saved work
                 remains available after cancellation.
               </p>

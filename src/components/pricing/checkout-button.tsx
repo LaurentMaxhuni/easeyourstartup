@@ -7,8 +7,10 @@ import { LoadingIndicator } from "@/components/ui/loading-indicator";
 
 export function CheckoutButton({
   label = "Start Pro",
+  plan = "pro",
 }: {
   label?: string;
+  plan?: "pro" | "pro_lite";
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -20,7 +22,7 @@ export function CheckoutButton({
       const response = await fetch("/api/paddle/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ plan }),
       });
       const data = (await response.json()) as {
         url?: string;

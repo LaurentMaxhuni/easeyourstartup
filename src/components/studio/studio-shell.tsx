@@ -187,7 +187,7 @@ async function migrateEditorImages(state: StudioState) {
 
 type StudioSaveStatus = "idle" | "saving" | "saved" | "local" | "error";
 type AutoDesignStatus = "idle" | "loading" | "ai" | "error";
-type StudioPlan = "free" | "pro";
+type StudioPlan = "free" | "pro_lite" | "pro";
 type StudioEvent =
   | "scan_started"
   | "scan_completed"
@@ -773,7 +773,7 @@ export function StudioShell({
           usagePeriodEndsAt?: string;
         };
         if (cancelled || requestId !== entitlementRequest.current) return;
-        if (data.plan === "free" || data.plan === "pro") {
+        if (data.plan === "free" || data.plan === "pro_lite" || data.plan === "pro") {
           setPlan(data.plan);
           setCanExportLaunchKit(data.canExportLaunchKit === true);
         }
@@ -1517,7 +1517,7 @@ export function StudioShell({
 
   async function regenerateChannel(channel: ChannelOutput["channel"]) {
     if (!campaignId) throw new Error("Save or generate this campaign before regenerating channel copy.");
-    if (plan !== "pro") throw new Error("Channel regeneration is available on Pro.");
+    if (plan === "free") throw new Error("Channel regeneration is available on Pro.");
     setRegenerationBusyChannel(channel);
     let activeJobId: string | null = null;
     try {

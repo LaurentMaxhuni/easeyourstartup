@@ -5,7 +5,7 @@ import { Logo } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export function StudioHeader({ profile, plan }: { profile: AccountProfile; plan: "free" | "pro" }) {
+export function StudioHeader({ profile, plan }: { profile: AccountProfile; plan: "free" | "pro_lite" | "pro" }) {
   return (
     <header className="border-b border-line bg-canvas">
       <a
@@ -25,7 +25,7 @@ export function StudioHeader({ profile, plan }: { profile: AccountProfile; plan:
         <div className="flex items-center gap-2">
           <Badge className="hidden sm:inline-flex">
             <Lightning size={12} weight="fill" className="mr-1 text-accent" />
-            {plan === "pro" ? "Pro" : "Free preview"}
+            {plan === "pro" ? "Pro" : plan === "pro_lite" ? "Pro Lite" : "Free preview"}
           </Badge>
           {plan === "free" && (
             <Button asChild variant="secondary" size="sm">

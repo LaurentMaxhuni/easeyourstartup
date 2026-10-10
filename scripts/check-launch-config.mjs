@@ -39,6 +39,7 @@ requireValues([
   "PADDLE_API_KEY",
   "PADDLE_WEBHOOK_SECRET",
   "PADDLE_PRO_PRICE_ID",
+  "PADDLE_PRO_LITE_PRICE_ID",
   "PADDLE_FOUNDING_PRICE_ID",
   "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN",
   "NEXT_PUBLIC_PADDLE_ENVIRONMENT",
@@ -98,6 +99,9 @@ if (deployment === "production" && paddleEnvironment && paddleEnvironment !== "p
 }
 if (present("PADDLE_PRO_PRICE_ID") && present("PADDLE_FOUNDING_PRICE_ID") && process.env.PADDLE_PRO_PRICE_ID === process.env.PADDLE_FOUNDING_PRICE_ID) {
   errors.push("PADDLE_PRO_PRICE_ID and PADDLE_FOUNDING_PRICE_ID must be different prices.");
+}
+if (present("PADDLE_PRO_LITE_PRICE_ID") && [process.env.PADDLE_PRO_PRICE_ID?.trim(), process.env.PADDLE_FOUNDING_PRICE_ID?.trim()].includes(process.env.PADDLE_PRO_LITE_PRICE_ID.trim())) {
+  errors.push("PADDLE_PRO_LITE_PRICE_ID must differ from Pro and founding prices.");
 }
 
 if (errors.length) {

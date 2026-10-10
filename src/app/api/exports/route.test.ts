@@ -66,14 +66,14 @@ describe("POST /api/exports", () => {
       workspaceId,
       user: { id: "user_1" },
       plan: "pro",
-      limits: { activeProjects: 3 },
+      limits: { activeProjects: 10, watermarked: false },
       database: vi.fn(),
     });
   });
 
   afterEach(() => vi.unstubAllEnvs());
 
-  it("queues an export for the exact saved revision with an idempotency key", async () => {
+  it.each(["pro", "pro_lite"] as const)("queues a %s export with trusted watermark entitlement", async (plan) => {
     const { database, queries } = recordingDatabase([
       [],
       [{ project_status: "active", active_slot: 1, campaign_status: "completed" }],
@@ -84,8 +84,8 @@ describe("POST /api/exports", () => {
     mocks.requireWorkspaceContext.mockResolvedValue({
       workspaceId,
       user: { id: "user_1" },
-      plan: "pro",
-      limits: { activeProjects: 3 },
+      plan,
+      limits: { activeProjects: plan === "pro" ? 10 : 5, watermarked: plan !== "pro" },
       database,
     });
 
@@ -98,6 +98,8 @@ describe("POST /api/exports", () => {
     expect(response.status).toBe(202);
     expect(await response.json()).toMatchObject({ job: { id: jobId, status: "queued" }, created: true });
     expect(queries[4].sql).toContain("enqueue_export_job");
+    const snapshot = queries[4].values.find((value) => typeof value === "string" && value.startsWith("{")) as string;
+    expect(JSON.parse(snapshot).watermarked).toBe(plan !== "pro");
     expect(queries[4].values.some((value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value))).toBe(true);
   });
 
@@ -111,7 +113,7 @@ describe("POST /api/exports", () => {
       workspaceId,
       user: { id: "user_1" },
       plan: "pro",
-      limits: { activeProjects: 3 },
+      limits: { activeProjects: 10, watermarked: false },
       database,
     });
 
@@ -135,7 +137,7 @@ describe("POST /api/exports", () => {
       [{ state: {}, revision: 4 }], [],
       [{ job_id: jobId, status: "queued", progress: 0, created: true, allowed: true }],
     ]);
-    mocks.requireWorkspaceContext.mockResolvedValue({ workspaceId, user: { id: "user_1" }, plan: "pro", limits: { activeProjects: 3 }, database });
+    mocks.requireWorkspaceContext.mockResolvedValue({ workspaceId, user: { id: "user_1" }, plan: "pro", limits: { activeProjects: 10, watermarked: false }, database });
     const response = await POST(new Request("https://app.test/api/exports", {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "text-only-export" },
       body: JSON.stringify({ format: "png", projectId, campaignId, expectedRevision: 4 }),
@@ -165,7 +167,7 @@ describe("POST /api/exports", () => {
       workspaceId,
       user: { id: "user_1" },
       plan: "pro",
-      limits: { activeProjects: 3 },
+      limits: { activeProjects: 10, watermarked: false },
       database,
     });
 

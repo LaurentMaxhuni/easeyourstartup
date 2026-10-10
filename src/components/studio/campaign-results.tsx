@@ -54,7 +54,7 @@ export function CampaignResults({ onEditVisual, captureRef, ...props }: VisualSt
               <div ref={captureRef} style={{ width: props.composition.output.width, height: props.composition.output.height,
                 transform: `scale(${scale})`, transformOrigin: "top left" }}>
                 <RenderComposition composition={props.composition} />
-                {props.plan === "free" && <span className="absolute bottom-3 right-4 rounded bg-white/90 px-3 py-1 text-sm text-black">Made with EaseYourStartup</span>}
+                {props.plan !== "pro" && <span className="absolute bottom-3 right-4 rounded bg-white/90 px-3 py-1 text-sm text-black">Made with EaseYourStartup</span>}
               </div>
             </div>
             {props.autoDesignStatus === "loading" && <p role="status" className="mt-3 text-xs text-muted">Preparing your visual…</p>}
@@ -63,7 +63,7 @@ export function CampaignResults({ onEditVisual, captureRef, ...props }: VisualSt
               <Button onClick={() => void props.onExportPng()} disabled={props.exportStatus === "loading" || !props.canExportLaunchKit}>{props.exportStatus === "loading" ? "Preparing download…" : "Download image"}</Button>
               <Button variant="secondary" onClick={() => void props.onExportZip()} disabled={props.exportStatus === "loading" || !props.canExportLaunchKit}>Download all posts</Button>
             </div>
-            {!props.canExportLaunchKit && <p className="mt-3 text-xs leading-5 text-muted">Copying posts is free. <Link href="/pricing" className="text-accent underline">Pro includes image downloads and all posts in one file.</Link></p>}
+            {!props.canExportLaunchKit && <p className="mt-3 text-xs leading-5 text-muted">Copying posts is free. <Link href="/pricing" className="text-accent underline">Pro Lite and Pro include image downloads and all posts in one file.</Link></p>}
             {props.exportError && <p role="alert" className="mt-3 text-sm text-danger">{props.exportError}</p>}
             {props.exportDownloadUrl && <a className="mt-3 inline-block text-sm font-semibold text-accent underline" href={props.exportDownloadUrl}>Your download is ready</a>}
           </section>

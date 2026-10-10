@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const context = await requireWorkspaceContext();
     if (!canExportLaunchKit(context.plan)) {
-      return NextResponse.json({ error: "Campaign exports are available on Pro." }, { status: 403 });
+      return NextResponse.json({ error: "Campaign exports are available on Pro Lite and Pro." }, { status: 403 });
     }
     if (!process.env.INNGEST_EVENT_KEY) {
       return NextResponse.json({ error: "Durable exports are not configured." }, { status: 503 });
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
         ${context.limits.activeProjects},
         ${input.format},
         ${revision},
-        ${JSON.stringify(parsed.data)}::jsonb,
+        ${JSON.stringify({ ...parsed.data, watermarked: context.limits.watermarked })}::jsonb,
         ${safeFilename(projectName, input.format)},
         ${randomUUID()}::uuid,
         ${idempotencyKey},

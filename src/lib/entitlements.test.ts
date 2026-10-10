@@ -10,7 +10,12 @@ import {
 
 describe("plan entitlements", () => {
   it("keeps the published Pro limits stable", () => {
-    expect(PLAN_LIMITS.pro.activeProjects).toBe(3);
+    expect(PLAN_LIMITS.free.activeProjects).toBe(3);
+    expect(PLAN_LIMITS.pro_lite.activeProjects).toBe(5);
+    expect(PLAN_LIMITS.pro.activeProjects).toBe(10);
+    expect(PLAN_LIMITS.free.watermarked).toBe(true);
+    expect(PLAN_LIMITS.pro_lite.watermarked).toBe(true);
+    expect(PLAN_LIMITS.pro.watermarked).toBe(false);
     expect(PLAN_LIMITS.pro.campaignsPerPeriod).toBe(8);
     expect(PLAN_LIMITS.pro.regenerationsPerChannel).toBe(5);
   });
@@ -29,6 +34,7 @@ describe("plan entitlements", () => {
   it("keeps full launch-kit downloads behind Pro", () => {
     expect(canExportLaunchKit("free")).toBe(false);
     expect(canExportLaunchKit("pro")).toBe(true);
+    expect(canExportLaunchKit("pro_lite")).toBe(true);
   });
 
   it("counts in-flight campaigns against a plan's available slots", () => {

@@ -25,7 +25,7 @@ export function ChannelOutputs({
   onRegenerate?: (channel: ChannelOutput["channel"]) => Promise<void>;
   regenerationRemaining?: Partial<Record<ChannelOutput["channel"], number>>;
   regenerationBusyChannel?: ChannelOutput["channel"] | null;
-  plan?: "free" | "pro";
+  plan?: "free" | "pro_lite" | "pro";
   compact?: boolean;
 }) {
   const [active, setActive] = useState(outputs[0]?.channel);
@@ -94,13 +94,13 @@ export function ChannelOutputs({
                   try { await onRegenerate(output.channel); }
                   catch (error) { setRegenerationError(error instanceof Error ? error.message : "Channel regeneration failed."); }
                 }}
-                disabled={regenerationBusy || plan !== "pro" || regenerationsRemaining === 0}
+                disabled={regenerationBusy || plan === "free" || regenerationsRemaining === 0}
               >
                 {regenerationBusy ? <ThinkingOrb state="composing" size={20} aria-hidden="true" /> : <ArrowClockwise size={16} />}
                 {regenerationBusy ? "Regenerating" : "Regenerate"}
               </Button>
               <span className="mt-1 block text-[10px] text-muted">
-                {plan === "pro" ? `${regenerationsRemaining ?? "…"} of 5 left for this channel` : "Included with Pro"}
+                {plan !== "free" ? `${regenerationsRemaining ?? "…"} of 5 left for this channel` : "Included with Pro Lite and Pro"}
               </span>
             </div>
           )}

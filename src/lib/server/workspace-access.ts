@@ -79,6 +79,7 @@ export async function requireWorkspaceContext() {
     : [];
   const regularPriceId = process.env.PADDLE_PRO_PRICE_ID?.trim();
   const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim();
+  const litePriceId = process.env.PADDLE_PRO_LITE_PRICE_ID?.trim();
   const isEligibleProSubscription = Boolean(
     subscription &&
       ["active", "trialing"].includes(subscription.status) &&
@@ -88,7 +89,13 @@ export async function requireWorkspaceContext() {
           subscription.founding_offer_eligible === true)),
   );
   const testProExpiresAt = testGrant?.expires_at ?? null;
-  const plan: Plan = isEligibleProSubscription || testProExpiresAt ? "pro" : "free";
+  const isEligibleLiteSubscription = Boolean(
+    litePriceId && subscription &&
+      ["active", "trialing"].includes(subscription.status) &&
+      subscription.billing_price_id === litePriceId,
+  );
+  const plan: Plan = isEligibleProSubscription || testProExpiresAt
+    ? "pro" : isEligibleLiteSubscription ? "pro_lite" : "free";
   const now = new Date();
   const calendarStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const calendarEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
@@ -96,10 +103,10 @@ export async function requireWorkspaceContext() {
     const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : fallback;
     return Number.isNaN(date.getTime()) ? fallback.toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
   };
-  const usagePeriodStart = plan === "pro"
+  const usagePeriodStart = plan !== "free"
     ? dateKey(subscription?.current_period_start, calendarStart)
     : calendarStart.toISOString().slice(0, 10);
-  const usagePeriodEnd = plan === "pro"
+  const usagePeriodEnd = plan !== "free"
     ? dateKey(subscription?.current_period_end, calendarEnd)
     : calendarEnd.toISOString().slice(0, 10);
   return {

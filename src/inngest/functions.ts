@@ -447,6 +447,7 @@ export const exportCampaignAssets = inngest.createFunction(
         format: row.format === "png" ? "png" as const : row.format === "zip" ? "zip" as const : null,
         revision: Number(row.revision),
         fileName: String(row.file_name),
+        watermarked: !(raw && typeof raw === "object" && "watermarked" in raw && raw.watermarked === false),
         state: studioStateSchema.parse(raw),
       };
     });
@@ -504,7 +505,7 @@ export const exportCampaignAssets = inngest.createFunction(
         ) values (
           ${renderTokenHash}, ${workspaceId}::uuid, ${request.requestedBy},
           ${request.projectId}::uuid, ${request.campaignId}::uuid, ${request.revision},
-          ${JSON.stringify(composition)}::jsonb, pg_catalog.now() + interval '20 minutes'
+          ${JSON.stringify({ ...composition, watermarked: request.watermarked })}::jsonb, pg_catalog.now() + interval '20 minutes'
         )
       `;
 

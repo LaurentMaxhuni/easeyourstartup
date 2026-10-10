@@ -63,7 +63,7 @@ export function CreativeWorkspace({
   exportStatus: "idle" | "loading";
   exportError: string;
   exportDownloadUrl: string | null;
-  plan: "free" | "pro";
+  plan: "free" | "pro_lite" | "pro";
   canExportLaunchKit: boolean;
   campaignsRemaining: number | null;
   usagePeriodEndsAt: string | null;

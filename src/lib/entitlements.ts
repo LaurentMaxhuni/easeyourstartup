@@ -1,17 +1,27 @@
 export const PLAN_LIMITS = {
   free: {
-    activeProjects: 1,
+    activeProjects: 3,
     campaignsPerPeriod: 1,
     regenerationsPerChannel: 0,
     highResolutionExports: false,
     supporterRooms: false,
+    watermarked: true,
   },
-  pro: {
-    activeProjects: 3,
+  pro_lite: {
+    activeProjects: 5,
     campaignsPerPeriod: 8,
     regenerationsPerChannel: 5,
     highResolutionExports: true,
     supporterRooms: false,
+    watermarked: true,
+  },
+  pro: {
+    activeProjects: 10,
+    campaignsPerPeriod: 8,
+    regenerationsPerChannel: 5,
+    highResolutionExports: true,
+    supporterRooms: false,
+    watermarked: false,
   },
 } as const;
 

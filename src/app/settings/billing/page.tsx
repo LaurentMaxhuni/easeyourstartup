@@ -68,15 +68,15 @@ export default async function BillingSettingsPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs text-muted">Current plan</p>
-              <h2 className="mt-1 text-2xl font-semibold">{context.plan === "pro" ? "Pro" : "Free"}</h2>
+              <h2 className="mt-1 text-2xl font-semibold">{context.plan === "pro" ? "Pro" : context.plan === "pro_lite" ? "Pro Lite" : "Free"}</h2>
               <p className="mt-2 text-sm text-muted">
-                {context.plan === "pro"
+                {context.plan !== "free"
                   ? context.testProExpiresAt
                     ? `Temporary test access · expires ${formatDate(context.testProExpiresAt) ?? "soon"}`
-                    : `${isFounding ? "$19" : "$29"} per month · ${isFounding ? "Founding price" : "monthly subscription"}`
+                    : `${context.plan === "pro_lite" ? "$13.99" : isFounding ? "$19" : "$29"} per month · ${isFounding ? "Founding price" : "monthly subscription"}`
                   : founding && !founding.redeemed_at
                     ? "Founding price reserved for your workspace: $19/month"
-                    : "One active project · one campaign each calendar month"}
+                    : "Three active projects · one campaign each calendar month"}
               </p>
             </div>
             {context.plan === "free" && (
@@ -95,7 +95,7 @@ export default async function BillingSettingsPage() {
               No active subscription is attached to this workspace. Pro access is workspace-specific; if you already have Pro, check the workspace that owns the subscription before purchasing again.
             </p>
           )}
-          {context.plan === "pro" && (
+          {context.plan !== "free" && (
             <div className="mt-6 border-t border-line pt-5 text-sm">
               {context.testProExpiresAt ? (
                 <p className="text-muted">
@@ -119,10 +119,10 @@ export default async function BillingSettingsPage() {
         <section className="mt-4 rounded-container border border-line bg-surface-raised p-6 sm:p-8">
           <h2 className="text-lg font-semibold">Usage this period</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            {used} completed campaign{used === 1 ? "" : "s"}{reserved ? ` · ${reserved} in progress` : ""} of {context.limits.campaignsPerPeriod}. {context.plan === "pro" ? "The allowance renews with your subscription." : "The Free allowance resets at the start of each UTC calendar month."}
+            {used} completed campaign{used === 1 ? "" : "s"}{reserved ? ` · ${reserved} in progress` : ""} of {context.limits.campaignsPerPeriod}. {context.plan !== "free" ? "The allowance renews with your subscription." : "The Free allowance resets at the start of each UTC calendar month."}
           </p>
           <p className="mt-1 text-xs text-muted">Period ends {formatDate(context.usagePeriodEnd) ?? context.usagePeriodEnd}. Active project limit: {context.limits.activeProjects}.</p>
-          <p className="mt-3 text-xs leading-5 text-muted">Pro includes up to 3 active projects, 8 campaigns per billing period, 5 successful regenerations per channel, and high-resolution exports. Manual edits do not use campaign allowance.</p>
+          <p className="mt-3 text-xs leading-5 text-muted">Free includes 3 active projects and watermarked previews. Pro Lite ($13.99/month) includes 5 active projects and watermarked exports. Pro includes 10 active projects and exports without watermarks. Both paid plans include 8 campaigns per billing period and 5 successful regenerations per channel. Manual edits do not use campaign allowance.</p>
         </section>
 
         {founding && (
