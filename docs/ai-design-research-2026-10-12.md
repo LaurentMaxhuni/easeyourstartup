@@ -91,3 +91,5 @@ Use one shared workflow for initial generation and manual redesign. Preserve V2'
 
 Proposed experiment: create two distinct art directions, render both, compare with a vision-capable judge, and repair the selected candidate at most twice within an explicit total budget. These counts are experimental settings, not proven optimal values. Account for calls, image tokens, latency, and tool costs before rollout.
 
+Code should check exact constraints: schema, unique layer IDs, owned asset resolution, loaded fonts, bounds, overflow, and permitted changes. Vision review should assess hierarchy, brand fit, balance, imagery relevance, craft, and feed readability. Vision models have spatial-localization limitations, so pixel critique complements rather than replaces exact geometry checks. [Vision limitations](https://developers.openai.com/api/docs/guides/images-vision).
+
