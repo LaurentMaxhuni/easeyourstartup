@@ -36,3 +36,5 @@ Concrete weaknesses visible in this specification:
 - CTA explicitly uses accent-colored text and has no fill. The current text renderer supplies foreground as its background: the result is red text on a near-black button rather than the intended accent-filled treatment. Per-layer contrast needs checking against the actual rendered background.
 - Text sizes use canvas-width units, while positions and box sizes use percentages. The Spec display does not explain those units, making independent interpretation ambiguous.
 
+The Spec tab in `src/components/studio/mini-canva-editor.tsx:1052` emits a display summary, not the full persisted composition. It omits image `src` and maps it to desktop/tablet/phone/primary aliases; any unmatched image becomes primary. It also excludes hidden layers. Therefore `asset: "desktop"` is not itself a broken-image diagnosis, and this JSON cannot establish the original asset's suitability or successful loading. A future portable scene format needs explicit units and stable asset IDs; preserve private URLs without collapsing different images into the same alias.
+
