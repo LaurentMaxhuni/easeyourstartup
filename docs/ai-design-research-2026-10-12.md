@@ -38,3 +38,7 @@ Concrete weaknesses visible in this specification:
 
 The Spec tab in `src/components/studio/mini-canva-editor.tsx:1052` emits a display summary, not the full persisted composition. It omits image `src` and maps it to desktop/tablet/phone/primary aliases; any unmatched image becomes primary. It also excludes hidden layers. Therefore `asset: "desktop"` is not itself a broken-image diagnosis, and this JSON cannot establish the original asset's suitability or successful loading. A future portable scene format needs explicit units and stable asset IDs; preserve private URLs without collapsing different images into the same alias.
 
+Skills are packaged instructions, examples, and resources. They require discovery and activation in the application's runtime. Codex's installed skills and connectors are not automatically passed into this app's API calls.
+
+Recommended first implementation: bundle a small, reviewed, application-owned catalog. Select appropriate instructions in server code and inject them into the existing provider messages. A tool such as `load_design_skill(id)` can support dynamic selection later. The Agent Skills integration guide explicitly supports programmatic injection when an agent lacks filesystem access; it recommends exposing metadata first and loading instructions/resources only when needed. [Agent Skills integration](https://agentskills.io/client-implementation/adding-skills-support), [package specification](https://agentskills.io/specification).
+
