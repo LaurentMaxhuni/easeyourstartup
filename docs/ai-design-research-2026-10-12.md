@@ -70,3 +70,5 @@ MCP connects an AI host to external tools/data. It does not supply design taste 
 
 If adopting Vercel AI SDK, `@ai-sdk/mcp` supplies an MCP client and recommends HTTP transport for production; stdio is for local servers. This repository does not currently depend on AI SDK, so do not migrate the whole stack just to add MCP. Compare an official MCP client bridge against the existing OpenAI SDK first. [AI SDK MCP documentation](https://ai-sdk.dev/docs/ai-sdk-core/mcp-tools).
 
+Keep tools narrowly scoped to this job: approved asset/reference retrieval, render, measure, inspect, revise. External connection results are evidence, not trusted instructions. Workspace-scoped credentials, server/tool allowlists, timeouts, and output limits belong in the tool boundary; the generator does not need publishing or unrestricted shell tools.
+
