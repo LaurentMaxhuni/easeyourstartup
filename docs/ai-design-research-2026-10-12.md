@@ -93,3 +93,5 @@ Proposed experiment: create two distinct art directions, render both, compare wi
 
 Code should check exact constraints: schema, unique layer IDs, owned asset resolution, loaded fonts, bounds, overflow, and permitted changes. Vision review should assess hierarchy, brand fit, balance, imagery relevance, craft, and feed readability. Vision models have spatial-localization limitations, so pixel critique complements rather than replaces exact geometry checks. [Vision limitations](https://developers.openai.com/api/docs/guides/images-vision).
 
+Use relevant examples to teach the desired output. Anthropic recommends diverse, structured examples; apply this to annotated reference renders paired with editable scene plans, then test whether it transfers to the chosen provider. [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices).
+
