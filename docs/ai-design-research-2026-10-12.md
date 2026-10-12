@@ -107,3 +107,5 @@ TypeSafe Jev is a possible later skill/reference selector or text-grounded brand
 
 Evaluation recommendation: 20–30 representative briefs covering sparse assets, strong/weak brand identity, long copy, dark/light palettes, portfolio/SaaS/service products, square/portrait output, and non-English copy. Include this portfolio screenshot as a regression case. Use blinded pairwise human preferences, randomized candidate order, and explicit pass/fail checks for clipped text, unreadable text, invalid assets, and changed facts. Model judges require calibration against human ratings. [Evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices).
 
+Track first-pass validity, final validity, human preference win rate, brand fidelity, font/image load failures, p50/p95 latency, cost per accepted design, and failures by stage. Define launch thresholds from the measured baseline; do not claim arbitrary scores prove quality. Keep failing briefs and their renders as a regression corpus.
+
