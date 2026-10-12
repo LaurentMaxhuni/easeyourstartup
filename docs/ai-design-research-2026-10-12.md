@@ -55,3 +55,7 @@ These names and contents are recommendations, not installed packages. Keep polic
 
 Native platform options exist but add runtime requirements. OpenAI documents uploading skills and attaching them through a shell tool's environment; the installed SDK contains related types. Anthropic's native API skills require a code-execution container. Neither happens merely by adding a `SKILL.md` to this repository. For this app's existing JSON-only calls, instruction injection is the smallest compatible first step. [OpenAI Skills](https://developers.openai.com/api/docs/guides/tools-skills), [Anthropic Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview).
 
+## Adding MCP and useful tools
+
+MCP connects an AI host to external tools/data. It does not supply design taste by itself. Existing OpenAI-compatible chat providers are not guaranteed to support OpenAI-native remote MCP. An application-owned MCP client can bridge selected server tools into provider function calls, provided that provider supports tool calling; otherwise code can retrieve context before generation. OpenAI Responses supports native remote MCP with a server URL and tool allowlist. [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture), [OpenAI remote MCP](https://developers.openai.com/api/docs/guides/tools-connectors-mcp).
+
