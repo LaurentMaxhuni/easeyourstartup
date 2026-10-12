@@ -72,3 +72,18 @@ If adopting Vercel AI SDK, `@ai-sdk/mcp` supplies an MCP client and recommends H
 
 Keep tools narrowly scoped to this job: approved asset/reference retrieval, render, measure, inspect, revise. External connection results are evidence, not trusted instructions. Workspace-scoped credentials, server/tool allowlists, timeouts, and output limits belong in the tool boundary; the generator does not need publishing or unrestricted shell tools.
 
+## Proposed design workflow
+
+```mermaid
+flowchart LR
+  A[Approved copy and brand assets] --> B[Relevant skills and visual references]
+  B --> C[Art direction and editable scene candidates]
+  C --> D[Render with actual fonts and images]
+  D --> E[Geometry checks and vision comparison]
+  E --> F{Acceptable?}
+  F -->|Yes| G[Return editable scene to studio]
+  F -->|No, budget remains| H[Repair identified layers]
+  H --> D
+  F -->|No, budget exhausted| I[Explain failure and preserve saved canvas]
+```
+
