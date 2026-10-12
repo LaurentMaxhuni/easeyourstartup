@@ -105,3 +105,5 @@ TypeSafe Jev is a possible later skill/reference selector or text-grounded brand
 4. **Close the visual feedback loop.** Reuse the canvas/export renderer in a worker, wait for fonts/images, capture full-resolution and feed-size previews, run geometry checks, then compare/repair using vision.
 5. **Benchmark before expansion.** Compare the current configured model against alternative vision-capable models using the same briefs, references, instructions, and output contract. Only then consider more MCP connections, generated assets, preference memory, or fine-tuning.
 
+Evaluation recommendation: 20–30 representative briefs covering sparse assets, strong/weak brand identity, long copy, dark/light palettes, portfolio/SaaS/service products, square/portrait output, and non-English copy. Include this portfolio screenshot as a regression case. Use blinded pairwise human preferences, randomized candidate order, and explicit pass/fail checks for clipped text, unreadable text, invalid assets, and changed facts. Model judges require calibration against human ratings. [Evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices).
+
