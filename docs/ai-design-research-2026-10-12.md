@@ -109,3 +109,8 @@ Evaluation recommendation: 20–30 representative briefs covering sparse assets,
 
 Track first-pass validity, final validity, human preference win rate, brand fidelity, font/image load failures, p50/p95 latency, cost per accepted design, and failures by stage. Define launch thresholds from the measured baseline; do not claim arbitrary scores prove quality. Keep failing briefs and their renders as a regression corpus.
 
+## Verification and limits
+
+Reviewed both design entry paths, scene contracts, provider selection, manual parser, renderer geometry, and editor text rendering. Current official documentation checked for skills, MCP, Figma, Playwright, image generation, evaluation, vision limits, and TypeSafe.
+
+Graphify was attempted but failed with `uv trampoline failed to canonicalize script path`; no graph was generated. Scoped source inspection was used instead. No secrets were read, new integrations enabled, generation calls purchased, or application code changed. Exact active provider/model and screenshot failure cause remain unverified. This document is an implementation recommendation, not evidence that the proposed pipeline already improves outputs.
