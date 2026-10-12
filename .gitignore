@@ -12,3 +12,4 @@ test-results
 npm-debug.log*
 /.playwright-cli/
 output
+.inngest/

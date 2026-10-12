@@ -65,7 +65,7 @@ available for retry. Deterministic example data is retained as test fixture data
    ```
 
 5. With `INNGEST_DEV=1` and a localhost `INNGEST_BASE_URL`, app startup
-   automatically starts the local worker if needed. Logs are saved to
+   automatically starts and monitors the local worker, restarting it if needed. Logs are saved to
    `output/local-worker.log`. To run the worker manually in a second terminal:
 
    ```bash
@@ -258,6 +258,8 @@ be shared with staging.
 
 For local development, set `INNGEST_DEV=1`. `pnpm dev` starts the worker
 automatically when `INNGEST_BASE_URL` points to localhost (default port 8288).
+It checks worker health every five seconds and restarts a stopped worker.
+Worker queue state persists across restarts through the CLI's `--persist` option.
 `pnpm dev:inngest` remains available for manual startup. The local Inngest Dev Server syncs the Next.js handler at
 `/api/inngest` and runs scheduled outbox dispatch. Set production event and
 signing keys in deployed environments. Scan and campaign generation functions use idempotent steps and
