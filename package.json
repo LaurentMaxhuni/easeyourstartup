@@ -7,8 +7,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "predev": "node scripts/start-local-worker.mjs",
-    "dev": "next dev",
+    "dev": "node scripts/start-local-worker.mjs",
     "dev:inngest": "npx --yes --ignore-scripts=false inngest-cli@latest dev -u http://localhost:3000/api/inngest",
     "build": "next build",
     "start": "next start",
