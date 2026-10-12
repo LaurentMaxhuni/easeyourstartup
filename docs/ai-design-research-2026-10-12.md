@@ -97,3 +97,11 @@ Use relevant examples to teach the desired output. Anthropic recommends diverse,
 
 TypeSafe Jev is a possible later skill/reference selector or text-grounded brand/copy verifier. Its skill-suggestion cookbook demonstrates ranking and rechecking candidates. Current Jev state accepts text/JSON, not images: it cannot directly inspect canvas screenshots. Keep visual judgment with a vision model and exact rules in code; add Jev only if domain evaluation shows an advantage. [Skill selection cookbook](https://docs.typesafe.ai/cookbooks/skill_suggestion), [supported state](https://docs.typesafe.ai/concepts/state).
 
+## Implementation order and evaluation
+
+1. **Trace failures first.** Record effective provider/model, stage, request ID, elapsed time, reference counts/failures, validation category, and retry outcome. Keep credentials and private payloads out of diagnostics. Add bounded retry only for classified retryable failures; use validation feedback for bounded scene repair.
+2. **Remove the geometry bottleneck.** Route initial and manual design through shared editable scene planning, with V2's reviewed wording locked. Preserve the editor, undo/history, and export behavior.
+3. **Supply design knowledge and evidence.** Add reviewed skills and curated references, explicit percentage/cqw units, authenticated uploaded-asset pixels, and a genuinely loaded brand-compatible font allowlist. Neutral/background derivations must be explicit rather than silently weakening palette validation.
+4. **Close the visual feedback loop.** Reuse the canvas/export renderer in a worker, wait for fonts/images, capture full-resolution and feed-size previews, run geometry checks, then compare/repair using vision.
+5. **Benchmark before expansion.** Compare the current configured model against alternative vision-capable models using the same briefs, references, instructions, and output contract. Only then consider more MCP connections, generated assets, preference memory, or fine-tuning.
+
