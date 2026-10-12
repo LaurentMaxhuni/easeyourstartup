@@ -87,3 +87,5 @@ flowchart LR
   F -->|No, budget exhausted| I[Explain failure and preserve saved canvas]
 ```
 
+Use one shared workflow for initial generation and manual redesign. Preserve V2's reviewed copy and approved claim links when replacing its fixed geometry. A repair step must not rewrite reviewed campaign wording. References guide composition, not factual assertions.
+
