@@ -28,3 +28,11 @@ The supplied JSON reveals a third source of fixed geometry: `src/lib/studio/edit
 
 `getEditorElements` returns supplied layers when present and otherwise calls `createDefaultEditorElements`. A `custom` composition receives the generic single-image branch; the label does not guarantee independently designed geometry. This fallback must be included when implementing the shared scene workflow. Manual insertion defaults can remain useful, but missing generated layers should not masquerade as a finished AI design.
 
+Concrete weaknesses visible in this specification:
+
+- Empty body/footer layers persist despite having no content.
+- A tall screenshot slot and tilted backing panel are chosen without evidence that this aspect ratio suits the source image.
+- A rocket, glow, pulse, and floating image are inserted as defaults rather than justified by the campaign concept.
+- CTA explicitly uses accent-colored text and has no fill. The current text renderer supplies foreground as its background: the result is red text on a near-black button rather than the intended accent-filled treatment. Per-layer contrast needs checking against the actual rendered background.
+- Text sizes use canvas-width units, while positions and box sizes use percentages. The Spec display does not explain those units, making independent interpretation ambiguous.
+
