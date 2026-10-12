@@ -22,3 +22,9 @@ The exact 502 cause remains unknown without its server log/request trace. Provid
 
 ## Adding skills to the application AI
 
+### Follow-up: pasted studio specification
+
+The supplied JSON reveals a third source of fixed geometry: `src/lib/studio/editor-state.ts`. Its text coordinates and sizes match `TEXT_ELEMENT_DEFAULTS`; panel `(53,14,42,64,-3)`, image `(57,17,36,58)`, lower rule, rocket placement, and animation settings match `createRichSingleImageElements` and `iconElement`. This is strong evidence of default editor scaffolding, although saved or generated layers could also copy those values.
+
+`getEditorElements` returns supplied layers when present and otherwise calls `createDefaultEditorElements`. A `custom` composition receives the generic single-image branch; the label does not guarantee independently designed geometry. This fallback must be included when implementing the shared scene workflow. Manual insertion defaults can remain useful, but missing generated layers should not masquerade as a finished AI design.
+
