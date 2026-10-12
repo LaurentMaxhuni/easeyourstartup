@@ -42,3 +42,12 @@ Skills are packaged instructions, examples, and resources. They require discover
 
 Recommended first implementation: bundle a small, reviewed, application-owned catalog. Select appropriate instructions in server code and inject them into the existing provider messages. A tool such as `load_design_skill(id)` can support dynamic selection later. The Agent Skills integration guide explicitly supports programmatic injection when an agent lacks filesystem access; it recommends exposing metadata first and loading instructions/resources only when needed. [Agent Skills integration](https://agentskills.io/client-implementation/adding-skills-support), [package specification](https://agentskills.io/specification).
 
+Start with these narrowly scoped skills, each containing annotated good/bad visual examples and compatible editable scene examples:
+
+- **Art direction:** choose a coherent concept, focal point, hierarchy, and relationship between imagery and message before specifying coordinates.
+- **Brand translation:** carry source typography, spacing, imagery, palette roles, and visual character into a social canvas rather than merely copying colors.
+- **Editorial typography:** expressive headline composition, controlled line breaks, role-based scale, and readable supporting copy at feed size.
+- **Product storytelling:** select a useful product crop, authentic screenshot, or diagram and explain its role in the composition.
+- **Composition and assets:** coordinate system, layer semantics, supported capabilities, negative space, and meaningful graphic treatment.
+- **Visual review and repair:** inspect the actual render against the brief, identify offending layer IDs, and return bounded edits with reasons.
+
