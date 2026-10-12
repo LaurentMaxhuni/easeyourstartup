@@ -51,3 +51,5 @@ Start with these narrowly scoped skills, each containing annotated good/bad visu
 - **Composition and assets:** coordinate system, layer semantics, supported capabilities, negative space, and meaningful graphic treatment.
 - **Visual review and repair:** inspect the actual render against the brief, identify offending layer IDs, and return bounded edits with reasons.
 
+These names and contents are recommendations, not installed packages. Keep policy/approved-copy constraints outside optional skills. Pin versions and retain selected skill IDs in traces. Avoid injecting every generic frontend skill: HTML/CSS advice must be adapted to this scene schema.
+
