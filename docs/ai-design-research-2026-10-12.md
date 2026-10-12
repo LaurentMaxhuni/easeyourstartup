@@ -53,3 +53,5 @@ Start with these narrowly scoped skills, each containing annotated good/bad visu
 
 These names and contents are recommendations, not installed packages. Keep policy/approved-copy constraints outside optional skills. Pin versions and retain selected skill IDs in traces. Avoid injecting every generic frontend skill: HTML/CSS advice must be adapted to this scene schema.
 
+Native platform options exist but add runtime requirements. OpenAI documents uploading skills and attaching them through a shell tool's environment; the installed SDK contains related types. Anthropic's native API skills require a code-execution container. Neither happens merely by adding a `SKILL.md` to this repository. For this app's existing JSON-only calls, instruction injection is the smallest compatible first step. [OpenAI Skills](https://developers.openai.com/api/docs/guides/tools-skills), [Anthropic Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview).
+
