@@ -95,3 +95,5 @@ Code should check exact constraints: schema, unique layer IDs, owned asset resol
 
 Use relevant examples to teach the desired output. Anthropic recommends diverse, structured examples; apply this to annotated reference renders paired with editable scene plans, then test whether it transfers to the chosen provider. [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices).
 
+TypeSafe Jev is a possible later skill/reference selector or text-grounded brand/copy verifier. Its skill-suggestion cookbook demonstrates ranking and rechecking candidates. Current Jev state accepts text/JSON, not images: it cannot directly inspect canvas screenshots. Keep visual judgment with a vision model and exact rules in code; add Jev only if domain evaluation shows an advantage. [Skill selection cookbook](https://docs.typesafe.ai/cookbooks/skill_suggestion), [supported state](https://docs.typesafe.ai/concepts/state).
+
