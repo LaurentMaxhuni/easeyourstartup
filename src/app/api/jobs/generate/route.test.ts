@@ -4,7 +4,15 @@ const mocks = vi.hoisted(() => ({
   database: vi.fn(),
   rateLimit: vi.fn(),
   requireWorkspaceContext: vi.fn(),
+  after: vi.fn(),
+  send: vi.fn(),
 }));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(),
+  after: mocks.after,
+}));
+vi.mock("@/inngest/client", () => ({ inngest: { send: mocks.send } }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({
@@ -62,6 +70,8 @@ function request() {
 
 describe("campaign generation idempotency", () => {
   beforeEach(() => {
+    mocks.after.mockReset();
+    mocks.send.mockReset().mockResolvedValue({ ids: ["event-1"] });
     vi.stubEnv("INNGEST_EVENT_KEY", "configured");
     mocks.database.mockReset().mockImplementation(async (strings: TemplateStringsArray) => {
       const sql = strings.join(" ");
@@ -76,6 +86,24 @@ describe("campaign generation idempotency", () => {
       usagePeriodStart: "2026-09-01",
       usagePeriodEnd: "2026-10-01",
     });
+  });
+
+  it.each([false, true])("dispatches a saved job after responding and preserves recovery on send failure=%s", async (failSend) => {
+    mocks.database.mockImplementation(async (strings: TemplateStringsArray) => {
+      const sql = strings.join(" ");
+      if (sql.includes("with idempotency_lock")) return [existingJob];
+      if (sql.includes("from public.projects")) return [{ status: "active", active_slot: 1 }];
+      if (sql.includes("from public.job_outbox")) return [{ event_id: "44444444-4444-4444-8444-444444444444", event_payload: { jobId: existingJob.id, campaignId, workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }];
+      return [];
+    });
+    if (failSend) mocks.send.mockRejectedValueOnce(new Error("Worker unavailable"));
+    const response = await POST(request());
+    expect(response.status).toBe(202);
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+    await mocks.after.mock.calls[0][0]();
+    expect(mocks.send).toHaveBeenCalledWith({ id: "44444444-4444-4444-8444-444444444444", name: "campaign/generation.requested", data: { jobId: existingJob.id, campaignId, workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } });
+    expect(mocks.database.mock.calls.some(([strings]) => strings.join(" ").includes("mark_job_outbox_delivered"))).toBe(!failSend);
   });
 
   afterEach(() => {

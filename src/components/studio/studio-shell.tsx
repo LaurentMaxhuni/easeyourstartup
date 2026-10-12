@@ -661,7 +661,7 @@ export function StudioShell({
             setGenerationScreenStage(
               job.status === "queued"
                 ? "queued"
-                : job.status === "completed"
+                : job.status === "completed" || job.progress >= 75
                   ? "visuals"
                   : "writing",
             );

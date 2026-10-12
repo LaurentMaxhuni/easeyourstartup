@@ -64,7 +64,9 @@ available for retry. Deterministic example data is retained as test fixture data
    pnpm dev
    ```
 
-5. Run the local Inngest worker in a second terminal:
+5. With `INNGEST_DEV=1` and a localhost `INNGEST_BASE_URL`, app startup
+   automatically starts the local worker if needed. Logs are saved to
+   `output/local-worker.log`. To run the worker manually in a second terminal:
 
    ```bash
    pnpm dev:inngest
@@ -254,14 +256,16 @@ be shared with staging.
 
 ### Inngest
 
-For local development, set `INNGEST_DEV=1` and run `pnpm dev:inngest` alongside
-`pnpm dev`. The local Inngest Dev Server syncs the Next.js handler at
+For local development, set `INNGEST_DEV=1`. `pnpm dev` starts the worker
+automatically when `INNGEST_BASE_URL` points to localhost (default port 8288).
+`pnpm dev:inngest` remains available for manual startup. The local Inngest Dev Server syncs the Next.js handler at
 `/api/inngest` and runs scheduled outbox dispatch. Set production event and
 signing keys in deployed environments. Scan and campaign generation functions use idempotent steps and
 persist progress in `jobs`. The scheduled private-object cleanup retries
 deletions queued when a customer removes an asset or project. Scan,
 generation, channel-regeneration, and export jobs are inserted with a transactional
-outbox event; the scheduled dispatcher retries delivery with a stable event ID
+outbox event; campaign generation sends its saved event immediately after the
+HTTP response, and the scheduled dispatcher retries delivery with a stable event ID
 and releases reserved usage if an event cannot be delivered after repeated
 attempts.
 

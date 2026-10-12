@@ -34,17 +34,34 @@ describe("waitForCompletedJob", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = waitForCompletedJob("job-1", undefined, 90_000);
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    await vi.advanceTimersByTimeAsync(29_999);
+    await vi.advanceTimersByTimeAsync(9_999);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     await expect(result).resolves.toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("notices completion within ten seconds even after unchanged progress", async () => {
+    vi.useFakeTimers();
+    let completed = false;
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      job: { id: "job-1", status: completed ? "completed" : "generating", progress: completed ? 100 : 35, result: { ok: true } },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = waitForCompletedJob("job-1", undefined, 90_000);
+    const onComplete = vi.fn();
+    void result.then(onComplete);
+    await vi.advanceTimersByTimeAsync(32_000);
+    completed = true;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onComplete).toHaveBeenCalledWith({ ok: true });
+    await expect(result).resolves.toEqual({ ok: true });
   });
 
   it("stops after the configured duration with an accurate resumable error", async () => {

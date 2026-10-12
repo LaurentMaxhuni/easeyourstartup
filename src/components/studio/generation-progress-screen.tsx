@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { LogoMark } from "@/components/logo";
+import { generationOrbState, type GenerationScreenStage } from "@/lib/studio/generation-progress";
 
-export type GenerationScreenStage = "preparing" | "queued" | "writing" | "visuals";
+export type { GenerationScreenStage } from "@/lib/studio/generation-progress";
 
 const stages = ["Request saved", "Writing your posts", "Creating your visual"];
 export function GenerationProgressScreen({
@@ -18,21 +19,19 @@ export function GenerationProgressScreen({
   channelCount: number;
   stage: GenerationScreenStage;
 }) {
-  const [takingLonger, setTakingLonger] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
-    const timer = window.setTimeout(() => setTakingLonger(true), 90_000);
-    return () => window.clearTimeout(timer);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000)), 1_000);
+    return () => window.clearInterval(timer);
   }, []);
+  const takingLonger = elapsedSeconds >= 90;
   const activeStage = stage === "preparing" || stage === "queued"
     ? 0
     : stage === "writing"
       ? 1
       : 2;
-  const orbState = stage === "visuals"
-    ? "shaping"
-    : stage === "writing"
-      ? "composing"
-      : "working";
+  const orbState = generationOrbState(stage, elapsedSeconds);
   const activityLabel = stage === "visuals"
     ? "Creating your visual"
     : stage === "writing"
@@ -59,7 +58,7 @@ export function GenerationProgressScreen({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_36%,rgba(91,131,255,0.13),transparent_58%)]"
       />
-      <div className="relative mx-auto flex min-h-[100dvh] max-w-6xl flex-col px-5 py-6 sm:px-8">
+      <div className="relative mx-auto flex min-h-[100dvh] max-w-6xl flex-col px-5 py-5 sm:px-8 sm:py-6">
         <header className="flex items-center gap-3">
           <LogoMark />
           <span className="text-sm font-semibold">EaseYourStartup</span>
@@ -71,9 +70,9 @@ export function GenerationProgressScreen({
         <section
           role="status"
           aria-live="polite"
-          className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center py-12 text-center"
+          className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center py-4 text-center sm:py-12"
         >
-          <div className="relative mb-9 grid size-56 place-items-center sm:size-64" aria-hidden="true">
+          <div className="relative mb-4 grid size-40 place-items-center sm:mb-9 sm:size-64" aria-hidden="true">
             <div className="absolute size-40 rounded-full bg-accent/15 blur-3xl" />
             <div className="absolute size-44 rounded-full border border-accent/15 motion-safe:animate-[spin_24s_linear_infinite]" />
             <div className="absolute size-32 rounded-full border border-dashed border-accent/20 motion-safe:animate-[spin_32s_linear_infinite_reverse]" />
@@ -81,6 +80,8 @@ export function GenerationProgressScreen({
               className="relative z-10"
               state={orbState}
               size={64}
+              style={{ transform: "scale(2)" }}
+              data-generation-orb={orbState}
               aria-hidden="true"
             />
           </div>
@@ -93,7 +94,7 @@ export function GenerationProgressScreen({
             {description}
           </p>
 
-          <ol className="mt-9 grid w-full gap-3 text-left sm:grid-cols-3">
+          <ol className="mt-5 grid w-full gap-3 text-left sm:mt-9 sm:grid-cols-3">
             {stages.map((label, index) => {
               const complete = index < activeStage;
               const active = index === activeStage;
@@ -115,9 +116,10 @@ export function GenerationProgressScreen({
               );
             })}
           </ol>
-          <p className="mt-8 text-xs text-muted">
+          <p className="mt-4 text-xs text-muted sm:mt-8">
             {takingLonger ? "This is taking longer than expected. Your saved request will keep running." : "You’ll be able to review and edit everything before sharing."}
           </p>
+          <p aria-live="off" className="mt-3 text-xs tabular-nums text-muted">Elapsed {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}</p>
           {stage !== "preparing" && <Link href="/dashboard" className="mt-5 rounded-control border border-line px-5 py-3 text-sm font-semibold hover:bg-surface">Back to my projects</Link>}
         </section>
       </div>

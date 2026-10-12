@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import {
@@ -9,6 +9,7 @@ import {
 import { assertSameOrigin, readJsonBody } from "@/lib/server/request-security";
 import { getRequestIdentity, rateLimit } from "@/lib/server/rate-limit";
 import { requireWorkspaceContext } from "@/lib/server/workspace-access";
+import { inngest } from "@/inngest/client";
 
 export const runtime = "nodejs";
 
@@ -227,6 +228,34 @@ export async function POST(request: Request) {
       );
     }
     const campaignId = job.campaign_id;
+
+    // Send the persisted event immediately; cron remains the recovery path.
+    // Reuse its ID so a concurrent dispatcher cannot start a second campaign.
+    after(async () => {
+      try {
+        const [entry] = await context.database`
+          select event_id
+          from public.job_outbox
+          where job_id = ${job.id}::uuid
+            and workspace_id = ${context.workspaceId}::uuid
+            and event_name = 'campaign/generation.requested'
+            and delivered_at is null
+            and dead_lettered_at is null
+          limit 1
+        `;
+        if (typeof entry?.event_id !== "string") return;
+        await inngest.send({
+          id: entry.event_id,
+          name: "campaign/generation.requested",
+          data: { jobId: job.id, workspaceId: context.workspaceId, campaignId },
+        });
+        await context.database`
+          select public.mark_job_outbox_delivered(${entry.event_id}::uuid)
+        `;
+      } catch {
+        console.error("[campaign-generation] Immediate dispatch unavailable; durable dispatch will retry.");
+      }
+    });
 
     return NextResponse.json(
       { job, campaignId },
