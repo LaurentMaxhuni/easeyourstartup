@@ -89,3 +89,5 @@ flowchart LR
 
 Use one shared workflow for initial generation and manual redesign. Preserve V2's reviewed copy and approved claim links when replacing its fixed geometry. A repair step must not rewrite reviewed campaign wording. References guide composition, not factual assertions.
 
+Proposed experiment: create two distinct art directions, render both, compare with a vision-capable judge, and repair the selected candidate at most twice within an explicit total budget. These counts are experimental settings, not proven optimal values. Account for calls, image tokens, latency, and tool costs before rollout.
+
