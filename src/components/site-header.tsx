@@ -37,7 +37,7 @@ export async function SiteHeader() {
           <details className="group relative md:hidden">
             <summary
               aria-label="Open site navigation"
-              className="flex size-10 cursor-pointer list-none items-center justify-center rounded-control border border-line bg-surface-raised text-ink transition-colors hover:bg-surface focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+              className="flex size-11 cursor-pointer list-none items-center justify-center rounded-control border border-line bg-surface-raised text-ink transition-colors hover:bg-surface [&::-webkit-details-marker]:hidden"
             >
               <List
                 aria-hidden="true"
@@ -73,6 +73,7 @@ export async function SiteHeader() {
                 >
                   Pricing
                 </Link>
+                {!user && <Link href="/login" className="rounded-control px-3 py-2.5 text-sm font-medium transition-colors hover:bg-surface">Sign in</Link>}
               </nav>
               {!user ? (
                 <div className="mt-2 border-t border-line pt-2">
@@ -90,11 +91,12 @@ export async function SiteHeader() {
               }}
             />
           ) : (
-            <div className="hidden md:block">
+            <div className="hidden items-center gap-3 md:flex">
+              <Link href="/login" className="inline-flex min-h-11 items-center px-2 text-sm font-semibold hover:text-accent">Sign in</Link>
               <ThemeToggle />
             </div>
           )}
-          <Button asChild size="sm" className="px-2 text-[11px] sm:px-3 sm:text-xs">
+          <Button asChild size="sm" className="min-h-11 px-3 text-xs">
             <Link
               href={user ? "/studio?new=1" : "/login?next=%2Fstudio%3Fnew%3D1"}
             >

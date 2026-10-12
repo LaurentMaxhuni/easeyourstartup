@@ -63,13 +63,19 @@
   }
 }
 
-* {
-  border-color: var(--line);
+@layer base {
+  * {
+    border-color: var(--line);
+  }
 }
 
 html {
   scroll-behavior: smooth;
   background: var(--canvas);
+}
+
+section[id] {
+  scroll-margin-top: 6rem;
 }
 
 body {

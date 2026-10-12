@@ -24,15 +24,15 @@ export function HeroScanForm() {
   }
 
   return (
-    <form onSubmit={submit} className="mt-8 max-w-2xl">
-      <div className="flex flex-col gap-2 rounded-container border border-line bg-surface-raised p-2 sm:flex-row">
-        <label className="flex min-w-0 flex-1 items-center gap-2.5 px-2">
+    <form onSubmit={submit} className="mt-7 max-w-2xl">
+      <label htmlFor="hero-url" className="mb-2 block text-sm font-semibold">Your product website</label>
+      <div className={`flex flex-col gap-2 rounded-container border bg-surface-raised p-2 shadow-sm sm:flex-row ${error ? "border-danger" : "border-line focus-within:border-accent"}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 px-2">
           <GlobeSimple
             aria-hidden="true"
             className="shrink-0 text-muted"
             size={20}
           />
-          <span className="sr-only">Public website URL</span>
           <Input
             id="hero-url"
             value={url}
@@ -43,17 +43,19 @@ export function HeroScanForm() {
             placeholder="yourproduct.com"
             inputMode="url"
             autoComplete="url"
+            autoCapitalize="none"
+            spellCheck={false}
             aria-invalid={Boolean(error)}
             aria-describedby="hero-scan-feedback"
-            className="border-0 bg-transparent px-0 shadow-none focus:border-0"
+            className="border-0 bg-transparent px-0 text-base shadow-none focus:border-0"
           />
-        </label>
+        </div>
         <Button type="submit" size="lg">
           Scan my site
           <ArrowRight aria-hidden="true" size={18} />
         </Button>
       </div>
-      <div className="mt-3 px-1 text-xs text-muted">
+      <div className={`mt-3 px-1 text-xs leading-5 ${error ? "text-danger" : "text-muted"}`}>
         <span id="hero-scan-feedback" aria-live="polite">
           {error || "Sign in first, then we’ll scan and save the project to your dashboard."}
         </span>

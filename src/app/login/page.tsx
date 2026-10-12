@@ -26,16 +26,16 @@ export default async function LoginPage({
         />
         <div className="relative z-10 flex flex-1 flex-col justify-between">
           <Logo />
-          <div className="py-16">
-            <p className="font-sans text-xs uppercase  text-[#b9d0ff]">
+          <div className="pb-1 pt-6 lg:py-16">
+            <p className="hidden font-sans text-xs uppercase text-[#b9d0ff] lg:block">
               Your launch history lives here
             </p>
-            <h1 className="mt-5 max-w-xl text-balance text-5xl font-semibold  sm:text-6xl">
+            <h1 className="max-w-xl text-balance text-2xl font-semibold leading-tight tracking-tight lg:mt-5 lg:text-6xl">
               Pick up where your last ship left off.
             </h1>
           </div>
-          <p className="text-xs text-[#d2ddf5]">
-            Email and Google authentication powered by Neon Auth.
+          <p className="hidden text-sm leading-6 text-[#d2ddf5] lg:block">
+            Your projects, brand details, and campaign drafts, saved together.
           </p>
         </div>
       </section>

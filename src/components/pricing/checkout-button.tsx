@@ -8,9 +8,11 @@ import { LoadingIndicator } from "@/components/ui/loading-indicator";
 export function CheckoutButton({
   label = "Start Pro",
   plan = "pro",
+  variant = "primary",
 }: {
   label?: string;
   plan?: "pro" | "pro_lite";
+  variant?: "primary" | "secondary";
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -56,14 +58,16 @@ export function CheckoutButton({
     <div>
       <Button
         size="lg"
+        variant={variant}
         onClick={checkout}
         disabled={status === "loading"}
-        className="w-full sm:w-auto"
+        aria-busy={status === "loading"}
+        className="w-full"
       >
         {status === "loading" ? (
           <LoadingIndicator size="sm" />
         ) : (
-          <ArrowRight size={18} />
+          <ArrowRight aria-hidden="true" size={18} />
         )}
         {status === "loading" ? "Opening checkout" : label}
       </Button>

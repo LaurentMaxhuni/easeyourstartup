@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function LaunchPreview() {
   return (
-    <div className="relative overflow-hidden rounded-container border border-line bg-surface-raised p-3 shadow-[0_24px_80px_rgba(23,25,23,0.12)]">
+    <div id="campaign-preview" className="relative scroll-mt-24 overflow-hidden rounded-container border border-line bg-surface-raised p-3 shadow-[0_24px_80px_rgba(23,25,23,0.12)]">
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className="h-2 w-4 rounded-sm bg-accent" />
