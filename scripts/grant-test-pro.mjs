@@ -14,8 +14,8 @@ if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
   console.error("Usage: pnpm test:grant-pro -- <account-email> [duration-days]");
   process.exit(1);
 }
-if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 30) {
-  console.error("Test Pro duration must be from 1 to 30 days.");
+if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 90) {
+  console.error("Test Pro duration must be from 1 to 90 days.");
   process.exit(1);
 }
 if (process.env.EASEYOURSTARTUP_TEST_MODE?.trim().toLowerCase() !== "true") {
@@ -78,7 +78,7 @@ try {
           pg_catalog.now() + ($2::integer * interval '1 day')
         from target_workspace
         on conflict (user_id, workspace_id) do update set
-          expires_at = excluded.expires_at,
+          expires_at = greatest(public.test_pro_grants.expires_at, excluded.expires_at),
           granted_at = pg_catalog.now()
         returning expires_at
       )

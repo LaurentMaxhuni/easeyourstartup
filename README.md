@@ -187,7 +187,7 @@ account temporary Pro access with:
 pnpm test:grant-pro -- founder@example.com 7
 ```
 
-The operator command grants that account's existing workspace for 1–30 days
+The operator command grants that account's existing workspace for 1–90 days
 (seven by default). Test grants are available only when the app URL is localhost,
 test mode is explicitly enabled, and the server is not running in production.
 They never create Paddle subscriptions or charges.
