@@ -10,26 +10,26 @@ export async function SiteHeader() {
   const user = await getCurrentUser();
 
   return (
-    <header className="relative sticky top-0 z-50 border-b border-line/80 bg-canvas/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-line/80 bg-canvas/85 backdrop-blur-xl">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-control focus:bg-ink focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-canvas"
       >
         Skip to content
       </a>
-      <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
         <Logo />
         <nav
           aria-label="Primary navigation"
-          className="hidden items-center gap-7 text-sm text-muted md:flex"
+          className="hidden items-center gap-1 rounded-full border border-line/70 bg-surface/60 p-1 text-sm text-muted md:flex"
         >
-          <Link className="transition-colors hover:text-ink" href="/#workflow">
+          <Link className="rounded-full px-4 py-2 transition-colors hover:bg-surface-raised hover:text-ink" href="/#workflow">
             How it works
           </Link>
-          <Link className="transition-colors hover:text-ink" href="/#examples">
+          <Link className="rounded-full px-4 py-2 transition-colors hover:bg-surface-raised hover:text-ink" href="/#examples">
             Examples
           </Link>
-          <Link className="transition-colors hover:text-ink" href="/pricing">
+          <Link className="rounded-full px-4 py-2 transition-colors hover:bg-surface-raised hover:text-ink" href="/pricing">
             Pricing
           </Link>
         </nav>

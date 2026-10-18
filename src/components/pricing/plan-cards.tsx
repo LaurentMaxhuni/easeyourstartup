@@ -20,7 +20,7 @@ export function PlanCards({ foundingPriceEligible = false, checkout = false }: {
   return (
     <div className="grid gap-5 md:grid-cols-3">
       {plans.map((plan) => (
-        <article key={plan.id} aria-labelledby={`plan-${plan.id}`} className={`relative flex min-w-0 flex-col rounded-container border bg-surface-raised p-6 lg:p-8 ${plan.id === "pro" ? "border-accent shadow-[0_12px_40px_var(--accent-halo)]" : "border-line"}`}>
+        <article key={plan.id} aria-labelledby={`plan-${plan.id}`} className={`relative flex min-w-0 flex-col rounded-container border bg-surface-raised p-6 lg:p-8 ${plan.id === "pro" ? "border-accent shadow-[0_0_0_3px_var(--accent-halo),0_12px_40px_var(--accent-halo)]" : "border-line shadow-sm"}`}>
           <div className="mb-5 flex min-h-7 items-center justify-between gap-2">
             <h3 id={`plan-${plan.id}`} className="text-xl font-semibold">{plan.name}</h3>
             {plan.id === "pro" && <span className="rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent">No watermarks</span>}

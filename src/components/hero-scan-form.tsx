@@ -26,7 +26,7 @@ export function HeroScanForm() {
   return (
     <form onSubmit={submit} className="mt-7 max-w-2xl">
       <label htmlFor="hero-url" className="mb-2 block text-sm font-semibold">Your product website</label>
-      <div className={`flex flex-col gap-2 rounded-container border bg-surface-raised p-2 shadow-sm sm:flex-row ${error ? "border-danger" : "border-line focus-within:border-accent"}`}>
+      <div className={`flex flex-col gap-2 rounded-container border bg-surface-raised p-2 shadow-[0_8px_24px_-12px_var(--accent-halo)] focus-within:shadow-[0_0_0_3px_var(--accent-halo)] sm:flex-row ${error ? "border-danger" : "border-line focus-within:border-accent"}`}>
         <div className="flex min-w-0 flex-1 items-center gap-2.5 px-2">
           <GlobeSimple
             aria-hidden="true"

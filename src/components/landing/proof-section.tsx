@@ -7,7 +7,7 @@ export function ProofSection() {
     <section id="examples" className="border-t border-line bg-surface py-24 sm:py-32">
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
         <div className="grid items-end gap-8 lg:grid-cols-[1.2fr_.8fr]">
-          <Reveal className="relative min-h-[520px] overflow-hidden rounded-container border border-line">
+          <Reveal className="relative min-h-[320px] overflow-hidden rounded-container border border-line sm:min-h-[460px]">
             <Image
               src="/images/founder-launch-studio.png"
               alt="A founder arranging launch assets at a practical studio desk"
@@ -17,10 +17,10 @@ export function ProofSection() {
             />
           </Reveal>
           <Reveal delay={0.08} className="lg:pb-8">
-            <p className="font-sans text-xs uppercase  text-accent">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
               Proof before polish
             </p>
-            <h2 className="mt-5 text-balance text-4xl font-semibold  sm:text-5xl">
+            <h2 className="mt-5 text-balance text-4xl font-semibold leading-[1.1] tracking-[-0.04em] sm:text-5xl">
               Every publishable claim keeps its receipt.
             </h2>
             <p className="mt-6 max-w-xl text-base leading-7 text-muted">
@@ -28,7 +28,7 @@ export function ProofSection() {
               get the useful source facts after automatic curation, before they
               reach a caption.
             </p>
-            <div className="mt-10 rounded-container border border-line bg-surface-raised p-5">
+            <div className="mt-8 rounded-container border border-line bg-surface-raised p-6 shadow-sm">
               <div className="flex items-center gap-2 font-sans text-[11px] uppercase  text-muted">
                 <LinkSimple size={16} />
                 Kept source fact

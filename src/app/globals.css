@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "lenis/dist/lenis.css";
 
 @theme inline {
   --font-sans: var(--font-outfit);
@@ -13,64 +14,94 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-danger: var(--danger);
-  --radius-container: 10px;
-  --radius-control: 8px;
+  --radius-container: 16px;
+  --radius-control: 10px;
 }
 
 :root {
   color-scheme: light;
   --font-body: var(--font-outfit, "Segoe UI", sans-serif);
   --font-display-family: var(--font-outfit, "Segoe UI", sans-serif);
-  --canvas: #f4f3ef;
-  --surface: #ebeae4;
-  --surface-raised: #faf9f5;
-  --ink: #171917;
-  --muted: #646960;
-  --line: #d0d1c9;
-  --accent: #245cf0;
-  --accent-ink: #f8f8f4;
+  --canvas: #f7f8fc;
+  --surface: #eef1f7;
+  --surface-raised: #ffffff;
+  --ink: #172036;
+  --muted: #5f6b81;
+  --line: #dce2ed;
+  --accent: #365cf5;
+  --accent-ink: #ffffff;
   --danger: #b3261e;
-  --accent-halo: rgba(36, 92, 240, 0.08);
+  --accent-halo: rgba(54, 92, 245, 0.12);
+  --scrollbar-thumb: #7a879e;
+  --scrollbar-hover: #5f6b81;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #111411;
-  --surface: #191d19;
-  --surface-raised: #202520;
-  --ink: #f2f1eb;
-  --muted: #a5aca2;
-  --line: #353b35;
-  --accent: #5b83ff;
-  --accent-ink: #0d1324;
+  --canvas: #0c101b;
+  --surface: #131a2a;
+  --surface-raised: #192238;
+  --ink: #f2f5fc;
+  --muted: #a1afc7;
+  --line: #2b3852;
+  --accent: #90a8ff;
+  --accent-ink: #101a35;
   --danger: #ff8983;
-  --accent-halo: rgba(91, 131, 255, 0.12);
+  --accent-halo: rgba(144, 168, 255, 0.1);
+  --scrollbar-thumb: #63738f;
+  --scrollbar-hover: #a1afc7;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --canvas: #111411;
-    --surface: #191d19;
-    --surface-raised: #202520;
-    --ink: #f2f1eb;
-    --muted: #a5aca2;
-    --line: #353b35;
-    --accent: #5b83ff;
-    --accent-ink: #0d1324;
+    --canvas: #0c101b;
+    --surface: #131a2a;
+    --surface-raised: #192238;
+    --ink: #f2f5fc;
+    --muted: #a1afc7;
+    --line: #2b3852;
+    --accent: #90a8ff;
+    --accent-ink: #101a35;
     --danger: #ff8983;
-    --accent-halo: rgba(91, 131, 255, 0.12);
+    --accent-halo: rgba(144, 168, 255, 0.1);
+    --scrollbar-thumb: #63738f;
+    --scrollbar-hover: #a1afc7;
   }
 }
 
 @layer base {
   * {
     border-color: var(--line);
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--surface);
   }
 }
 
+/* Covers page, panel, textarea, and horizontal scrollbars in WebKit browsers. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
 html {
-  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
   background: var(--canvas);
 }
 
@@ -85,6 +116,7 @@ body {
   font-family: var(--font-body);
   text-rendering: optimizeLegibility;
   text-wrap: pretty;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
@@ -152,6 +184,11 @@ summary:focus-visible {
   box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--accent);
 }
 
+/* The grouped scan field shows its focus ring on the surrounding container. */
+#hero-url:focus-visible {
+  box-shadow: none;
+}
+
 .text-balance {
   text-wrap: balance;
 }
@@ -163,7 +200,19 @@ summary:focus-visible {
 }
 
 .hero-surface {
-  background: var(--canvas);
+  background:
+    radial-gradient(ellipse at 85% 20%, var(--accent-halo), transparent 58%),
+    var(--canvas);
+}
+
+.campaign-window {
+  box-shadow: 0 24px 64px -24px var(--accent-halo), 0 8px 32px -16px rgb(0 0 0 / 0.2);
+}
+
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
 }
 
 .noise {

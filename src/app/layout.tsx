@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { SmoothScroll } from "@/components/smooth-scroll";
 import "@/app/globals.css";
 
 const outfitLatin = localFont({
@@ -53,8 +54,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f3ef" },
-    { media: "(prefers-color-scheme: dark)", color: "#111411" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f8fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c101b" },
   ],
 };
 
@@ -71,7 +72,10 @@ export default function RootLayout({
       } as React.CSSProperties}
       suppressHydrationWarning
     >
-      <body>{children}</body>
+      <body>
+        <SmoothScroll />
+        {children}
+      </body>
     </html>
   );
 }
