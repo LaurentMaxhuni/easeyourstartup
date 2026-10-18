@@ -18,7 +18,10 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const { plan } = z.object({ plan: z.enum(["pro", "pro_lite"]).default("pro") })
+    const { plan, billingInterval } = z.object({
+      plan: z.enum(["pro", "pro_lite"]).default("pro"),
+      billingInterval: z.enum(["monthly", "annual"]).default("monthly"),
+    })
       .strict().parse(request.body ? await readJsonBody(request, 1_000) : {});
     const limit = await rateLimit(`checkout:${getRequestIdentity(request)}`, {
       limit: 8,
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
-        { error: "Sign in before checkout.", loginUrl: "/login?next=/pricing" },
+        { error: "Sign in before checkout.", loginUrl: billingInterval === "annual" ? "/login?next=%2Fpricing%3Fbilling%3Dannual" : "/login?next=/pricing" },
         { status: 401 },
       );
     }
@@ -90,11 +93,12 @@ export async function POST(request: Request) {
       limit 1
     `;
     const founding = plan === "pro" && Boolean(foundingSlot);
+    const annual = billingInterval === "annual";
     const price = (plan === "pro_lite"
-      ? process.env.PADDLE_PRO_LITE_PRICE_ID
+      ? annual ? process.env.PADDLE_PRO_LITE_ANNUAL_PRICE_ID : process.env.PADDLE_PRO_LITE_PRICE_ID
       : founding
-      ? process.env.PADDLE_FOUNDING_PRICE_ID
-      : process.env.PADDLE_PRO_PRICE_ID)?.trim();
+      ? annual ? process.env.PADDLE_FOUNDING_ANNUAL_PRICE_ID : process.env.PADDLE_FOUNDING_PRICE_ID
+      : annual ? process.env.PADDLE_PRO_ANNUAL_PRICE_ID : process.env.PADDLE_PRO_PRICE_ID)?.trim();
     if (!price) {
       return NextResponse.json(
         { error: plan === "pro_lite" ? "The Pro Lite price is not configured." : founding ? "The founding price is not configured." : "The Pro price is not configured." },
@@ -203,7 +207,7 @@ export async function POST(request: Request) {
     if (attempt.claimed !== true) {
       if (attempt.status === "pending" && typeof attempt.checkout_url === "string") {
         if (attempt.billing_price_id !== price) {
-          return NextResponse.json({ error: "A checkout for another plan is pending. Complete or cancel it before choosing a different plan." }, { status: 409 });
+          return NextResponse.json({ error: "A checkout for another plan or billing interval is pending. Complete or cancel it before choosing a different option." }, { status: 409 });
         }
         return NextResponse.json({ url: attempt.checkout_url, reused: true });
       }
@@ -225,6 +229,7 @@ export async function POST(request: Request) {
             custom_data: {
               neon_user_id: user.id,
               workspace_id: workspaceId,
+              billing_interval: billingInterval,
               founding_slot: founding ? foundingSlot?.slot ?? null : null,
               checkout_attempt_id: attemptId,
             },

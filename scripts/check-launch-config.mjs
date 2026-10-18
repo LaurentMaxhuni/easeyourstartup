@@ -41,6 +41,9 @@ requireValues([
   "PADDLE_PRO_PRICE_ID",
   "PADDLE_PRO_LITE_PRICE_ID",
   "PADDLE_FOUNDING_PRICE_ID",
+  "PADDLE_PRO_LITE_ANNUAL_PRICE_ID",
+  "PADDLE_PRO_ANNUAL_PRICE_ID",
+  "PADDLE_FOUNDING_ANNUAL_PRICE_ID",
   "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN",
   "NEXT_PUBLIC_PADDLE_ENVIRONMENT",
 ]);
@@ -102,6 +105,12 @@ if (present("PADDLE_PRO_PRICE_ID") && present("PADDLE_FOUNDING_PRICE_ID") && pro
 }
 if (present("PADDLE_PRO_LITE_PRICE_ID") && [process.env.PADDLE_PRO_PRICE_ID?.trim(), process.env.PADDLE_FOUNDING_PRICE_ID?.trim()].includes(process.env.PADDLE_PRO_LITE_PRICE_ID.trim())) {
   errors.push("PADDLE_PRO_LITE_PRICE_ID must differ from Pro and founding prices.");
+}
+const priceVariables = ["PADDLE_PRO_PRICE_ID", "PADDLE_PRO_LITE_PRICE_ID", "PADDLE_FOUNDING_PRICE_ID",
+  "PADDLE_PRO_ANNUAL_PRICE_ID", "PADDLE_PRO_LITE_ANNUAL_PRICE_ID", "PADDLE_FOUNDING_ANNUAL_PRICE_ID"];
+const configuredPrices = priceVariables.filter(present).map((name) => process.env[name].trim());
+if (new Set(configuredPrices).size !== configuredPrices.length) {
+  errors.push("Each plan and billing interval must use a distinct Paddle price ID.");
 }
 
 if (errors.length) {

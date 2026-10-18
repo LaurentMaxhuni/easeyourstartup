@@ -4,15 +4,18 @@ import { useState } from "react";
 import { ArrowRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import type { BillingInterval } from "@/lib/pricing";
 
 export function CheckoutButton({
   label = "Start Pro",
   plan = "pro",
   variant = "primary",
+  billingInterval = "monthly",
 }: {
   label?: string;
   plan?: "pro" | "pro_lite";
   variant?: "primary" | "secondary";
+  billingInterval?: BillingInterval;
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -24,7 +27,7 @@ export function CheckoutButton({
       const response = await fetch("/api/paddle/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, billingInterval }),
       });
       const data = (await response.json()) as {
         url?: string;

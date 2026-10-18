@@ -181,6 +181,7 @@ export async function POST(request: Request) {
       subscription?.status === "active" || subscription?.status === "trialing";
     const checkoutFailed = eventType === "transaction.canceled";
     const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim() ?? null;
+    const foundingAnnualPriceId = process.env.PADDLE_FOUNDING_ANNUAL_PRICE_ID?.trim() ?? null;
     const [receipt] = await database`
       with receipt as (
       insert into public.audit_events (
@@ -248,8 +249,7 @@ export async function POST(request: Request) {
         from subscription_update subscription
         where slot.workspace_id = subscription.workspace_id
           and subscription.status in ('active', 'trialing')
-          and ${foundingPriceId}::text is not null
-          and subscription.billing_price_id = ${foundingPriceId}::text
+          and subscription.billing_price_id in (${foundingPriceId}::text, ${foundingAnnualPriceId}::text)
         returning slot.slot
       ), checkout_attempt_update as (
         update public.checkout_attempts attempt

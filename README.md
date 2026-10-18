@@ -28,7 +28,7 @@ The working promise is: **Turn every ship into a campaign.**
   and 1.91:1
 - Free: 3 active projects and watermarked previews. Pro Lite: $13.99/month,
   5 active projects and watermarked exports. Pro: 10 active projects and
-  unwatermarked exports. Both paid plans include 8 campaigns per billing period
+  unwatermarked exports. Both paid plans include 8 campaigns per month
   and 5 successful regenerations per channel.
 - Pro launch-kit exports with separate channel files, source evidence,
   a launch brief, and a creative PNG
@@ -209,12 +209,26 @@ enforced in the server-side queries before any user-scoped data is returned.
 
 ### Paddle Billing
 
-Create one recurring Paddle product and price. Set `PADDLE_ENVIRONMENT` to
+Create recurring monthly Paddle prices. Set `PADDLE_ENVIRONMENT` to
 `sandbox` or `production`, then configure `PADDLE_PRO_PRICE_ID`, `PADDLE_PRO_LITE_PRICE_ID` ($13.99/month USD),
 `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, and the matching public client token
 in `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`. Set `NEXT_PUBLIC_PADDLE_ENVIRONMENT`
 to the same environment. The default Paddle payment link must use `/checkout`,
 which loads Paddle.js and opens the transaction passed in the payment URL.
+Annual billing uses separate USD catalog prices: Pro Lite $134.30/year,
+Pro $278.40/year, and founding Pro $182.40/year. These are 20% below twelve
+monthly payments, rounded once to cents. After configuring the monthly price
+IDs (including founding), run `node scripts/provision-annual-prices.mjs`.
+The script validates existing USD monthly prices, reuses matching annual prices
+or creates prices on the same products, and appends new annual IDs to
+`.env.local`. It never purchases anything. Reruns verify configured prices;
+existing environment assignments are never overwritten. Configure
+`PADDLE_PRO_LITE_ANNUAL_PRICE_ID`, `PADDLE_PRO_ANNUAL_PRICE_ID`, and
+`PADDLE_FOUNDING_ANNUAL_PRICE_ID` in each deployment, using prices from its
+Paddle environment. Annual subscriptions receive eight campaigns each UTC
+calendar month; monthly subscriptions retain their monthly billing-period
+allowance. Unused campaigns do not roll over. Restart the local app after
+provisioning to load new environment variables.
 Send subscription events to:
 
 ```text

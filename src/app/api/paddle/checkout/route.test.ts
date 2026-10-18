@@ -45,6 +45,9 @@ describe("POST /api/paddle/checkout", () => {
     mocks.paddleRequest.mockReset();
     vi.stubEnv("PADDLE_PRO_PRICE_ID", "pri_pro");
     vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "");
+    vi.stubEnv("PADDLE_PRO_LITE_ANNUAL_PRICE_ID", "pri_lite_annual");
+    vi.stubEnv("PADDLE_PRO_ANNUAL_PRICE_ID", "pri_pro_annual");
+    vi.stubEnv("PADDLE_FOUNDING_ANNUAL_PRICE_ID", "pri_founding_annual");
     mocks.getCurrentUser.mockResolvedValue(user);
     mocks.getPaddleConfig.mockReturnValue({ apiKey: "sandbox", environment: "sandbox", baseUrl: "https://sandbox-api.paddle.com" });
     mocks.ensureWorkspaceForUser.mockResolvedValue(workspaceId);
@@ -123,6 +126,87 @@ describe("POST /api/paddle/checkout", () => {
       method: "POST", body: JSON.stringify({ plan: "admin" }),
     }));
     expect(response.status).toBe(400);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["pro_lite", false, "pri_lite_annual"],
+    ["pro", false, "pri_pro_annual"],
+    ["pro", true, "pri_founding_annual"],
+  ])("starts annual %s checkout with founding eligibility %s", async (plan, founding, price) => {
+    const checkoutUrl = "https://easeyourstartup.example/checkout?_ptxn=txn_annual";
+    const { database, queries } = recordingDatabase([[], [], founding ? [{ slot: 1 }] : [],
+      [{ status: "creating", claimed: true }], [{ checkout_url: checkoutUrl }]]);
+    mocks.createDatabase.mockReturnValue(database);
+    mocks.paddleRequest.mockResolvedValue({ data: { id: "txn_annual", checkout: { url: checkoutUrl } } });
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan, billingInterval: "annual" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.paddleRequest.mock.calls[0][1].body).toMatchObject({
+      items: [{ price_id: price, quantity: 1 }],
+      custom_data: { billing_interval: "annual", founding_slot: founding ? 1 : null },
+    });
+    expect(queries[3].values).toContain(price);
+  });
+
+  it("keeps founding monthly checkout on the existing $19 price", async () => {
+    vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "pri_founding");
+    const checkoutUrl = "https://easeyourstartup.example/checkout?_ptxn=txn_founding";
+    mocks.createDatabase.mockReturnValue(recordingDatabase([[], [], [{ slot: 1 }],
+      [{ status: "creating", claimed: true }], [{ checkout_url: checkoutUrl }]]).database);
+    mocks.paddleRequest.mockResolvedValue({ data: { id: "txn_founding", checkout: { url: checkoutUrl } } });
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", { method: "POST" }));
+    expect(response.status).toBe(200);
+    expect(mocks.paddleRequest.mock.calls[0][1].body.items).toEqual([{ price_id: "pri_founding", quantity: 1 }]);
+  });
+
+  it("does not silently substitute monthly prices when annual configuration is missing", async () => {
+    vi.stubEnv("PADDLE_PRO_ANNUAL_PRICE_ID", "");
+    mocks.createDatabase.mockReturnValue(recordingDatabase([[], [], []]).database);
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro", billingInterval: "annual" }),
+    }));
+    expect(response.status).toBe(503);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it("preserves annual selection through sign in", async () => {
+    mocks.getCurrentUser.mockResolvedValue(null);
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro", billingInterval: "annual" }),
+    }));
+    expect(response.status).toBe(401);
+    expect((await response.json()).loginUrl).toBe("/login?next=%2Fpricing%3Fbilling%3Dannual");
+  });
+
+  it.each(["yearly", "week", "", null, 12])("rejects unsupported billing interval %s", async (billingInterval) => {
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro", billingInterval }),
+    }));
+    expect(response.status).toBe(400);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it("never reuses a pending monthly checkout for an annual purchase", async () => {
+    mocks.createDatabase.mockReturnValue(recordingDatabase([[], [], [], [{ status: "pending",
+      claimed: false, billing_price_id: "pri_pro", checkout_url: "https://easeyourstartup.example/checkout" }]]).database);
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro", billingInterval: "annual" }),
+    }));
+    expect(response.status).toBe(409);
+    expect(mocks.paddleRequest).not.toHaveBeenCalled();
+  });
+
+  it("reuses a pending checkout only for the same annual price", async () => {
+    const checkoutUrl = "https://easeyourstartup.example/checkout?_ptxn=txn_annual";
+    mocks.createDatabase.mockReturnValue(recordingDatabase([[], [], [], [{ status: "pending",
+      claimed: false, billing_price_id: "pri_pro_annual", checkout_url: checkoutUrl }]]).database);
+    const response = await POST(new Request("https://easeyourstartup.example/api/paddle/checkout", {
+      method: "POST", body: JSON.stringify({ plan: "pro", billingInterval: "annual" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url: checkoutUrl, reused: true });
     expect(mocks.paddleRequest).not.toHaveBeenCalled();
   });
 

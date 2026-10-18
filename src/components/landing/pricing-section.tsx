@@ -16,7 +16,7 @@ export async function PricingSection() {
         </div>
         <PlanCards foundingPriceEligible={foundingPriceEligible} />
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm leading-6 text-muted">
-          <p>{foundingPriceEligible ? "Your workspace keeps its $19 Pro price while the subscription stays uninterrupted." : foundingSlotsRemaining > 0 ? "First ten founders: Pro at $19/month while subscribed." : "Monthly billing. Cancel paid plans anytime."}</p>
+          <p>{foundingPriceEligible ? "Your founding Pro price: $19/month or $182.40/year while subscribed." : foundingSlotsRemaining > 0 ? "First ten founders: Pro at $19/month or $182.40/year while subscribed." : "Monthly or annual billing. Cancel paid plans anytime."}</p>
           <Link href="/pricing" className="inline-flex min-h-11 items-center font-semibold text-accent underline underline-offset-4">Compare plans and usage</Link>
         </div>
       </div>

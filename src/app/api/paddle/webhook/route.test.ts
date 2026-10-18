@@ -35,6 +35,7 @@ describe("POST /api/paddle/webhook", () => {
     vi.clearAllMocks();
     vi.stubEnv("PADDLE_WEBHOOK_SECRET", "sandbox-secret");
     vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "pri_founding");
+    vi.stubEnv("PADDLE_FOUNDING_ANNUAL_PRICE_ID", "pri_founding_annual");
     mocks.verifyPaddleWebhookSignature.mockReturnValue(true);
   });
 
@@ -100,5 +101,24 @@ describe("POST /api/paddle/webhook", () => {
     expect(await response.json()).toEqual({ received: true, duplicate: true });
     expect(queries).toHaveLength(2);
     expect(queries[1].sql).toContain("on conflict (external_event_id) do nothing");
+  });
+
+  it("stores annual billing dates and redeems annual founding subscriptions", async () => {
+    const workspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { database, queries } = recordingDatabase([[{ workspace_id: workspaceId }], [{ id: "receipt_annual" }]]);
+    mocks.createDatabase.mockReturnValue(database);
+    const response = await POST(webhookRequest({
+      event_id: "evt_annual", event_type: "subscription.activated", occurred_at: "2028-01-31T10:00:00Z",
+      data: { id: "sub_annual", customer_id: "ctm_annual", status: "active",
+        custom_data: { neon_user_id: "user_01test", workspace_id: workspaceId },
+        current_billing_period: { starts_at: "2028-01-31T10:00:00Z", ends_at: "2029-01-31T10:00:00Z" },
+        items: [{ price: { id: "pri_founding_annual", billing_cycle: { interval: "year", frequency: 1 } } }],
+      },
+    }));
+    expect(response.status).toBe(200);
+    expect(queries[1].values).toContain("2028-01-31T10:00:00.000Z");
+    expect(queries[1].values).toContain("2029-01-31T10:00:00.000Z");
+    expect(queries[1].values.filter((value) => value === "pri_founding_annual")).toHaveLength(2);
+    expect(queries[1].sql).toContain("subscription.billing_price_id in");
   });
 });

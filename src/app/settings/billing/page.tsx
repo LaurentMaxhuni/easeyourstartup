@@ -6,6 +6,7 @@ import { BillingPortalButton } from "@/components/billing/billing-portal-button"
 import { Button } from "@/components/ui/button";
 import { requirePageAuthentication } from "@/lib/auth/page";
 import { requireWorkspaceContext } from "@/lib/server/workspace-access";
+import { PAID_PRICES } from "@/lib/pricing";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -44,7 +45,12 @@ export default async function BillingSettingsPage() {
     `,
   ]);
   const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim();
-  const isFounding = Boolean(foundingPriceId && subscription?.billing_price_id === foundingPriceId);
+  const foundingAnnualPriceId = process.env.PADDLE_FOUNDING_ANNUAL_PRICE_ID?.trim();
+  const priceMatches = (price: string | undefined) => Boolean(price && subscription?.billing_price_id === price);
+  const isFounding = priceMatches(foundingPriceId) || priceMatches(foundingAnnualPriceId);
+  const isAnnual = [process.env.PADDLE_PRO_LITE_ANNUAL_PRICE_ID?.trim(),
+    process.env.PADDLE_PRO_ANNUAL_PRICE_ID?.trim(), foundingAnnualPriceId].some(priceMatches);
+  const prices = PAID_PRICES[context.plan === "pro_lite" ? "pro_lite" : isFounding ? "founding" : "pro"];
   const hasUnrecognizedActiveSubscription =
     context.plan === "free" &&
     ["active", "trialing"].includes(subscription?.status ?? "");
@@ -73,9 +79,9 @@ export default async function BillingSettingsPage() {
                 {context.plan !== "free"
                   ? context.testProExpiresAt
                     ? `Temporary test access · expires ${formatDate(context.testProExpiresAt) ?? "soon"}`
-                    : `${context.plan === "pro_lite" ? "$13.99" : isFounding ? "$19" : "$29"} per month · ${isFounding ? "Founding price" : "monthly subscription"}`
+                    : `$${prices[isAnnual ? "annual" : "monthly"].toFixed(2)} per ${isAnnual ? "year" : "month"} · ${isFounding ? "Founding price" : isAnnual ? "annual subscription" : "monthly subscription"}`
                   : founding && !founding.redeemed_at
-                    ? "Founding price reserved for your workspace: $19/month"
+                    ? "Founding price reserved for your workspace: $19/month or $182.40/year"
                     : "Three active projects · one campaign each calendar month"}
               </p>
             </div>
@@ -119,15 +125,15 @@ export default async function BillingSettingsPage() {
         <section className="mt-4 rounded-container border border-line bg-surface-raised p-6 sm:p-8">
           <h2 className="text-lg font-semibold">Usage this period</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            {used} completed campaign{used === 1 ? "" : "s"}{reserved ? ` · ${reserved} in progress` : ""} of {context.limits.campaignsPerPeriod}. {context.plan !== "free" ? "The allowance renews with your subscription." : "The Free allowance resets at the start of each UTC calendar month."}
+            {used} completed campaign{used === 1 ? "" : "s"}{reserved ? ` · ${reserved} in progress` : ""} of {context.limits.campaignsPerPeriod}. {context.plan !== "free" && !isAnnual ? "The allowance resets each monthly billing period." : "The allowance resets at the start of each UTC calendar month."}
           </p>
           <p className="mt-1 text-xs text-muted">Period ends {formatDate(context.usagePeriodEnd) ?? context.usagePeriodEnd}. Active project limit: {context.limits.activeProjects}.</p>
-          <p className="mt-3 text-xs leading-5 text-muted">Free includes 3 active projects and watermarked previews. Pro Lite ($13.99/month) includes 5 active projects and watermarked exports. Pro includes 10 active projects and exports without watermarks. Both paid plans include 8 campaigns per billing period and 5 successful regenerations per channel. Manual edits do not use campaign allowance.</p>
+          <p className="mt-3 text-xs leading-5 text-muted">Free includes 3 active projects and watermarked previews. Pro Lite ($13.99/month or $134.30/year) includes 5 active projects and watermarked exports. Pro includes 10 active projects and exports without watermarks. Both paid plans include 8 campaigns per month and 5 successful regenerations per channel. Manual edits do not use campaign allowance.</p>
         </section>
 
         {founding && (
           <p className="mt-4 text-xs leading-5 text-muted">
-            Founding slot {founding.slot} is attached to this workspace. The $19 price continues while the subscription remains uninterrupted; cancellation ends the founding offer.
+            Founding slot {founding.slot} is attached to this workspace. The founding price ($19/month or $182.40/year) continues while the subscription remains uninterrupted; cancellation ends the founding offer.
           </p>
         )}
       </div>

@@ -6,6 +6,7 @@ import {
   type DatabaseClient,
 } from "@/lib/server/database";
 import { PLAN_LIMITS, type Plan } from "@/lib/entitlements";
+import { getUsageWindow } from "@/lib/usage-window";
 
 export function isLocalTestMode() {
   if (
@@ -80,35 +81,33 @@ export async function requireWorkspaceContext() {
   const regularPriceId = process.env.PADDLE_PRO_PRICE_ID?.trim();
   const foundingPriceId = process.env.PADDLE_FOUNDING_PRICE_ID?.trim();
   const litePriceId = process.env.PADDLE_PRO_LITE_PRICE_ID?.trim();
+  const annualProPriceId = process.env.PADDLE_PRO_ANNUAL_PRICE_ID?.trim();
+  const annualFoundingPriceId = process.env.PADDLE_FOUNDING_ANNUAL_PRICE_ID?.trim();
+  const annualLitePriceId = process.env.PADDLE_PRO_LITE_ANNUAL_PRICE_ID?.trim();
+  const matchesPrice = (...prices: Array<string | undefined>) =>
+    prices.some((price) => Boolean(price && subscription?.billing_price_id === price));
   const isEligibleProSubscription = Boolean(
     subscription &&
       ["active", "trialing"].includes(subscription.status) &&
-      ((regularPriceId && subscription.billing_price_id === regularPriceId) ||
-        (foundingPriceId &&
-          subscription.billing_price_id === foundingPriceId &&
+      (matchesPrice(regularPriceId, annualProPriceId) ||
+        (matchesPrice(foundingPriceId, annualFoundingPriceId) &&
           subscription.founding_offer_eligible === true)),
   );
   const testProExpiresAt = testGrant?.expires_at ?? null;
   const isEligibleLiteSubscription = Boolean(
-    litePriceId && subscription &&
+    subscription &&
       ["active", "trialing"].includes(subscription.status) &&
-      subscription.billing_price_id === litePriceId,
+      matchesPrice(litePriceId, annualLitePriceId),
   );
   const plan: Plan = isEligibleProSubscription || testProExpiresAt
     ? "pro" : isEligibleLiteSubscription ? "pro_lite" : "free";
-  const now = new Date();
-  const calendarStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const calendarEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const dateKey = (value: unknown, fallback: Date) => {
-    const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : fallback;
-    return Number.isNaN(date.getTime()) ? fallback.toISOString().slice(0, 10) : date.toISOString().slice(0, 10);
-  };
-  const usagePeriodStart = plan !== "free"
-    ? dateKey(subscription?.current_period_start, calendarStart)
-    : calendarStart.toISOString().slice(0, 10);
-  const usagePeriodEnd = plan !== "free"
-    ? dateKey(subscription?.current_period_end, calendarEnd)
-    : calendarEnd.toISOString().slice(0, 10);
+  const billingInterval = matchesPrice(annualProPriceId, annualFoundingPriceId, annualLitePriceId)
+    ? "annual" : "monthly";
+  const { start: usagePeriodStart, end: usagePeriodEnd } = getUsageWindow(
+    plan === "free" ? "free" : billingInterval,
+    subscription?.current_period_start,
+    subscription?.current_period_end,
+  );
   return {
     database,
     user,

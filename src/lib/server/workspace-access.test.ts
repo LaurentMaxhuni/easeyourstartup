@@ -29,12 +29,15 @@ function databaseWith(
 }
 
 describe("workspace billing entitlements", () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
   beforeEach(() => {
     vi.stubEnv("PADDLE_PRO_PRICE_ID", "pri_pro");
     vi.stubEnv("PADDLE_PRO_LITE_PRICE_ID", "pri_lite");
     vi.stubEnv("PADDLE_FOUNDING_PRICE_ID", "pri_founding");
+    vi.stubEnv("PADDLE_PRO_ANNUAL_PRICE_ID", "pri_pro_annual");
+    vi.stubEnv("PADDLE_PRO_LITE_ANNUAL_PRICE_ID", "pri_lite_annual");
+    vi.stubEnv("PADDLE_FOUNDING_ANNUAL_PRICE_ID", "pri_founding_annual");
     mocks.requireCurrentUser.mockResolvedValue({ id: "user_01test", name: "Founder", email: "founder@example.test" });
   });
 
@@ -60,6 +63,36 @@ describe("workspace billing entitlements", () => {
   it("denies Pro Lite for an inactive subscription", async () => {
     const { database } = databaseWith({ status: "canceled", billing_price_id: "pri_lite" });
     mocks.createDatabase.mockReturnValue(database);
+    await expect(requireWorkspaceContext()).resolves.toMatchObject({ plan: "free" });
+  });
+
+  it.each([
+    ["pri_lite_annual", false, "pro_lite"],
+    ["pri_pro_annual", false, "pro"],
+    ["pri_founding_annual", true, "pro"],
+  ])("grants monthly campaign allowances for annual price %s", async (price, founding, plan) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2028-02-29T23:59:59Z"));
+    const { database } = databaseWith({ status: "active", billing_price_id: price,
+      founding_offer_eligible: founding,
+      current_period_start: "2028-01-31T00:00:00Z", current_period_end: "2029-01-31T00:00:00Z" });
+    mocks.createDatabase.mockReturnValue(database);
+    await expect(requireWorkspaceContext()).resolves.toMatchObject({
+      plan, limits: { campaignsPerPeriod: 8 },
+      usagePeriodStart: "2028-02-01", usagePeriodEnd: "2028-03-01",
+    });
+    vi.setSystemTime(new Date("2028-03-01T00:00:00Z"));
+    mocks.createDatabase.mockReturnValue(databaseWith({ status: "active", billing_price_id: price,
+      founding_offer_eligible: founding,
+      current_period_start: "2028-01-31T00:00:00Z", current_period_end: "2029-01-31T00:00:00Z" }).database);
+    await expect(requireWorkspaceContext()).resolves.toMatchObject({
+      usagePeriodStart: "2028-03-01", usagePeriodEnd: "2028-04-01",
+    });
+  });
+
+  it("denies annual founding access without a workspace slot", async () => {
+    mocks.createDatabase.mockReturnValue(databaseWith({ status: "active",
+      billing_price_id: "pri_founding_annual", founding_offer_eligible: false }).database);
     await expect(requireWorkspaceContext()).resolves.toMatchObject({ plan: "free" });
   });
 
