@@ -20,7 +20,19 @@ export function SmoothScroll() {
       stopInertiaOnNavigate: true,
     });
 
-    return () => lenis.destroy();
+    // Radix locks native scrolling; pause Lenis too so its RAF cannot move the background.
+    const syncScrollLock = () => {
+      if (document.body.hasAttribute("data-scroll-locked")) lenis.stop();
+      else lenis.start();
+    };
+    const observer = new MutationObserver(syncScrollLock);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["data-scroll-locked"] });
+    syncScrollLock();
+
+    return () => {
+      observer.disconnect();
+      lenis.destroy();
+    };
   }, [pathname]);
 
   return null;

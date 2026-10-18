@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { SmoothScroll } from "@/components/smooth-scroll";
+import { PageTransition } from "@/components/page-transition";
 import "@/app/globals.css";
 
 const outfitLatin = localFont({
@@ -74,7 +75,7 @@ export default function RootLayout({
     >
       <body>
         <SmoothScroll />
-        {children}
+        <PageTransition>{children}</PageTransition>
       </body>
     </html>
   );

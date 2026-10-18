@@ -6,6 +6,7 @@ import { RenderComposition } from "@/components/render-composition";
 import { ChannelOutputs } from "@/components/studio/channel-outputs";
 import type { VisualStudioProps } from "@/components/studio/visual-studio";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 export function CampaignResults({ onEditVisual, captureRef, ...props }: VisualStudioProps & { onEditVisual: () => void }) {
   const previewRef = useRef<HTMLDivElement>(null);
@@ -44,10 +45,8 @@ export function CampaignResults({ onEditVisual, captureRef, ...props }: VisualSt
             </div>
             <p className="mt-1 text-xs text-muted">A matching image to share alongside your post.</p>
             {props.creativeDirections.length > 1 && <label className="mt-4 block text-xs font-semibold">Choose a visual
-              <select className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3 text-sm"
-                value={props.selectedCreativeId} onChange={(event) => props.onSelectCreativeDirection(event.target.value)}>
-                {props.creativeDirections.map((direction) => <option key={direction.id} value={direction.id}>{direction.headline}</option>)}
-              </select>
+              <Select className="mt-2" aria-label="Choose a visual" value={props.selectedCreativeId} onValueChange={props.onSelectCreativeDirection}
+                options={props.creativeDirections.map((direction) => ({ value: direction.id, label: direction.headline }))} />
             </label>}
             <div ref={previewRef} className="relative mt-4 overflow-hidden rounded-container border border-line"
               style={{ aspectRatio: props.composition.output.width / props.composition.output.height }}>

@@ -2,8 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { CreditCard, SignOut, UserCircle } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { CaretDown, CreditCard, SignOut, SpinnerGap, UserCircle } from "@phosphor-icons/react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth/client";
 
 export type AccountProfile = {
@@ -28,71 +31,61 @@ function initialsFor(profile: AccountProfile) {
 
 export function AccountMenu({ profile }: { profile: AccountProfile }) {
   const initials = initialsFor(profile);
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [error, setError] = useState("");
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setError("");
+    try {
+      const result = await authClient.signOut();
+      if (result.error) throw new Error(result.error.message || "Could not sign out. Try again.");
+      setOpen(false);
+      router.replace("/");
+      router.refresh();
+    } catch {
+      setError("Could not sign out. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
+  const avatar = <span className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-surface text-xs font-semibold text-ink">
+    {profile.image ? <Image src={profile.image} alt="" fill sizes="36px" unoptimized referrerPolicy="no-referrer" className="object-cover" />
+      : initials ? <span aria-hidden="true">{initials}</span> : <UserCircle aria-hidden="true" size={21} />}
+  </span>;
 
   return (
-    <details className="group relative shrink-0">
-      <summary
-        aria-label="Open profile menu"
-        title="Profile menu"
-        className="relative flex size-10 cursor-pointer list-none items-center justify-center overflow-hidden rounded-full border border-line bg-surface-raised text-xs font-semibold text-ink transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas [&::-webkit-details-marker]:hidden"
-      >
-        {profile.image ? (
-          <Image
-            src={profile.image}
-            alt=""
-            fill
-            sizes="40px"
-            unoptimized
-            referrerPolicy="no-referrer"
-            className="object-cover"
-          />
-        ) : initials ? (
-          <span aria-hidden="true">{initials}</span>
-        ) : (
-          <UserCircle aria-hidden="true" size={20} weight="regular" />
-        )}
-      </summary>
-      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[70] w-64 rounded-container border border-line bg-surface-raised p-2 shadow-[0_20px_50px_rgba(23,25,23,0.14)]">
-        <div className="border-b border-line px-3 pb-3 pt-2">
-          <p className="truncate text-sm font-semibold text-ink">
-            {profile.name?.trim() || "Account"}
-          </p>
-          {profile.email ? (
-            <p className="mt-0.5 truncate text-xs text-muted">{profile.email}</p>
-          ) : null}
-        </div>
-        <nav aria-label="Account menu" className="mt-2 grid gap-1">
-          <Link
-            href="/settings/billing"
-            className="flex items-center gap-2 rounded-control px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <CreditCard aria-hidden="true" size={17} />
-            Billing
-          </Link>
-          <Link
-            href="/settings/account"
-            className="flex items-center gap-2 rounded-control px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <UserCircle aria-hidden="true" size={17} />
-            Account settings
-          </Link>
-          <div className="flex items-center justify-between rounded-control px-3 py-1.5">
-            <span className="text-sm font-medium text-ink">Theme</span>
-            <ThemeToggle />
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button type="button" aria-label="Profile menu" title="Profile menu"
+          className="group flex shrink-0 cursor-pointer items-center gap-1 rounded-full p-1 transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas data-[state=open]:bg-surface">
+          {avatar}
+          <CaretDown aria-hidden="true" size={12} className="mr-1 hidden text-muted transition-transform group-data-[state=open]:rotate-180 sm:block" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72" aria-label="Account menu">
+        <div className="flex items-center gap-3 px-3 py-3">
+          {avatar}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{profile.name?.trim() || "Account"}</p>
+            {profile.email && <p className="mt-0.5 truncate text-xs text-muted">{profile.email}</p>}
           </div>
-          <button
-            type="button"
-            className="flex min-h-10 w-full items-center gap-2 rounded-control px-3 py-2.5 text-left text-sm font-medium text-ink transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            onClick={async () => {
-              await authClient.signOut();
-              window.location.assign("/");
-            }}
-          >
-            <SignOut aria-hidden="true" size={17} />
-            Sign out
-          </button>
-        </nav>
-      </div>
-    </details>
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild><Link href="/settings/account"><UserCircle aria-hidden="true" size={18} />Account settings</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link href="/settings/billing"><CreditCard aria-hidden="true" size={18} />Billing</Link></DropdownMenuItem>
+        <ThemeToggle menuItem />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={signingOut} onSelect={(event) => { event.preventDefault(); void signOut(); }}>
+          {signingOut ? <SpinnerGap aria-hidden="true" size={18} className="animate-spin motion-reduce:animate-none" /> : <SignOut aria-hidden="true" size={18} />}
+          {signingOut ? "Signing out…" : "Sign out"}
+        </DropdownMenuItem>
+        {error && <p role="alert" className="px-3 py-2 text-xs leading-5 text-danger">{error}</p>}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

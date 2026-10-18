@@ -2,6 +2,7 @@
 
 import { StudioActionBar } from "@/components/studio/studio-action-bar";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CAMPAIGN_KINDS, CHANNELS } from "@/lib/channels";
 import type { CampaignKind, Channel, NarrativeAngle, StudioDraft } from "@/lib/contracts";
@@ -35,10 +36,9 @@ export function CampaignBuilder({ draft, angles, status, error, resumePendingJob
       <fieldset disabled={status === "loading" || resumePendingJob} className="mt-8 space-y-7">
         <label className="block">
           <span className="text-sm font-semibold">What are you announcing?</span>
-          <select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CampaignKind })}
-            className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3.5 text-sm">
-            {CAMPAIGN_KINDS.map((kind) => <option key={kind.id} value={kind.id}>{kind.name}</option>)}
-          </select>
+          <Select<CampaignKind> value={draft.kind} onValueChange={(kind) => onChange({ ...draft, kind })}
+            options={CAMPAIGN_KINDS.map((kind) => ({ value: kind.id, label: kind.name }))}
+            aria-label="What are you announcing?" disabled={status === "loading" || resumePendingJob} className="mt-2" />
         </label>
         <label className="block">
           <span className="text-sm font-semibold">What should people know?</span>
@@ -80,10 +80,9 @@ export function CampaignBuilder({ draft, angles, status, error, resumePendingJob
               <Input className="mt-2" type="date" value={draft.launchDate} onChange={(event) => onChange({ ...draft, launchDate: event.target.value })} />
             </label>
             {angles.length > 1 && <label className="block"><span className="text-xs font-semibold">Story style</span>
-              <select value={draft.angle.id} onChange={(event) => { const angle = angles.find((item) => item.id === event.target.value); if (angle) onChange({ ...draft, angle }); }}
-                className="mt-2 min-h-11 w-full rounded-control border border-line bg-surface-raised px-3.5 text-sm">
-                {angles.map((angle) => <option key={angle.id} value={angle.id}>{angle.title}</option>)}
-              </select>
+              <Select value={draft.angle.id} onValueChange={(value) => { const angle = angles.find((item) => item.id === value); if (angle) onChange({ ...draft, angle }); }}
+                options={angles.map((angle) => ({ value: angle.id, label: angle.title }))}
+                aria-label="Story style" disabled={status === "loading" || resumePendingJob} className="mt-2" />
             </label>}
           </div>
         </details>

@@ -20,11 +20,7 @@ export default async function HomePage() {
         <section className="hero-surface noise overflow-hidden border-b border-line">
           <div className="mx-auto grid max-w-[1440px] items-center gap-12 px-5 py-12 sm:px-6 sm:py-20 lg:min-h-[760px] lg:grid-cols-[.95fr_1.05fr] lg:gap-12 lg:px-8">
             <Reveal>
-              <p className="inline-flex items-center gap-2.5 rounded-full border border-accent/20 bg-accent/5 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-accent sm:text-[11px]">
-                <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />
-                Launch campaigns for every product update
-              </p>
-              <h1 className="mt-7 max-w-3xl text-[clamp(2.75rem,4.8vw,4.5rem)] font-semibold leading-[1.04] tracking-[-0.055em]">
+              <h1 className="max-w-3xl text-[clamp(2.75rem,4.8vw,4.5rem)] font-semibold leading-[1.04] tracking-[-0.055em]">
                 <span className="block">Paste your URL.</span>
                 <span className="block text-balance text-accent">Leave with a launch kit.</span>
               </h1>

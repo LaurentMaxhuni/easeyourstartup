@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 type Theme = "light" | "dark";
 
-export function ThemeToggle() {
+export function ThemeToggle({ menuItem = false }: { menuItem?: boolean }) {
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,15 @@ export function ThemeToggle() {
   }
 
   const label = theme === "dark" ? "Use light theme" : "Use dark theme";
+
+  if (menuItem) {
+    return (
+      <DropdownMenuItem onSelect={toggleTheme}>
+        {theme === "dark" ? <Sun aria-hidden="true" size={18} /> : <Moon aria-hidden="true" size={18} />}
+        {label}
+      </DropdownMenuItem>
+    );
+  }
 
   return (
     <Button

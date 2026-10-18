@@ -40,6 +40,7 @@ import { Logo } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Select } from "@/components/ui/select";
 import { ThinkingOrb } from "thinking-orbs";
 import {
   creativeElementEffectSchema,
@@ -1150,27 +1151,21 @@ export function MiniCanvaEditor({
           </div>
           <label className="block text-[11px] text-muted">
             Graphic motif
-            <select
+            <Select
               value={composition.graphic}
-              onChange={(event) => updateComposition({ graphic: creativeGraphicSchema.parse(event.target.value) })}
+              onValueChange={(value) => updateComposition({ graphic: creativeGraphicSchema.parse(value) })}
               className="mt-1 min-h-9 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-            >
-              {creativeGraphicSchema.options.map((graphic) => (
-                <option key={graphic} value={graphic}>{graphic}</option>
-              ))}
-            </select>
+              aria-label="Graphic motif" options={creativeGraphicSchema.options.map((value) => ({ value, label: value }))}
+            />
           </label>
           <label className="block text-[11px] text-muted">
             Accent icon
-            <select
+            <Select
               value={composition.icon}
-              onChange={(event) => updateComposition({ icon: creativeIconSchema.parse(event.target.value) })}
+              onValueChange={(value) => updateComposition({ icon: creativeIconSchema.parse(value) })}
               className="mt-1 min-h-9 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-            >
-              {creativeIconSchema.options.map((icon) => (
-                <option key={icon} value={icon}>{icon}</option>
-              ))}
-            </select>
+              aria-label="Accent icon" options={creativeIconSchema.options.map((value) => ({ value, label: value }))}
+            />
           </label>
           <div className="border-t border-line pt-3">
             <p className="text-[10px] font-semibold text-muted">Screenshot crop</p>
@@ -1749,14 +1744,12 @@ export function MiniCanvaEditor({
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-[10px] text-muted">
                 Image treatment
-                <select
+                <Select
                   value={composition.imageMode}
-                  onChange={(event) => resetLayout({ imageMode: creativeImageModeSchema.parse(event.target.value) })}
-                  className="min-h-8 rounded-control border border-line bg-surface px-2 text-xs text-ink"
-                >
-                  <option value="single">Single image</option>
-                  <option value="devices">Device story</option>
-                </select>
+                  onValueChange={(value) => resetLayout({ imageMode: creativeImageModeSchema.parse(value) })}
+                  className="min-h-8 w-auto rounded-control border border-line bg-surface px-2 text-xs text-ink"
+                  aria-label="Image treatment" options={[{ value: "single", label: "Single image" }, { value: "devices", label: "Device story" }]}
+                />
               </label>
             </div>
             )}
@@ -2114,13 +2107,12 @@ function Inspector({
         <div className="grid grid-cols-2 gap-2">
           <label className="col-span-2 block text-[10px] text-muted">
             Icon
-            <select
+            <Select
               value={element.icon ?? composition.icon}
-              onChange={(event) => onUpdate(element.id, { icon: creativeIconSchema.parse(event.target.value) })}
+              onValueChange={(value) => onUpdate(element.id, { icon: creativeIconSchema.parse(value) })}
               className="mt-1 min-h-8 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-            >
-              {creativeIconSchema.options.map((icon) => <option key={icon} value={icon}>{icon}</option>)}
-            </select>
+              aria-label="Icon" options={creativeIconSchema.options.map((value) => ({ value, label: value }))}
+            />
           </label>
           <ColorField label="Icon color" value={element.color ?? composition.tokens.accent} onChange={(color) => onUpdate(element.id, { color })} />
           <ColorField label="Icon fill" value={element.fill ?? composition.tokens.background} onChange={(fill) => onUpdate(element.id, { fill })} />
@@ -2134,35 +2126,30 @@ function Inspector({
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-[10px] text-muted">
           Motion
-          <select
+          <Select
             value={element.effect ?? "none"}
-            onChange={(event) => onUpdate(element.id, { effect: creativeElementEffectSchema.parse(event.target.value) })}
+            onValueChange={(value) => onUpdate(element.id, { effect: creativeElementEffectSchema.parse(value) })}
             className="mt-1 min-h-8 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-          >
-            {creativeElementEffectSchema.options.map((effect) => <option key={effect} value={effect}>{effect}</option>)}
-          </select>
+            aria-label="Motion" options={creativeElementEffectSchema.options.map((value) => ({ value, label: value }))}
+          />
         </label>
         <label className="block text-[10px] text-muted">
           Trigger
-          <select
+          <Select
             value={element.effectTrigger ?? "always"}
-            onChange={(event) => onUpdate(element.id, { effectTrigger: event.target.value as CreativeElement["effectTrigger"] })}
+            onValueChange={(value) => onUpdate(element.id, { effectTrigger: value as CreativeElement["effectTrigger"] })}
             className="mt-1 min-h-8 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-          >
-            <option value="always">Always</option>
-            <option value="hover">Hover</option>
-            <option value="click">Click</option>
-          </select>
+            aria-label="Trigger" options={[{ value: "always", label: "Always" }, { value: "hover", label: "Hover" }, { value: "click", label: "Click" }]}
+          />
         </label>
         <label className="col-span-2 block text-[10px] text-muted">
           Shadow
-          <select
+          <Select
             value={element.shadow ?? "none"}
-            onChange={(event) => onUpdate(element.id, { shadow: creativeElementShadowSchema.parse(event.target.value) })}
+            onValueChange={(value) => onUpdate(element.id, { shadow: creativeElementShadowSchema.parse(value) })}
             className="mt-1 min-h-8 w-full rounded-control border border-line bg-canvas px-2 text-xs text-ink"
-          >
-            {creativeElementShadowSchema.options.map((shadow) => <option key={shadow} value={shadow}>{shadow}</option>)}
-          </select>
+            aria-label="Shadow" options={creativeElementShadowSchema.options.map((value) => ({ value, label: value }))}
+          />
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2">

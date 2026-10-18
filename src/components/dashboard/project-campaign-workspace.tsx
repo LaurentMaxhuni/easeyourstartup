@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
+  Archive,
   ArrowRight,
   CaretLeft,
   CaretRight,
@@ -10,10 +12,20 @@ import {
   GlobeSimple,
   MagnifyingGlass,
   Plus,
+  PencilSimple,
+  Trash,
 } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Select } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export type DashboardProject = {
@@ -111,13 +123,13 @@ export function ProjectCampaignWorkspace({
     <section className="mt-10" aria-labelledby="workspace-heading">
       <div className="flex flex-col gap-5 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="font-sans text-[10px] uppercase text-accent">Workspace</p>
+          <p className="font-sans text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Your workspace</p>
           <h2 id="workspace-heading" className="mt-2 text-2xl font-semibold">
             {view === "projects" ? "Projects" : "Campaigns"}
           </h2>
           <p className="mt-1 max-w-xl text-sm leading-6 text-muted">
             {view === "projects"
-              ? "Keep each product and its latest campaign work together."
+              ? "Pick a project to continue your campaign work."
               : "Find any campaign and see which project it belongs to."}
           </p>
         </div>
@@ -128,22 +140,22 @@ export function ProjectCampaignWorkspace({
             aria-pressed={view === "projects"}
             onClick={() => setView("projects")}
             className={cn(
-              "inline-flex min-h-9 items-center gap-2 rounded px-3 text-sm font-semibold transition-colors",
-              view === "projects" ? "bg-surface-raised text-ink shadow-sm" : "text-muted hover:text-ink",
+              "inline-flex min-h-9 items-center gap-2 rounded px-3 text-sm font-semibold transition-colors motion-safe:active:scale-[0.97]",
+              view === "projects" ? "bg-accent text-accent-ink shadow-sm" : "text-muted hover:text-ink",
             )}
           >
-            Projects <span className="text-xs text-muted">{activeProjectCount}</span>
+            Projects <span className="text-xs opacity-70">{activeProjectCount}</span>
           </button>
           <button
             type="button"
             aria-pressed={view === "campaigns"}
             onClick={() => setView("campaigns")}
             className={cn(
-              "inline-flex min-h-9 items-center gap-2 rounded px-3 text-sm font-semibold transition-colors",
-              view === "campaigns" ? "bg-surface-raised text-ink shadow-sm" : "text-muted hover:text-ink",
+              "inline-flex min-h-9 items-center gap-2 rounded px-3 text-sm font-semibold transition-colors motion-safe:active:scale-[0.97]",
+              view === "campaigns" ? "bg-accent text-accent-ink shadow-sm" : "text-muted hover:text-ink",
             )}
           >
-            Campaigns <span className="text-xs text-muted">{activeCampaignCount}</span>
+            Campaigns <span className="text-xs opacity-70">{activeCampaignCount}</span>
           </button>
         </div>
       </div>
@@ -202,8 +214,8 @@ function ProjectsList({
 
   return (
     <div className="pt-5">
-      <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
-        <label className="relative block">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <label className="relative col-span-2 block sm:col-span-1">
           <span className="sr-only">Search projects</span>
           <MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -215,39 +227,40 @@ function ProjectsList({
           />
         </label>
         <label className="sr-only" htmlFor="project-filter">Project status</label>
-        <select
+        <Select<ProjectFilter>
           id="project-filter"
           value={filter}
-          onChange={(event) => setFilter(event.target.value as ProjectFilter)}
-          className="min-h-10 rounded-control border border-line bg-surface-raised px-3 text-sm"
-        >
-          <option value="active">Active projects</option>
-          <option value="archived">Archived projects</option>
-          <option value="all">All projects</option>
-        </select>
+          onValueChange={setFilter}
+          options={[{ value: "active", label: "Active projects" }, { value: "archived", label: "Archived projects" }, { value: "all", label: "All projects" }]}
+          className="w-full sm:w-44"
+        />
         <label className="sr-only" htmlFor="project-sort">Sort projects</label>
-        <select
+        <Select<"updated" | "name">
           id="project-sort"
           value={sort}
-          onChange={(event) => setSort(event.target.value as "updated" | "name")}
-          className="min-h-10 rounded-control border border-line bg-surface-raised px-3 text-sm"
-        >
-          <option value="updated">Recently updated</option>
-          <option value="name">Name A–Z</option>
-        </select>
+          onValueChange={setSort}
+          options={[{ value: "updated", label: "Recently updated" }, { value: "name", label: "Name A–Z" }]}
+          className="w-full sm:w-44"
+        />
       </div>
 
+      <p role="status" className="mt-4 text-xs text-muted">
+        {visibleProjects.length} {filter === "all" ? "" : `${filter} `}{visibleProjects.length === 1 ? "project" : "projects"}{query.trim() ? " matching your search" : ""}
+      </p>
+
       {visibleProjects.length > 0 ? (
-        <div className="mt-4 space-y-3">
-          {visibleProjects.map((project) => (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              onProjectUpdate={onProjectUpdate}
-              onProjectDelete={onProjectDelete}
-              onViewCampaigns={onViewCampaigns}
-            />
-          ))}
+        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+          <AnimatePresence initial={false}>
+            {visibleProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onProjectUpdate={onProjectUpdate}
+                onProjectDelete={onProjectDelete}
+                onViewCampaigns={onViewCampaigns}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       ) : (
         <div className="mt-4 rounded-container border border-dashed border-line bg-surface-raised p-6">
@@ -270,7 +283,7 @@ function ProjectsList({
   );
 }
 
-function ProjectRow({
+function ProjectCard({
   project,
   onProjectUpdate,
   onProjectDelete,
@@ -283,8 +296,13 @@ function ProjectRow({
 }) {
   const [name, setName] = useState(project.name);
   const [status, setStatus] = useState(project.status);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(project.name);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
   const sourceHost = hostFromUrl(project.publicUrl);
   const recentCampaigns = project.campaigns.filter((campaign) => campaign.status !== "archived").slice(0, 3);
   const hasArchivedCampaigns = project.campaigns.some((campaign) => campaign.status === "archived");
@@ -301,7 +319,10 @@ function ProjectRow({
       const result = await response.json() as { project?: { name: string; status: "active" | "archived" }; error?: string };
       if (!response.ok || !result.project) throw new Error(result.error || "Project could not be updated.");
       setName(result.project.name);
+      setDraftName(result.project.name);
       setStatus(result.project.status);
+      setEditingName(false);
+      if (input.name) window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
       onProjectUpdate(project.id, result.project);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Project could not be updated.");
@@ -327,117 +348,157 @@ function ProjectRow({
   }
 
   return (
-    <article className="overflow-hidden rounded-container border border-line bg-surface-raised transition-colors hover:border-accent/40">
-      <div className="flex flex-col gap-5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="flex min-w-0 flex-1 gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent">
-            <GlobeSimple size={20} aria-hidden="true" />
+    <motion.article
+      layout={reduceMotion ? false : "position"}
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      whileHover={reduceMotion ? undefined : { y: -2 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18 }}
+      aria-label={name}
+      aria-busy={busy}
+      className="group flex h-full min-w-0 flex-col overflow-hidden rounded-container border border-line bg-surface-raised transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_8px_30px_-16px_var(--accent-halo)] motion-reduce:transition-none"
+    >
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-control border border-accent/15 bg-accent/10 text-lg font-semibold text-accent">
+            {name.trim().slice(0, 1).toLocaleUpperCase() || <GlobeSimple size={21} />}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="max-w-full truncate text-base font-semibold" title={name}>{name}</h3>
-              <Badge className={status === "active" ? statusTone("active") : ""}>{status}</Badge>
-            </div>
-            <p className="mt-1 truncate text-xs text-muted" title={project.publicUrl ?? undefined}>{sourceHost}</p>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted">
-              <span><strong className="font-semibold text-ink">{project.campaignCount}</strong> active {project.campaignCount === 1 ? "campaign" : "campaigns"}</span>
-              <span><strong className="font-semibold text-ink">{project.sourcePageCount}</strong> source {project.sourcePageCount === 1 ? "page" : "pages"}</span>
-              <span>Updated {formatDate(project.updatedAt ?? project.lastScannedAt, "Not yet")}</span>
-            </div>
+            <h3 className="truncate text-base font-semibold leading-6" title={name}>{name}</h3>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={project.publicUrl ?? undefined}>
+              <GlobeSimple size={13} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{sourceHost}</span>
+            </p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button ref={settingsTriggerRef} type="button" disabled={busy} aria-label={`Settings for ${name}`} className="-mr-1 -mt-1 flex size-9 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 motion-safe:active:scale-95">
+                <DotsThree size={22} weight="bold" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {
+              if (editingName) { event.preventDefault(); nameInputRef.current?.focus(); }
+            }}>
+              <DropdownMenuItem onSelect={() => { setDraftName(name); setEditingName(true); }}>
+                <PencilSimple size={16} aria-hidden="true" /> Rename project
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onViewCampaigns(project.id, "all")}>
+                <ArrowRight size={16} aria-hidden="true" /> View all campaigns
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => {
+                if (status === "archived") void updateProject({ status: "active" });
+                else if (window.confirm("Archive this project? Its data will remain saved.")) void updateProject({ status: "archived" });
+              }}>
+                <Archive size={16} aria-hidden="true" /> {status === "archived" ? "Restore project" : "Archive project"}
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-danger" onSelect={() => void deleteProject()}>
+                <Trash size={16} aria-hidden="true" /> Delete project and its data
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+          <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", status === "active" ? "text-ink" : "text-muted")}>
+            <span aria-hidden="true" className={cn("size-1.5 rounded-full", status === "active" ? "bg-accent" : "bg-muted")} />
+            {status === "active" ? "Active project" : "Archived project"}
+          </span>
+          <p className="text-[11px] text-muted">Updated {formatDate(project.updatedAt ?? project.lastScannedAt, "Not yet")}</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 divide-x divide-line rounded-control border border-line bg-canvas/50 py-3">
+          <button type="button" onClick={() => onViewCampaigns(project.id, "active")} className="group/count px-4 text-left transition-colors hover:text-accent">
+            <span className="block text-xl font-semibold tabular-nums leading-7">{project.campaignCount}</span>
+            <span className="mt-0.5 block text-[11px] text-muted group-hover/count:text-ink">Active {project.campaignCount === 1 ? "campaign" : "campaigns"}</span>
+          </button>
+          <div className="px-4">
+            <span className="block text-xl font-semibold tabular-nums leading-7">{project.sourcePageCount}</span>
+            <span className="mt-0.5 block text-[11px] text-muted">Source {project.sourcePageCount === 1 ? "page" : "pages"}</span>
           </div>
         </div>
-
-        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-          {status === "active" && (
-            <Button asChild size="sm">
-              <Link href={`/studio?projectId=${encodeURIComponent(project.id)}&newCampaign=1`}>
-                <Plus size={15} weight="bold" /> New campaign
-              </Link>
-            </Button>
-          )}
-          <Button asChild size="sm" variant="secondary">
-            <Link href={`/studio?projectId=${encodeURIComponent(project.id)}`}>
-              Open project <ArrowRight size={15} aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <div className="border-t border-line px-4 py-3 sm:px-5">
-        {recentCampaigns.length > 0 ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 flex-1">
-              <p className="mb-1 text-[10px] font-semibold uppercase text-muted">Recent campaigns</p>
-              <div className="grid gap-x-5 sm:grid-cols-2 xl:grid-cols-3">
-                {recentCampaigns.map((campaign) => (
-                  <Link
-                    key={campaign.id}
-                    href={`/studio?projectId=${encodeURIComponent(project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
-                    className="flex min-w-0 items-center justify-between gap-3 rounded px-1 py-2 text-xs transition-colors hover:bg-canvas"
-                  >
-                    <span className="truncate font-medium">{campaign.title || "Untitled campaign"}</span>
-                    <span className="shrink-0 capitalize text-muted">{campaign.status}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-            {(project.campaignCount > recentCampaigns.length || hasArchivedCampaigns) && (
-              <button
-                type="button"
-                onClick={() => onViewCampaigns(project.id, "all")}
-                className="inline-flex min-h-9 shrink-0 items-center gap-1 text-xs font-semibold text-accent"
-              >
-                View all campaigns <ArrowRight size={14} aria-hidden="true" />
+        <div className="mt-5">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Recent campaigns</p>
+            {(project.campaignCount > 0 || hasArchivedCampaigns) && (
+              <button type="button" onClick={() => onViewCampaigns(project.id, "all")} className="inline-flex min-h-7 items-center gap-1 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
+                View all <ArrowRight size={12} aria-hidden="true" />
               </button>
             )}
           </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted">
-              {project.campaignCount > 0
-                ? "No recent active campaigns"
-                : hasArchivedCampaigns ? "No active campaigns · archived campaigns available" : "No campaigns yet"}
+          {recentCampaigns.length > 0 ? (
+            <ul className="divide-y divide-line/60">
+              {recentCampaigns.map((campaign) => (
+                <li key={campaign.id}>
+                  <Link
+                    href={`/studio?projectId=${encodeURIComponent(project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
+                    className="-mx-2 flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-control px-2 py-2 transition-colors hover:bg-surface"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium">{campaign.title || "Untitled campaign"}</span>
+                    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-[10px] capitalize", campaign.status === "failed" ? "text-danger" : "text-muted")}>
+                      <span aria-hidden="true" className={cn("size-1 rounded-full", campaign.status === "failed" ? "bg-danger" : campaign.status === "completed" ? "bg-accent" : "bg-muted")} />
+                      {campaign.status}
+                    </span>
+                    <ArrowRight size={13} className="shrink-0 text-muted" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="flex min-h-11 items-center text-xs leading-5 text-muted">
+              {project.campaignCount > 0 ? "No recent active campaigns" : hasArchivedCampaigns ? "Archived campaigns available in View all." : "Your first campaign starts here."}
             </p>
-            {project.campaignCount > 0 ? (
-              <button type="button" onClick={() => onViewCampaigns(project.id, "active")} className="text-xs font-semibold text-accent">
-                View active campaigns
-              </button>
-            ) : hasArchivedCampaigns ? (
-              <button type="button" onClick={() => onViewCampaigns(project.id, "archived")} className="text-xs font-semibold text-accent">
-                View archived
-              </button>
-            ) : null}
-          </div>
+          )}
+        </div>
+        <AnimatePresence initial={false}>
+          {editingName && (
+            <motion.form
+              key="rename"
+              initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.16 }}
+              className="overflow-hidden"
+              onSubmit={(event) => { event.preventDefault(); if (draftName.trim()) void updateProject({ name: draftName.trim() }); }}
+            >
+              <div className="mt-4 border-t border-line pt-4">
+                <label className="mb-2 block text-xs font-medium" htmlFor={`project-name-${project.id}`}>Project name</label>
+                <input
+                  ref={nameInputRef}
+                  autoFocus
+                  id={`project-name-${project.id}`}
+                  required
+                  maxLength={120}
+                  value={draftName}
+                  disabled={busy}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  className="min-h-10 w-full rounded-control border border-line bg-canvas px-3 py-2 text-sm"
+                />
+                <div className="mt-2 flex justify-end gap-2">
+                  <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { setEditingName(false); settingsTriggerRef.current?.focus(); }}>Cancel</Button>
+                  <Button size="sm" disabled={busy || !draftName.trim()}>{busy ? "Saving…" : "Save name"}</Button>
+                </div>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
+        {busy && !editingName && <LoadingIndicator size="sm" label="Updating project" className="mt-3 text-xs text-muted" />}
+        {message && <p role="alert" className="mt-3 text-xs text-danger">{message}</p>}
+      </div>
+      <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line bg-canvas/30 px-5 py-4">
+        <Button asChild size="sm" className="flex-1">
+          <Link href={`/studio?projectId=${encodeURIComponent(project.id)}`}>
+            Open project <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        </Button>
+        {status === "active" && (
+          <Button asChild size="sm" variant="secondary" className="flex-1">
+            <Link href={`/studio?projectId=${encodeURIComponent(project.id)}&newCampaign=1`}>
+              <Plus size={15} weight="bold" aria-hidden="true" /> New campaign
+            </Link>
+          </Button>
         )}
       </div>
-
-      <details className="border-t border-line px-4 py-3 sm:px-5">
-        <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted hover:text-ink">
-          <DotsThree size={18} aria-hidden="true" /> Project settings
-        </summary>
-        <form className="mt-3 flex max-w-lg gap-2" onSubmit={(event) => { event.preventDefault(); void updateProject({ name }); }}>
-          <label className="sr-only" htmlFor={`project-name-${project.id}`}>Project name</label>
-          <input
-            id={`project-name-${project.id}`}
-            maxLength={120}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="min-w-0 flex-1 rounded-control border border-line bg-canvas px-3 py-2 text-xs"
-          />
-          <Button size="sm" variant="secondary" disabled={busy}>Save</Button>
-        </form>
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-          <button type="button" disabled={busy} className="text-xs text-muted hover:text-ink disabled:opacity-50" onClick={() => {
-            if (status === "archived") void updateProject({ status: "active" });
-            else if (window.confirm("Archive this project? Its data will remain saved.")) void updateProject({ status: "archived" });
-          }}>{status === "archived" ? "Restore project" : "Archive project"}</button>
-          <button type="button" disabled={busy} className="text-xs text-danger disabled:opacity-50" onClick={() => void deleteProject()}>
-            Delete project and its data
-          </button>
-        </div>
-        {message && <p role="alert" className="mt-2 text-xs text-danger">{message}</p>}
-      </details>
-    </article>
+    </motion.article>
   );
 }
 
@@ -547,8 +608,8 @@ function CampaignsList({
 
   return (
     <div className="pt-5">
-      <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
-        <label className="relative block">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <label className="relative col-span-2 block sm:col-span-1">
           <span className="sr-only">Search campaigns and projects</span>
           <MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -561,26 +622,21 @@ function CampaignsList({
           />
         </label>
         <label className="sr-only" htmlFor="campaign-filter">Campaign status</label>
-        <select
+        <Select<CampaignFilter>
           id="campaign-filter"
           value={status}
-          onChange={(event) => { onStatusChange(event.target.value as CampaignFilter); setPage(1); }}
-          className="min-h-10 rounded-control border border-line bg-surface-raised px-3 text-sm"
-        >
-          <option value="active">Active campaigns</option>
-          <option value="archived">Archived campaigns</option>
-          <option value="all">All campaigns</option>
-        </select>
+          onValueChange={(value) => { onStatusChange(value); setPage(1); }}
+          options={[{ value: "active", label: "Active campaigns" }, { value: "archived", label: "Archived campaigns" }, { value: "all", label: "All campaigns" }]}
+          className="w-full sm:w-44"
+        />
         <label className="sr-only" htmlFor="campaign-project">Project</label>
-        <select
+        <Select
           id="campaign-project"
           value={projectId}
-          onChange={(event) => { onProjectIdChange(event.target.value); setPage(1); }}
-          className="min-h-10 rounded-control border border-line bg-surface-raised px-3 text-sm"
-        >
-          <option value="">Every project</option>
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
+          onValueChange={(value) => { onProjectIdChange(value); setPage(1); }}
+          options={[{ value: "", label: "Every project" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]}
+          className="w-full sm:w-44"
+        />
       </div>
 
       {message && <p role="alert" className="mt-3 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{message}</p>}
@@ -636,25 +692,27 @@ function CampaignsList({
                       </Link>
                     </Button>
                     {campaign.projectStatus === "active" && (
-                      <details className="relative">
-                        <summary className="flex size-9 cursor-pointer list-none items-center justify-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink" aria-label={`Actions for ${campaign.title || "untitled campaign"}`}>
-                          <DotsThree size={20} weight="bold" aria-hidden="true" />
-                        </summary>
-                        <div className="absolute right-0 z-10 mt-2 w-44 rounded-control border border-line bg-surface-raised p-2 shadow-lg">
-                          <button type="button" disabled={pendingId === campaign.id} className="block min-h-9 w-full rounded px-2 text-left text-xs hover:bg-surface disabled:opacity-50" onClick={() => renameCampaign(campaign)}>
-                            Rename campaign
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" disabled={pendingId === campaign.id} className="flex size-9 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50" aria-label={`Actions for ${campaign.title || "untitled campaign"}`}>
+                            <DotsThree size={20} weight="bold" aria-hidden="true" />
                           </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem disabled={pendingId === campaign.id} onSelect={() => renameCampaign(campaign)}>
+                            Rename campaign
+                          </DropdownMenuItem>
                           {campaign.status === "archived" ? (
-                            <button type="button" disabled={pendingId === campaign.id} className="block min-h-9 w-full rounded px-2 text-left text-xs hover:bg-surface disabled:opacity-50" onClick={() => void updateCampaign(campaign, { status: "restored" })}>
+                            <DropdownMenuItem disabled={pendingId === campaign.id} onSelect={() => void updateCampaign(campaign, { status: "restored" })}>
                               Restore campaign
-                            </button>
+                            </DropdownMenuItem>
                           ) : (
-                            <button type="button" disabled={pendingId === campaign.id} className="block min-h-9 w-full rounded px-2 text-left text-xs text-danger hover:bg-surface disabled:opacity-50" onClick={() => archiveCampaign(campaign)}>
+                            <DropdownMenuItem disabled={pendingId === campaign.id} className="text-danger" onSelect={() => archiveCampaign(campaign)}>
                               Archive campaign
-                            </button>
+                            </DropdownMenuItem>
                           )}
-                        </div>
-                      </details>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                 </li>

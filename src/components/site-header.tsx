@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { List, X } from "@phosphor-icons/react/dist/ssr";
+import { MobileNavigation } from "@/components/mobile-navigation";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -34,54 +34,7 @@ export async function SiteHeader() {
           </Link>
         </nav>
         <div className="flex items-center gap-1.5">
-          <details className="group relative md:hidden">
-            <summary
-              aria-label="Open site navigation"
-              className="flex size-11 cursor-pointer list-none items-center justify-center rounded-control border border-line bg-surface-raised text-ink transition-colors hover:bg-surface [&::-webkit-details-marker]:hidden"
-            >
-              <List
-                aria-hidden="true"
-                size={19}
-                className="group-open:hidden"
-              />
-              <X
-                aria-hidden="true"
-                size={19}
-                className="hidden group-open:block"
-              />
-            </summary>
-            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[60] w-64 rounded-container border border-line bg-surface-raised p-2 shadow-[0_20px_50px_rgba(23,25,23,0.14)]">
-              <p className="px-3 py-2 font-sans text-[10px] uppercase  text-muted">
-                Explore EaseYourStartup
-              </p>
-              <nav aria-label="Mobile navigation" className="grid gap-1">
-                <Link
-                  href="/#workflow"
-                  className="rounded-control px-3 py-2.5 text-sm font-medium transition-colors hover:bg-surface"
-                >
-                  How it works
-                </Link>
-                <Link
-                  href="/#examples"
-                  className="rounded-control px-3 py-2.5 text-sm font-medium transition-colors hover:bg-surface"
-                >
-                  Examples
-                </Link>
-                <Link
-                  href="/pricing"
-                  className="rounded-control px-3 py-2.5 text-sm font-medium transition-colors hover:bg-surface"
-                >
-                  Pricing
-                </Link>
-                {!user && <Link href="/login" className="rounded-control px-3 py-2.5 text-sm font-medium transition-colors hover:bg-surface">Sign in</Link>}
-              </nav>
-              {!user ? (
-                <div className="mt-2 border-t border-line pt-2">
-                  <ThemeToggle />
-                </div>
-              ) : null}
-            </div>
-          </details>
+          <MobileNavigation signedIn={Boolean(user)} />
           {user ? (
             <AccountMenu
               profile={{
