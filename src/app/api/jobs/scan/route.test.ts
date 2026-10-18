@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  after: vi.fn(),
   assertSameOrigin: vi.fn(),
   getRequestIdentity: vi.fn(),
   inngestSend: vi.fn(),
@@ -8,6 +9,11 @@ const mocks = vi.hoisted(() => ({
   rateLimit: vi.fn(),
   readJsonBody: vi.fn(),
   requireWorkspaceContext: vi.fn(),
+}));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(),
+  after: mocks.after,
 }));
 
 vi.mock("@/inngest/client", () => ({
@@ -60,6 +66,29 @@ describe("POST /api/jobs/scan", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it.each([false, true])("dispatches persisted input immediately and retains recovery on send failure=%s", async (failSend) => {
+    const projectId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { database, queries } = recordingDatabase([
+      [{ job_id: "job-1", status: "queued", progress: 0, project_id: projectId, allowed: true }],
+      [{ event_id: "event-1", event_payload: { jobId: "job-1", projectId, workspaceId: "workspace-1", url: "https://example.com/" } }],
+      [],
+    ]);
+    mocks.requireWorkspaceContext.mockResolvedValue({ database, workspaceId: "workspace-1", limits: { activeProjects: 1 } });
+    mocks.readJsonBody.mockResolvedValue({ url: "https://example.com/changed", projectName: "Example" });
+    if (failSend) mocks.inngestSend.mockRejectedValue(new Error("offline"));
+    const response = await POST(new Request("http://example.test/api/jobs/scan", {
+      method: "POST", headers: { "Idempotency-Key": "scan-operation" },
+    }));
+    expect(response.status).toBe(202);
+    expect(mocks.after).toHaveBeenCalledOnce();
+    await mocks.after.mock.calls[0][0]();
+    expect(mocks.inngestSend).toHaveBeenCalledWith({
+      id: "event-1", name: "campaign/scan.requested",
+      data: { jobId: "job-1", projectId, workspaceId: "workspace-1", url: "https://example.com/" },
+    });
+    expect(queries.some(({ sql }) => sql.includes("mark_job_outbox_delivered"))).toBe(!failSend);
   });
 
   it("queues an existing project's rescan through the transactional job function", async () => {

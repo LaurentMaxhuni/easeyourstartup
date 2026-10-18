@@ -5,14 +5,13 @@ import JSZip from "jszip";
 import { z } from "zod";
 import { channelSchema, generateCampaignSchema, studioStateSchema } from "@/lib/contracts";
 import {
-  curateScannedClaims,
   generateCampaign,
   publicProviderError,
 } from "@/lib/server/campaign-generator";
 import { generateCampaignV2 } from "@/lib/server/generation-v2";
 import { createDatabase, requireDatabase } from "@/lib/server/database";
 import { scanWebsite } from "@/lib/server/scanner";
-import { analyzeBrandIntelligence } from "@/lib/server/brand-intelligence";
+import { enrichScannedWebsite } from "@/lib/server/brand-intelligence";
 import {
   createPrivateObjectReadUrl,
   deletePrivateObject,
@@ -83,9 +82,7 @@ export const scanProject = inngest.createFunction(
     });
 
     const result = await step.run("scan-public-pages", async () => {
-      const scan = await curateScannedClaims(await scanWebsite(url));
-      scan.profile.brandIntelligence = await analyzeBrandIntelligence(scan);
-      return scan;
+      return enrichScannedWebsite(await scanWebsite(url));
     });
 
     await step.run("persist-brand-dna", async () => {

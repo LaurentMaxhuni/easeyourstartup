@@ -652,6 +652,30 @@ describe("OpenAI-compatible provider configuration", () => {
     ).toBe(45_000);
   });
 
+  it("bounds scan interpretation instead of waiting for a campaign-generation timeout", () => {
+    expect(getStructuredAiTimeoutMs("brandTextModel", { NVIDIA_NIM_API_KEY: "test" })).toBe(8_000);
+    expect(getStructuredAiTimeoutMs("brandTextModel", { OPENAI_API_KEY: "test" })).toBe(8_000);
+  });
+
+  it("falls back to source rules after one failed scan curation request", async () => {
+    vi.stubEnv("AI_GENERATION_ENABLED", "true");
+    vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
+    vi.stubEnv("NVIDIA_NIM_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { message: "unavailable" } }), {
+      status: 503, headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await campaignGenerator.curateScannedClaims({ ...DEMO_SCAN, mode: "live" });
+      expect(result.warnings.join(" ")).toContain("AI curation could not complete");
+      expect(result.curation?.mode).toBe("rules");
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("caps NVIDIA NIM chat completions with its max_tokens parameter", async () => {
     vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
     vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");

@@ -283,6 +283,7 @@ export function getStructuredAiTimeoutMs(
   task: AiTask,
   environment: OpenAIProviderEnvironment = process.env,
 ) {
+  if (task === "brandTextModel") return 8_000;
   const config = getOpenAIProviderConfig(environment, task);
   const usesNvidiaNim = Boolean(
     environment.NVIDIA_NIM_API_KEY?.trim() ||
@@ -871,6 +872,7 @@ export async function requestStructuredAiJson<T>({
     timeoutMs: getStructuredAiTimeoutMs(task),
     maxRetries: 0,
   });
+  const singleAttempt = task === "brandTextModel";
   const startedAt = Date.now();
   let requestedModel = setup?.model ?? "unconfigured";
   try {
@@ -889,11 +891,13 @@ export async function requestStructuredAiJson<T>({
           ? addSchemaToSystemMessage(messages, schema)
           : messages;
       const result = await requestChatJsonWithMetadata(
-        setup,
+        singleAttempt ? { ...setup, fallbackModels: [] } : setup,
         providerMessages,
         maxCompletionTokens,
         (raw) => schema.parse(raw),
-        { responseSchema: schema, schemaName },
+        { responseSchema: schema, schemaName,
+          ...(singleAttempt ? { retryMalformedResponse: false, retryTransientProviderError: false } : {}),
+        },
         (attemptModel) => {
           requestedModel = attemptModel;
         },
@@ -905,7 +909,7 @@ export async function requestStructuredAiJson<T>({
       let attemptMessages = messages;
       let responseModel = setup.model;
       let parsed = false;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < (singleAttempt ? 1 : 2); attempt += 1) {
         try {
           const response = await setup.client.responses.parse({
             model: setup.model,
@@ -1018,7 +1022,7 @@ export async function curateScannedClaims(scan: ScanResult): Promise<ScanResult>
     return autoCurateClaims(scan, "AI tools are temporarily paused; a local factual filter was applied.");
   }
 
-  const setup = getOpenAIProviderSetup("brandTextModel");
+  const setup = getOpenAIProviderSetup("brandTextModel", { timeoutMs: 8_000, maxRetries: 0 });
   if (!setup) {
     return autoCurateClaims(
       scan,
@@ -1051,13 +1055,15 @@ export async function curateScannedClaims(scan: ScanResult): Promise<ScanResult>
     const parsed =
       setup.provider === "chat"
         ? await requestChatJson(
-            setup,
+            { ...setup, fallbackModels: [] },
             messages,
             900,
             (value) => claimCurationResultSchema.parse(value),
             {
               responseSchema: claimCurationResultSchema,
               schemaName: "claim_curation",
+              retryMalformedResponse: false,
+              retryTransientProviderError: false,
             },
           )
         : claimCurationResultSchema.parse(
@@ -1065,6 +1071,7 @@ export async function curateScannedClaims(scan: ScanResult): Promise<ScanResult>
               await setup.client.responses.parse({
                 model: setup.model,
                 input: messages,
+                max_output_tokens: 900,
                 text: {
                   format: zodTextFormat(
                     claimCurationResultSchema,

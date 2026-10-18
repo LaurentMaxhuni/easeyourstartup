@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { inngest } from "@/inngest/client";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import { assertSameOrigin, readJsonBody } from "@/lib/server/request-security";
@@ -61,6 +62,32 @@ export async function POST(request: Request) {
     if (typeof result.job_id !== "string" || typeof result.project_id !== "string") {
       return NextResponse.json({ error: "The scan could not be queued. Retry the scan." }, { status: 503 });
     }
+    // Use the persisted event ID; cron can safely retry if immediate delivery fails.
+    after(async () => {
+      try {
+        const [entry] = await context.database`
+          select event_id, event_payload from public.job_outbox
+          where job_id = ${result.job_id}::uuid
+            and workspace_id = ${context.workspaceId}::uuid
+            and event_name = 'campaign/scan.requested'
+            and delivered_at is null and dead_lettered_at is null
+          limit 1
+        `;
+        if (typeof entry?.event_id !== "string") return;
+        const payload = z.object({ jobId: z.string(), workspaceId: z.string(), projectId: z.string(), url: z.string() })
+          .parse(typeof entry.event_payload === "string" ? JSON.parse(entry.event_payload) : entry.event_payload);
+        await inngest.send({
+          id: entry.event_id,
+          name: "campaign/scan.requested",
+          data: payload,
+        });
+        await context.database`
+          select public.mark_job_outbox_delivered(${entry.event_id}::uuid)
+        `;
+      } catch {
+        console.error("[scan] Immediate dispatch unavailable; durable dispatch will retry.");
+      }
+    });
     return NextResponse.json({
       job: { id: result.job_id, status: result.status, progress: result.progress },
       projectId: result.project_id,

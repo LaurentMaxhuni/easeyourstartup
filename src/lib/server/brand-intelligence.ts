@@ -5,7 +5,16 @@ import {
   type BrandIntelligence,
   type ScanResult,
 } from "@/lib/contracts";
-import { requestStructuredAiJson } from "@/lib/server/campaign-generator";
+import { autoCurateClaims, curateScannedClaims, requestStructuredAiJson } from "@/lib/server/campaign-generator";
+
+export async function enrichScannedWebsite(scan: ScanResult): Promise<ScanResult> {
+  // Interpretation needs source evidence, so it needn't wait for AI claim selection.
+  const [curated, brandIntelligence] = await Promise.all([
+    curateScannedClaims(scan),
+    analyzeBrandIntelligence(autoCurateClaims(scan)),
+  ]);
+  return { ...curated, profile: { ...curated.profile, brandIntelligence } };
+}
 
 const unique = (values: string[], limit: number) =>
   Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).slice(

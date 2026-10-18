@@ -12,7 +12,7 @@ vi.mock("@/lib/server/object-storage", () => ({ createPrivateObjectReadUrl: vi.f
 vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: vi.fn() }));
 vi.mock("@/lib/server/campaign-generator", () => ({ generateCampaign: vi.fn(), publicProviderError: vi.fn() }));
 vi.mock("@/lib/server/generation-v2", () => ({ generateCampaignV2: vi.fn() }));
-vi.mock("@/lib/server/brand-intelligence", () => ({ analyzeBrandIntelligence: vi.fn() }));
+vi.mock("@/lib/server/brand-intelligence", () => ({ enrichScannedWebsite: vi.fn() }));
 vi.mock("@/lib/job-results", () => ({ serializeGenerateJobResult: JSON.stringify, serializeScanJobResult: JSON.stringify }));
 import { cleanupDeletedPrivateObjects, regenerateCampaignChannel } from "./functions";
 import { failStaleGenerationJobs } from "@/lib/server/stale-generation-jobs";

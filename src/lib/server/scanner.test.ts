@@ -22,6 +22,8 @@ vi.mock("@/lib/server/url-security", () => ({
 
 vi.mock("@/lib/server/campaign-generator", () => ({
   requestStructuredAiJson: requestStructuredAiJsonMock,
+  autoCurateClaims: (scan: unknown) => scan,
+  curateScannedClaims: (scan: unknown) => scan,
 }));
 
 import { extractPage, scanWebsite } from "@/lib/server/scanner";

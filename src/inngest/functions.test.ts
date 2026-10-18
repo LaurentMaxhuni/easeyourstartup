@@ -51,6 +51,7 @@ vi.mock("@/lib/server/generation-v2", () => ({
 }));
 vi.mock("@/lib/server/brand-intelligence", () => ({
   analyzeBrandIntelligence: mocks.analyzeBrandIntelligence,
+  enrichScannedWebsite: vi.fn(),
 }));
 
 import {
