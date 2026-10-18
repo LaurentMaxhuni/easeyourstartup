@@ -21,14 +21,14 @@ export function StudioActionBar({
 }) {
   return (
     <div className="sticky bottom-0 z-20 mt-10 flex flex-col gap-3 border-t border-line bg-canvas/95 py-4 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
-      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-        <ArrowLeft size={16} />
+      <Button type="button" variant="ghost" size="sm" onClick={onBack} className="shrink-0 whitespace-nowrap">
+        <ArrowLeft size={16} className="shrink-0" />
         {backLabel}
       </Button>
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-col-reverse gap-3 sm:flex-1 sm:flex-row sm:items-center">
         <p
           aria-live="polite"
-          className="text-center text-xs leading-5 text-muted sm:text-right"
+          className="min-w-0 text-center text-xs leading-5 text-muted sm:flex-1 sm:text-right"
         >
           {helper}
         </p>
@@ -37,11 +37,12 @@ export function StudioActionBar({
           onClick={nextType === "button" ? onNext : undefined}
           disabled={loading}
           size="lg"
+          className="w-full shrink-0 whitespace-nowrap sm:w-auto"
         >
           {loading ? (
             <LoadingIndicator size="sm" />
           ) : (
-            <ArrowRight size={18} />
+            <ArrowRight size={18} className="shrink-0" />
           )}
           {loading ? "Working" : nextLabel}
         </Button>
