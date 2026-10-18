@@ -202,10 +202,6 @@ label:has(input[type="file"]) {
     color: var(--ink);
   }
 
-  .page-transition {
-    animation: page-arrive 280ms ease-out both;
-  }
-
   .ui-popover[data-state="open"] {
     animation: popover-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -239,9 +235,45 @@ label:has(input[type="file"]) {
   transform-origin: var(--radix-select-content-transform-origin, var(--radix-dropdown-menu-content-transform-origin, top right));
 }
 
+/* React snapshots both routes, so navigation never waits for an exit timer. */
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(.page-route) {
+  animation-duration: 360ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(.page-route) {
+  animation: page-depart 140ms ease-in both;
+}
+
+::view-transition-new(.page-route) {
+  animation: page-arrive 300ms cubic-bezier(0.22, 1, 0.36, 1) 60ms both;
+}
+
+@keyframes page-depart {
+  to { opacity: 0; transform: translateY(-12px) scale(0.995); }
+}
+
 @keyframes page-arrive {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(16px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
 }
 
 @keyframes popover-enter {
