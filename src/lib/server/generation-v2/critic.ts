@@ -31,7 +31,7 @@ export const unsupportedStatementSchema = z.object({
   channel: channelSchema.nullable(),
   statement: z.string().min(1).max(300),
   reason: z.string().min(1).max(400),
-  linkedClaimId: z.string().max(160).optional(),
+  linkedClaimId: z.string().max(160).nullish(),
 });
 
 const campaignGenerationAssessmentSchema = z.object({
@@ -349,7 +349,7 @@ export async function reviewCampaignGeneration({
       schema: campaignGenerationAssessmentSchema,
       schemaName: "campaign_generation_critic_assessment",
       promptVersion: "generation-v2-critic-v3",
-      maxCompletionTokens: 1400,
+      maxCompletionTokens: 2500,
     });
     assessment = result.value;
   } catch (error) {

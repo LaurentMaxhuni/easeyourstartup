@@ -2,7 +2,7 @@ import "server-only";
 
 import OpenAI from "openai";
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
-import { zodTextFormat } from "openai/helpers/zod";
+import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { safeFetchImage } from "@/lib/server/url-security";
 import {
@@ -286,8 +286,7 @@ export function getStructuredAiTimeoutMs(
   if (task === "brandTextModel") return 8_000;
   const config = getOpenAIProviderConfig(environment, task);
   const usesNvidiaNim = Boolean(
-    environment.NVIDIA_NIM_API_KEY?.trim() ||
-      config?.baseURL?.includes("integrate.api.nvidia.com") ||
+    config?.baseURL?.includes("integrate.api.nvidia.com") ||
       (environment.NVIDIA_NIM_BASE_URL?.trim() &&
         config?.baseURL === environment.NVIDIA_NIM_BASE_URL.trim()),
   );
@@ -306,20 +305,22 @@ export function getOpenAIProviderConfig(
   const nvidiaNimKey = environment.NVIDIA_NIM_API_KEY?.trim();
   const groqKey = environment.GROQ_API_KEY?.trim();
   const openAiKey = environment.OPENAI_API_KEY?.trim();
-  const selectedProvider = nvidiaNimKey
+  const preferredProvider = environment.AI_PROVIDER?.trim().toLowerCase();
+  if (preferredProvider && !["nvidia-nim", "openrouter", "groq", "openai"].includes(preferredProvider)) return null;
+  const selectedProvider = preferredProvider || (nvidiaNimKey
     ? "nvidia-nim"
     : openRouterKey
       ? "openrouter"
       : groqKey
         ? "groq"
-        : "openai";
+        : "openai");
   const key =
     selectedProvider === "nvidia-nim"
       ? nvidiaNimKey
       : selectedProvider === "openrouter"
         ? openRouterKey
         : selectedProvider === "groq"
-          ? groqKey
+          ? groqKey || (openAiKey?.startsWith("gsk_") ? openAiKey : undefined)
           : openAiKey;
   if (!key) return null;
 
@@ -329,8 +330,8 @@ export function getOpenAIProviderConfig(
       : selectedProvider === "nvidia-nim"
         ? environment.NVIDIA_NIM_BASE_URL?.trim()
         : selectedProvider === "groq"
-          ? environment.GROQ_BASE_URL?.trim()
-          : environment.NVIDIA_NIM_BASE_URL?.trim() ||
+          ? environment.GROQ_BASE_URL?.trim() || (key === openAiKey ? environment.OPENAI_BASE_URL?.trim() : undefined)
+          : preferredProvider ? environment.OPENAI_BASE_URL?.trim() : environment.NVIDIA_NIM_BASE_URL?.trim() ||
             environment.OPENROUTER_BASE_URL?.trim() ||
             environment.GROQ_BASE_URL?.trim() ||
             environment.OPENAI_BASE_URL?.trim();
@@ -377,10 +378,10 @@ export function getOpenAIProviderConfig(
       : selectedProvider === "nvidia-nim"
         ? environment.NVIDIA_NIM_MODEL?.trim()
         : selectedProvider === "groq"
-          ? environment.GROQ_MODEL?.trim()
+          ? environment.GROQ_MODEL?.trim() || (key === openAiKey ? environment.OPENAI_MODEL?.trim() : undefined)
           : isNvidiaNim
             ? environment.NVIDIA_NIM_MODEL?.trim()
-            : environment.OPENROUTER_MODEL?.trim() ||
+          : preferredProvider ? environment.OPENAI_MODEL?.trim() : environment.OPENROUTER_MODEL?.trim() ||
               environment.GROQ_MODEL?.trim() ||
               environment.OPENAI_MODEL?.trim();
   const defaultModel = isNvidiaNim
@@ -388,13 +389,13 @@ export function getOpenAIProviderConfig(
     : isOpenRouter
       ? DEFAULT_OPENROUTER_MODEL
       : isGroq
-        ? task === "designPlannerModel"
+        ? task === "designPlannerModel" || task === "brandVisionModel"
           ? DEFAULT_GROQ_VISION_MODEL
           : DEFAULT_GROQ_MODEL
         : DEFAULT_OPENAI_MODEL;
   const model =
     taskModel ||
-    (isGroq && task === "designPlannerModel"
+    (isGroq && (task === "designPlannerModel" || task === "brandVisionModel")
       ? defaultModel
       : configuredModel &&
           (isNvidiaNim || configuredModel !== DEFAULT_OPENAI_MODEL)
@@ -452,7 +453,6 @@ export function getOpenAIProviderSetup(
     !isGroq &&
     !isOpenRouter &&
     (config.baseURL?.includes("integrate.api.nvidia.com") === true ||
-      Boolean(process.env.NVIDIA_NIM_API_KEY?.trim()) ||
       Boolean(
         process.env.NVIDIA_NIM_BASE_URL?.trim() &&
           config.baseURL === process.env.NVIDIA_NIM_BASE_URL.trim(),
@@ -503,8 +503,6 @@ export function parseStructuredJson(content: string | null | undefined) {
 type GroqChatRequest = ChatCompletionCreateParamsNonStreaming & {
   // Groq exposes this reasoning option, but it is not part of the OpenAI SDK type.
   reasoning_format?: "hidden" | "raw" | "parsed";
-  // NVIDIA Nemotron exposes a separate internal reasoning-token budget.
-  reasoning_budget?: number;
   // NVIDIA Nemotron uses this template option to disable its thinking mode.
   chat_template_kwargs?: { enable_thinking?: boolean };
   // OpenRouter exposes response healing, but it is not part of the OpenAI SDK type.
@@ -526,7 +524,7 @@ type StructuredAiMessage = {
 };
 
 function addSchemaToSystemMessage(
-  messages: StructuredAiMessage[],
+  messages: ChatCompletionCreateParamsNonStreaming["messages"],
   schema: z.ZodType,
 ) {
   const systemIndex = messages.findIndex((message) => message.role === "system");
@@ -553,34 +551,28 @@ function addSchemaToSystemMessage(
   );
 }
 
-function openRouterResponseFormat(
-  schema: z.ZodType,
-  name: string,
-) {
-  const jsonSchema = { ...z.toJSONSchema(schema, { target: "draft-07" }) } as Record<
-    string,
-    unknown
-  >;
-  delete jsonSchema.$schema;
-  return {
-    type: "json_schema" as const,
-    json_schema: {
-      name,
-      strict: true,
-      schema: jsonSchema,
-    },
-  };
-}
-
 function chatRequest(
   setup: { model: string; providerName: AiProvider },
   messages: ChatCompletionCreateParamsNonStreaming["messages"],
   maxCompletionTokens: number,
   options: ChatRequestOptions = {},
 ): GroqChatRequest {
+  const groqGptOss = setup.providerName === "groq" && /^openai\/gpt-oss-(20b|120b)$/i.test(setup.model);
+  const groqStrictSchema = groqGptOss || (setup.providerName === "groq" && setup.model === "qwen/qwen3.8-27b");
+  let responseFormat: ChatCompletionCreateParamsNonStreaming["response_format"] = { type: "json_object" };
+  if ((setup.providerName === "openrouter" || groqStrictSchema) && options.responseSchema) {
+    try {
+      responseFormat = zodResponseFormat(options.responseSchema, options.schemaName ?? "structured_response");
+    } catch (error) {
+      // Editor schemas have optional style fields that strict APIs cannot represent.
+      // Keep those requests in JSON mode; the original schema still validates the result.
+      if (!(error instanceof Error) || !error.message.includes(".optional()")) throw error;
+    }
+  }
   const request: GroqChatRequest = {
     model: setup.model,
-    messages,
+    messages: responseFormat.type === "json_object" && options.responseSchema
+      ? addSchemaToSystemMessage(messages, options.responseSchema) : messages,
     ...(setup.providerName === "nvidia-nim"
       ? { temperature: 0, stream: false }
       : {}),
@@ -590,26 +582,20 @@ function chatRequest(
     ...(setup.providerName === "nvidia-nim" &&
     setup.model.toLowerCase() === "nvidia/nemotron-3.5-lightning-30b-a3b"
       ? {
-          reasoning_budget: 0,
           chat_template_kwargs: { enable_thinking: false },
         }
       : {}),
-    response_format:
-      setup.providerName === "openrouter" && options.responseSchema
-        ? openRouterResponseFormat(
-            options.responseSchema,
-            options.schemaName ?? "structured_response",
-          )
-        : { type: "json_object" },
+    response_format: responseFormat,
   };
 
   // Groq reasoning models require a reasoning format when JSON mode is used.
   // Hide the chain-of-thought so the parser receives only the JSON object.
   // Qwen 3.x also needs reasoning_effort=none to avoid spending the output
   // budget on visible reasoning; GPT-OSS does not accept that value.
-  if (setup.providerName === "groq") {
+  if (setup.providerName === "groq" && !groqGptOss) {
     request.reasoning_format = "hidden";
   }
+  if (groqGptOss) request.reasoning_effort = "medium";
   if (setup.providerName === "openrouter") {
     request.plugins = [{ id: "response-healing" }];
     // Some OpenRouter models require reasoning and reject an effort override.
@@ -685,6 +671,7 @@ const JSON_CORRECTION_PROMPT =
 
 function isStructuredJsonFailure(error: unknown) {
   return (
+    (typeof error === "object" && error !== null && "code" in error && error.code === "json_validate_failed") ||
     error instanceof SyntaxError ||
     error instanceof z.ZodError ||
     (error instanceof Error &&
@@ -699,6 +686,17 @@ function isRetryableProviderError(error: unknown) {
       ? Number((error as { status?: unknown }).status)
       : 0;
   return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function groqRateLimitDelayMs(error: unknown): number | null {
+  if (!(error instanceof Error) || !("status" in error) || error.status !== 429) return null;
+  const headers = "headers" in error ? error.headers as Headers | undefined : undefined;
+  const retryAfter = headers?.get?.("retry-after");
+  const duration = error.message.match(/try again in ([\d.]+)(ms|s|m)\b/i);
+  const delay = retryAfter ? Number(retryAfter) * 1000 : duration
+    ? Number(duration[1]) * (duration[2] === "ms" ? 1 : duration[2] === "s" ? 1000 : 60_000) : NaN;
+  return Number.isFinite(delay) && delay >= 0 && delay <= 30_000
+    ? Math.min(30_000, Math.ceil(delay) + 200) : null;
 }
 
 function isRetryableNvidiaServerError(error: unknown) {
@@ -740,6 +738,8 @@ async function requestChatJsonWithMetadata<T = unknown>(
 
   let lastError: unknown;
   let transientRetryUsed = false;
+  let groqRateLimitRetries = 0;
+  let groqRateLimitWaitMs = 0;
   let freeModelQuotaError: OpenRouterFreeModelQuotaError | undefined;
   for (const model of models) {
     if (freeModelQuotaError && isOpenRouterFreeModel(model)) continue;
@@ -802,6 +802,14 @@ async function requestChatJsonWithMetadata<T = unknown>(
         ) {
           freeModelQuotaError ??= new OpenRouterFreeModelQuotaError();
           break;
+        }
+        const groqDelay = setup.providerName === "groq" ? groqRateLimitDelayMs(error) : null;
+        if (groqDelay !== null && options.retryTransientProviderError !== false &&
+          groqRateLimitRetries < 2 && groqRateLimitWaitMs + groqDelay <= 30_000) {
+          groqRateLimitRetries += 1;
+          groqRateLimitWaitMs += groqDelay;
+          await new Promise((resolve) => setTimeout(resolve, groqDelay));
+          continue;
         }
         if (
           setup.providerName === "openrouter" &&
@@ -886,13 +894,9 @@ export async function requestStructuredAiJson<T>({
     let value: T | undefined;
     let model: string;
     if (setup.provider === "chat") {
-      const providerMessages =
-        setup.providerName === "nvidia-nim"
-          ? addSchemaToSystemMessage(messages, schema)
-          : messages;
       const result = await requestChatJsonWithMetadata(
         singleAttempt ? { ...setup, fallbackModels: [] } : setup,
-        providerMessages,
+        messages,
         maxCompletionTokens,
         (raw) => schema.parse(raw),
         { responseSchema: schema, schemaName,
@@ -1854,10 +1858,10 @@ export async function designCreativeComposition(
   input: CreativeDesignInput,
 ): Promise<CreativeDesignGeneration> {
   assertAiGenerationEnabled();
-  const setup = getOpenAIProviderSetup("designPlannerModel", {
+  const setup = getOpenAIProviderSetup("brandVisionModel", {
     timeoutMs: Math.max(
       140_000,
-      getStructuredAiTimeoutMs("designPlannerModel"),
+      getStructuredAiTimeoutMs("brandVisionModel"),
     ),
     maxRetries: 0,
   });

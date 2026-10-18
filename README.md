@@ -129,6 +129,20 @@ its daily free-model limit, remaining free fallbacks are skipped and the job
 fails without retrying the exhausted quota; set a model your account can access
 to continue generation immediately.
 NVIDIA NIM supports the same task suffixes through `NVIDIA_NIM_<TASK>_MODEL`.
+The canvas **AI design** tool uses `BRAND_VISION`, which must accept image input;
+Generation V2's text design plan uses `DESIGN_PLANNER` independently.
+
+Set `AI_PROVIDER` to `nvidia-nim`, `openrouter`, `groq`, or `openai` to select a
+configured provider explicitly while keeping other credentials intact. Leave it
+blank to retain automatic provider priority. The selected provider uses its
+matching settings; existing Groq credentials under `OPENAI_*` remain supported.
+
+For a real-provider check, set `RUN_LIVE_AI_TESTS=true` and run
+`pnpm test -- src/lib/server/ai-live.test.ts`. This verifies website curation,
+brand interpretation, and source-backed X/LinkedIn generation and factual review.
+It makes real AI requests without saving campaigns or consuming app campaign
+allowances. Results and timings are written to `output/ai-live-verification.json`;
+the tests are skipped during normal test runs.
 
 The visual editor's **AI design** tool calls
 `POST /api/ai/design` to return one validated, editable visual plan. The AI

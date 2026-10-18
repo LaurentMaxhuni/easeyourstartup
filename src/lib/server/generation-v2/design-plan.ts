@@ -35,6 +35,7 @@ type BrandProfileWithScreenshotCandidates = GenerateCampaignInput["brand"] & {
 };
 
 const screenshotRefPattern = /^product-screenshot-(\d{1,2})$/;
+class UnavailableCampaignScreenshotError extends Error {}
 const neutralColors = ["#ffffff", "#111827"];
 
 const iconByKind: Record<CampaignDesignComponentKind, CreativeDirection["icon"]> = {
@@ -250,12 +251,12 @@ export function normalizeCampaignDesignPlan(
 
     if (component.kind === "screenshot") {
       if (!component.screenshotRef) {
-        throw new Error("AI planned a screenshot component without an available screenshot.");
+        throw new UnavailableCampaignScreenshotError("AI planned a screenshot component without an available screenshot.");
       }
       const match = screenshotRefPattern.exec(component.screenshotRef);
       const candidateIndex = match ? Number(match[1]) - 1 : -1;
       if (candidateIndex < 0 || !candidates[candidateIndex]) {
-        throw new Error("AI referenced a screenshot that is not available for this brand.");
+        throw new UnavailableCampaignScreenshotError("AI referenced a screenshot that is not available for this brand.");
       }
     }
   }
@@ -398,7 +399,14 @@ export async function planCampaignDesign(
     );
   }
 
-  return normalizeCampaignDesignPlan(planValue, parsedInput, parsedStrategy);
+  try {
+    return normalizeCampaignDesignPlan(planValue, parsedInput, parsedStrategy);
+  } catch (error) {
+    if (!(error instanceof UnavailableCampaignScreenshotError)) throw error;
+    return normalizeCampaignDesignPlan(
+      fallbackCampaignDesignPlan(parsedInput, parsedStrategy, parsedOutputs), parsedInput, parsedStrategy,
+    );
+  }
 }
 
 export function campaignDesignPlanToDirections(

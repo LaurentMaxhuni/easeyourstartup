@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 vi.mock("server-only", () => ({}));
 
@@ -18,7 +19,8 @@ import {
   publicProviderError,
 } from "@/lib/server/campaign-generator";
 import * as campaignGenerator from "@/lib/server/campaign-generator";
-import { claimCurationResultSchema } from "@/lib/contracts";
+import { claimCurationResultSchema, creativeDesignPlanSchema } from "@/lib/contracts";
+import { unsupportedStatementSchema } from "./generation-v2/critic";
 import {
   DEMO_ANGLES,
   DEMO_BRAND,
@@ -411,6 +413,13 @@ describe("provider creative design validation", () => {
 });
 
 describe("OpenAI-compatible provider configuration", () => {
+  it("keeps image-capable canvas design separate from text campaign planning", () => {
+    const environment = { AI_PROVIDER: "groq", GROQ_API_KEY: "gsk_test", GROQ_MODEL: "openai/gpt-oss-20b",
+      GROQ_DESIGN_PLANNER_MODEL: "openai/gpt-oss-120b" };
+    expect(getOpenAIProviderConfig(environment, "brandVisionModel")?.model).toBe("qwen/qwen3.8-27b");
+    expect(getOpenAIProviderConfig(environment, "designPlannerModel")?.model).toBe("openai/gpt-oss-120b");
+  });
+
   it.each([
     ["malformed JSON", '{"items":[1 2]}'],
     ["empty content", null],
@@ -599,6 +608,24 @@ describe("OpenAI-compatible provider configuration", () => {
     });
   });
 
+  it("honors an explicit provider without letting a different configured key override it", () => {
+    expect(getOpenAIProviderConfig({
+      AI_PROVIDER: "openrouter", NVIDIA_NIM_API_KEY: "nim-key", NVIDIA_NIM_MODEL: "nim-model",
+      OPENROUTER_API_KEY: "router-key", OPENROUTER_MODEL: "openrouter/free",
+    })).toEqual({ apiKey: "router-key", baseURL: "https://openrouter.ai/api/v1", model: "openrouter/free" });
+    expect(getStructuredAiTimeoutMs("strategyModel", {
+      AI_PROVIDER: "openrouter", NVIDIA_NIM_API_KEY: "nim-key", OPENROUTER_API_KEY: "router-key",
+    })).toBe(45_000);
+  });
+
+  it("does not send an explicitly selected provider's key to another provider's endpoint", () => {
+    expect(getOpenAIProviderConfig({ AI_PROVIDER: "openai", OPENAI_API_KEY: "openai-key", OPENAI_MODEL: "openai-model",
+      NVIDIA_NIM_BASE_URL: "https://integrate.api.nvidia.com/v1", NVIDIA_NIM_MODEL: "nim-model",
+      OPENROUTER_MODEL: "router-model" })).toEqual({ apiKey: "openai-key", baseURL: undefined, model: "openai-model" });
+    expect(getOpenAIProviderConfig({ AI_PROVIDER: "groq", NVIDIA_NIM_API_KEY: "nim-key" })).toBeNull();
+    expect(getOpenAIProviderConfig({ AI_PROVIDER: "unknown", NVIDIA_NIM_API_KEY: "nim-key" })).toBeNull();
+  });
+
   it("lets an OpenRouter key override stale Groq settings", () => {
     expect(
       getOpenAIProviderConfig({
@@ -734,7 +761,7 @@ describe("OpenAI-compatible provider configuration", () => {
     }
   });
 
-  it("disables Nemotron's reasoning-token budget for structured requests", async () => {
+  it("disables Nemotron thinking without sending a zero reasoning budget", async () => {
     vi.stubEnv("NVIDIA_NIM_API_KEY", "nim-test-key");
     vi.stubEnv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1");
     vi.stubEnv("NVIDIA_NIM_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b");
@@ -781,7 +808,7 @@ describe("OpenAI-compatible provider configuration", () => {
         chat_template_kwargs?: { enable_thinking?: boolean };
         messages?: Array<{ role: string; content: string }>;
       };
-      expect(requestBody.reasoning_budget).toBe(0);
+      expect(requestBody).not.toHaveProperty("reasoning_budget");
       expect(requestBody.temperature).toBe(0);
       expect(requestBody.chat_template_kwargs).toEqual({ enable_thinking: false });
       expect(requestBody.messages?.[0]?.content).toContain('"keptClaimIds"');
@@ -793,6 +820,126 @@ describe("OpenAI-compatible provider configuration", () => {
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
+  });
+
+  it.each(["qwen/qwen3.8-27b", "openai/gpt-oss-120b"])("provides strict JSON schema and supported reasoning options to Groq %s", async (model) => {
+    vi.stubEnv("AI_PROVIDER", "groq");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    vi.stubEnv("GROQ_MODEL", model);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(init?.body as string);
+      expect(body.messages[0].content).toBe("Choose supported product claims.");
+      expect(body.response_format.json_schema.schema.properties).toHaveProperty("keptClaimIds");
+      expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { strict: true } });
+      if (model.includes("gpt-oss")) {
+        expect(body.reasoning_effort).toBe("medium");
+        expect(body).not.toHaveProperty("reasoning_format");
+      }
+      return new Response(JSON.stringify({ model, choices: [
+        { message: { content: '{"keptClaimIds":[]}' }, finish_reason: "stop" },
+      ] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(campaignGenerator.requestStructuredAiJson({ task: "brandTextModel",
+        messages: [{ role: "system", content: "Choose supported product claims." }],
+        schema: claimCurationResultSchema, schemaName: "claim_curation", promptVersion: "schema-check", maxCompletionTokens: 200,
+      })).resolves.toMatchObject({ value: { keptClaimIds: [] }, metadata: { success: true, provider: "groq" } });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps optional editor styles in validated JSON mode", async () => {
+    vi.stubEnv("AI_PROVIDER", "groq");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    vi.stubEnv("GROQ_COPY_MODEL", "openai/gpt-oss-120b");
+    const plan = validCreativeDesignPlan();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(init?.body as string);
+      expect(body.response_format).toEqual({ type: "json_object" });
+      expect(body.messages[0].content).toContain('"fontSize"');
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(plan) }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(campaignGenerator.requestStructuredAiJson({ task: "copyModel",
+        messages: [{ role: "system", content: "Design the canvas." }], schema: creativeDesignPlanSchema,
+        schemaName: "canvas", promptVersion: "canvas-test", maxCompletionTokens: 200,
+      })).resolves.toMatchObject({ value: { theme: plan.theme }, metadata: { success: true } });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllEnvs(); vi.unstubAllGlobals(); }
+  });
+
+  it("requires nullable claim links in nested strict review schemas", async () => {
+    vi.stubEnv("AI_PROVIDER", "groq");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    vi.stubEnv("GROQ_MODEL", "openai/gpt-oss-20b");
+    const finding = { channel: "x", statement: "Invented metric", reason: "No source", linkedClaimId: null };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(init?.body as string);
+      const item = body.response_format.json_schema.schema.properties.unsupportedStatements.items;
+      expect(item.required).toEqual(["channel", "statement", "reason", "linkedClaimId"]);
+      expect(item.additionalProperties).toBe(false);
+      expect(item.properties.linkedClaimId.anyOf).toContainEqual({ type: "null" });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ unsupportedStatements: [finding] }) }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(campaignGenerator.requestStructuredAiJson({ task: "criticModel",
+        messages: [{ role: "system", content: "Review unsupported claims." }],
+        schema: z.object({ unsupportedStatements: z.array(unsupportedStatementSchema) }),
+        schemaName: "review", promptVersion: "review-test", maxCompletionTokens: 200,
+      })).resolves.toMatchObject({ value: { unsupportedStatements: [finding] }, metadata: { success: true } });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([2, 20])("honors a bounded Groq rate-limit delay of %s seconds once before retrying", async (seconds) => {
+    vi.useFakeTimers();
+    const create = vi.fn().mockRejectedValueOnce(Object.assign(new Error("Rate limited"), {
+      status: 429, headers: new Headers({ "retry-after": String(seconds) }),
+    })).mockResolvedValue({ choices: [{ message: { content: '{"ok":true}' } }] });
+    try {
+      const request = campaignGenerator.requestChatJson({ client: { chat: { completions: { create } } } as never,
+        model: "test", providerName: "groq", fallbackModels: [] }, [{ role: "user", content: "Return JSON." }], 100);
+      const result = expect(request).resolves.toEqual({ ok: true });
+      await vi.advanceTimersByTimeAsync(seconds * 1000 + 500);
+      await result;
+      expect(create).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("caps Groq rate-limit recovery at two retries", async () => {
+    vi.useFakeTimers();
+    const create = vi.fn().mockRejectedValue(Object.assign(new Error("Rate limited"), {
+      status: 429, headers: new Headers({ "retry-after": "2" }),
+    }));
+    try {
+      const result = expect(campaignGenerator.requestChatJson({ client: { chat: { completions: { create } } } as never,
+        model: "test", providerName: "groq", fallbackModels: [] }, [{ role: "user", content: "Return JSON." }], 100))
+        .rejects.toThrow("Rate limited");
+      await vi.advanceTimersByTimeAsync(5_000);
+      await result;
+      expect(create).toHaveBeenCalledTimes(3);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("does not wait through a long Groq quota window", async () => {
+    const create = vi.fn().mockRejectedValue(Object.assign(new Error("Rate limited"), {
+      status: 429, headers: new Headers({ "retry-after": "60" }),
+    }));
+    await expect(campaignGenerator.requestChatJson({ client: { chat: { completions: { create } } } as never,
+      model: "test", providerName: "groq", fallbackModels: [] }, [{ role: "user", content: "Return JSON." }], 100))
+      .rejects.toThrow("Rate limited");
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it("bounds GLM 5.3 Flash reasoning for structured requests", async () => {
@@ -981,7 +1128,7 @@ describe("OpenAI-compatible provider configuration", () => {
     }
   });
 
-  it("corrects valid JSON that fails the task schema", async () => {
+  it.each(["schema mismatch", "provider JSON validation failure"])("corrects %s without replacing model output", async (failure) => {
     vi.stubEnv("OPENROUTER_API_KEY", "sk-or-v1-test-secret");
     vi.stubEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1");
     const response = (content: string) =>
@@ -1003,7 +1150,9 @@ describe("OpenAI-compatible provider configuration", () => {
       );
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(response('{"keptClaimIds":"bad-shape"}'))
+      .mockResolvedValueOnce(failure === "schema mismatch" ? response('{"keptClaimIds":"bad-shape"}') :
+        new Response(JSON.stringify({ error: { message: "Failed to generate JSON", code: "json_validate_failed" } }),
+          { status: 400, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(response('{"keptClaimIds":[]}'));
     vi.spyOn(console, "info").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});

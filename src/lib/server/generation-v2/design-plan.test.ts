@@ -336,4 +336,14 @@ describe("planCampaignDesign", () => {
       ),
     ).toThrow(/approved campaign claims/i);
   });
+
+  it.each([null, "product-screenshot-2"])("recovers with a typographic plan when AI selects an unavailable screenshot %s", async (screenshotRef) => {
+    const input = makeInput();
+    const strategy = makeStrategy(input);
+    requestStructuredAiJsonMock.mockResolvedValue({ value: makePlan([
+      makeComponent({ kind: "screenshot", screenshotRef }),
+    ]), metadata: { task: "designPlannerModel", provider: "groq", model: "test", promptVersion: "2", latencyMs: 1, success: true } });
+    const plan = await planCampaignDesign(input, strategy, [DEMO_OUTPUTS[1]]);
+    expect(plan.components).toEqual([expect.objectContaining({ kind: "cover", screenshotRef: null })]);
+  });
 });
