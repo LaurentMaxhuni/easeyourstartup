@@ -12,4 +12,5 @@ test-results
 npm-debug.log*
 /.playwright-cli/
 output
+/graphify-out/
 .inngest/

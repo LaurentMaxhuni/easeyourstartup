@@ -30,12 +30,13 @@ import { cn } from "@/lib/utils";
 
 export type DashboardProject = {
   id: string;
+  projectIds?: string[];
   name: string;
   publicUrl: string | null;
   status: "active" | "archived";
   sourcePageCount: number;
   campaignCount: number;
-  campaigns: Array<{ id: string; title: string; status: string; updatedAt: string | null }>;
+  campaigns: Array<{ id: string; projectId?: string; title: string; status: string; updatedAt: string | null }>;
   lastScannedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -311,21 +312,27 @@ function ProjectCard({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/projects/${project.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const result = await response.json() as { project?: { name: string; status: "active" | "archived" }; error?: string };
-      if (!response.ok || !result.project) throw new Error(result.error || "Project could not be updated.");
-      setName(result.project.name);
-      setDraftName(result.project.name);
-      setStatus(result.project.status);
+      let savedProject: { name: string; status: "active" | "archived" } | undefined;
+      for (const id of project.projectIds ?? [project.id]) {
+        const response = await fetch(`/api/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        const result = await response.json() as { project?: { name: string; status: "active" | "archived" }; error?: string };
+        if (!response.ok || !result.project) throw new Error(result.error || "Project could not be updated.");
+        if (id === project.id) savedProject = result.project;
+      }
+      if (!savedProject) throw new Error("Project could not be updated.");
+      setName(savedProject.name);
+      setDraftName(savedProject.name);
+      setStatus(savedProject.status);
       setEditingName(false);
       if (input.name) window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
-      onProjectUpdate(project.id, result.project);
+      onProjectUpdate(project.id, savedProject);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Project could not be updated.");
+      onProjectUpdate(project.id, {});
     } finally {
       setBusy(false);
     }
@@ -430,7 +437,7 @@ function ProjectCard({
               {recentCampaigns.map((campaign) => (
                 <li key={campaign.id}>
                   <Link
-                    href={`/studio?projectId=${encodeURIComponent(project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
+                    href={`/studio?projectId=${encodeURIComponent(campaign.projectId ?? project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
                     className="-mx-2 flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-control px-2 py-2 transition-colors hover:bg-surface"
                   >
                     <span className="min-w-0 flex-1 truncate text-xs font-medium">{campaign.title || "Untitled campaign"}</span>

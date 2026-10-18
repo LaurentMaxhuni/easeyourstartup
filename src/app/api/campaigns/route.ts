@@ -60,7 +60,11 @@ export async function GET(request: Request) {
         join public.projects p
           on p.id = c.project_id and p.workspace_id = c.workspace_id
         where c.workspace_id = ${workspaceId}::uuid
-          and (${projectId}::uuid is null or c.project_id = ${projectId}::uuid)
+          and (${projectId}::uuid is null or c.project_id = ${projectId}::uuid
+            or public.project_url_key(p.public_url) = (
+              select public.project_url_key(selected.public_url) from public.projects selected
+              where selected.id = ${projectId}::uuid and selected.workspace_id = ${workspaceId}::uuid
+            ))
           and (
             ${filters.status} = 'all'
             or (${filters.status} = 'archived' and c.status = 'archived')
@@ -79,7 +83,11 @@ export async function GET(request: Request) {
         join public.projects p
           on p.id = c.project_id and p.workspace_id = c.workspace_id
         where c.workspace_id = ${workspaceId}::uuid
-          and (${projectId}::uuid is null or c.project_id = ${projectId}::uuid)
+          and (${projectId}::uuid is null or c.project_id = ${projectId}::uuid
+            or public.project_url_key(p.public_url) = (
+              select public.project_url_key(selected.public_url) from public.projects selected
+              where selected.id = ${projectId}::uuid and selected.workspace_id = ${workspaceId}::uuid
+            ))
           and (
             ${filters.status} = 'all'
             or (${filters.status} = 'archived' and c.status = 'archived')

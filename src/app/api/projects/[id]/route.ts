@@ -40,11 +40,13 @@ export async function GET(
       limit 6
     `;
     const campaigns = await context.database`
-      select id, title, status, kind, launch_date, updated_at
-      from public.campaigns
-      where project_id = ${id}::uuid
-        and workspace_id = ${context.workspaceId}
-      order by updated_at desc
+      select c.id, c.project_id as "projectId", c.title, c.status, c.kind, c.launch_date, c.updated_at
+      from public.campaigns c
+      join public.projects p on p.id = c.project_id and p.workspace_id = c.workspace_id
+      where c.workspace_id = ${context.workspaceId}
+        and (c.project_id = ${id}::uuid or
+          public.project_url_key(p.public_url) = public.project_url_key(${project.public_url}::text))
+      order by c.updated_at desc
       limit 50
     `;
     let profile = project.profile;
@@ -163,8 +165,11 @@ export async function DELETE(
           pg_catalog.hashtextextended(${context.workspaceId}::text || ':project-slots', 0)
         ) as locked
       ), owned_project as materialized (
-        select id from public.projects
-        where id = ${projectId}::uuid and workspace_id = ${context.workspaceId}
+        select p.id from public.projects p
+        join public.projects selected on selected.id = ${projectId}::uuid
+          and selected.workspace_id = p.workspace_id
+        where p.workspace_id = ${context.workspaceId}
+          and (p.id = selected.id or public.project_url_key(p.public_url) = public.project_url_key(selected.public_url))
           and exists (select 1 from lifecycle_lock)
       ), removed_assets as (
         delete from public.stored_assets

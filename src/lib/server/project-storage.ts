@@ -6,6 +6,7 @@ import { ensureWorkspaceForUser } from "@/lib/server/workspace-access";
 
 export type ProjectSummary = {
   id: string;
+  projectIds?: string[];
   name: string;
   publicUrl: string | null;
   status: "active" | "archived";
@@ -13,6 +14,7 @@ export type ProjectSummary = {
   campaignCount: number;
   campaigns: Array<{
     id: string;
+    projectId?: string;
     title: string;
     status: string;
     updatedAt: string | null;
@@ -30,6 +32,36 @@ function asTimestamp(value: unknown) {
 function asCount(value: unknown) {
   const count = Number(value ?? 0);
   return Number.isFinite(count) ? count : 0;
+}
+
+export function groupProjectsByUrl(projects: ProjectSummary[]): ProjectSummary[] {
+  const groups = new Map<string, ProjectSummary>();
+  for (const project of projects) {
+    let key = project.id;
+    if (project.publicUrl) {
+      try {
+        const url = new URL(project.publicUrl);
+        key = url.origin + url.pathname.replace(/\/+$/, "") + url.search;
+      } catch { /* Legacy invalid URLs remain separate. */ }
+    }
+    const campaigns = project.campaigns.map((campaign) => ({ ...campaign, projectId: campaign.projectId ?? project.id }));
+    const previous = groups.get(key);
+    if (!previous) {
+      groups.set(key, { ...project, projectIds: [project.id], campaigns });
+      continue;
+    }
+    const primary = previous.status === "archived" && project.status === "active" ? project : previous;
+    groups.set(key, {
+      ...primary,
+      projectIds: [...previous.projectIds!, project.id],
+      sourcePageCount: Math.max(previous.sourcePageCount, project.sourcePageCount),
+      campaignCount: previous.campaignCount + project.campaignCount,
+      campaigns: [...previous.campaigns, ...campaigns]
+        .sort((a, b) => (Date.parse(b.updatedAt ?? "") || 0) - (Date.parse(a.updatedAt ?? "") || 0))
+        .slice(0, 10),
+    });
+  }
+  return [...groups.values()];
 }
 
 export async function listProjectsForUser(
@@ -77,7 +109,7 @@ export async function listProjectsForUser(
     limit 50
   `;
 
-  return rows.map((row) => ({
+  return groupProjectsByUrl(rows.map((row) => ({
     id: row.id,
     name: row.name,
     publicUrl: row.public_url ?? null,
@@ -88,7 +120,7 @@ export async function listProjectsForUser(
     lastScannedAt: asTimestamp(row.last_scanned_at),
     createdAt: asTimestamp(row.created_at),
     updatedAt: asTimestamp(row.updated_at),
-  })) as ProjectSummary[];
+  })) as ProjectSummary[]);
 }
 
 export async function createOrUpdateProjectForScan(
@@ -101,55 +133,16 @@ export async function createOrUpdateProjectForScan(
     publicUrl: string;
   },
 ) {
-  if (options.projectId) {
-    const [project] = await database`
-      update public.projects
-      set
-        name = ${options.projectName},
-        public_url = ${options.publicUrl},
-        updated_at = now()
-      where id = ${options.projectId}
-        and workspace_id = ${options.workspaceId}
-        and status = 'active'
-      returning id
-    `;
-    if (!project) throw new Error("Project not found.");
-    return project.id as string;
-  }
-
   const [project] = await database`
-    with lifecycle_lock as materialized (
-      select pg_catalog.pg_advisory_xact_lock(
-        pg_catalog.hashtextextended(${options.workspaceId}::text || ':project-slots', 0)
-      ) as locked
-    ), available_slot as (
-      select slots.slot::integer as active_slot
-      from pg_catalog.generate_series(1, ${options.activeProjectLimit}) as slots(slot)
-      cross join lifecycle_lock
-      where not exists (
-        select 1
-        from public.projects as active_project
-        where active_project.workspace_id = ${options.workspaceId}
-          and active_project.status = 'active'
-          and active_project.active_slot = slots.slot
-      )
-      order by slots.slot
-      limit 1
-    )
-    insert into public.projects (workspace_id, name, public_url, active_slot)
-    select
-      ${options.workspaceId},
+    select public.get_or_create_scan_project(
+      ${options.workspaceId}::uuid,
+      ${options.projectId ?? null}::uuid,
       ${options.projectName},
       ${options.publicUrl},
-      available_slot.active_slot
-    from available_slot
-    on conflict (workspace_id, active_slot)
-      where status = 'active' and active_slot is not null
-      do nothing
-    returning id
+      ${options.activeProjectLimit}
+    ) as id
   `;
-
-  if (!project) throw new Error("Active project limit reached.");
+  if (!project?.id) throw new Error(options.projectId ? "Project not found or active project limit reached." : "Active project limit reached.");
   return project.id as string;
 }
 

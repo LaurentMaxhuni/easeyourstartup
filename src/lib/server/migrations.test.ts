@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -91,6 +92,53 @@ describe.skipIf(!postgresBin)("fresh UUID identity migrations", () => {
     sql(`insert into neon_auth."user" values ('${id}')`);
     return { id, workspaceId: sql(`select public.ensure_workspace_for_user('${id}'::uuid, 'Lifecycle')`) };
   }
+
+  it("reuses a URL at the project limit and keeps scan jobs attached to that project", () => {
+    const account = createAccount();
+    const projectId = sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Product', 'https://Example.com/', 1)`);
+    expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Product', 'https://example.com/#about', 1)`)).toBe(projectId);
+    for (let index = 0; index < 2; index++) {
+      expect(sql(`select project_id from public.enqueue_scan_job('${account.workspaceId}', null, 'Product', 'https://example.com/', 1, '${randomUUID()}', 'url-scan-${index}', '${randomUUID()}')`)).toBe(projectId);
+    }
+    expect(sql(`select count(*) from public.projects where workspace_id='${account.workspaceId}'`)).toBe("1");
+    expect(sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Other', 'https://example.com/other', 1) is null`)).toBe("t");
+    const other = createAccount();
+    expect(sql(`select public.get_or_create_scan_project('${other.workspaceId}', '${projectId}', 'Product', 'https://example.com/', 1) is null`)).toBe("t");
+  });
+
+  it("reactivates an archived URL without replacing its saved project", () => {
+    const account = createAccount();
+    const projectId = sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Product', 'https://example.com/', 1)`);
+    sql(`update public.projects set status='archived', active_slot=null where id='${projectId}'`);
+    expect(sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Product', 'https://example.com/', 1)`)).toBe(projectId);
+    expect(sql(`select status from public.projects where id='${projectId}'`)).toBe("active");
+    expect(sql(`select public.project_url_key('https://EXAMPLE.com/launch/?v=1#intro')`)).toBe("https://example.com/launch?v=1");
+    expect(sql(`select public.project_url_key('https://example.com/a') <> public.project_url_key('https://example.com/A')`)).toBe("t");
+  });
+
+  it("serializes simultaneous scans of the same URL into one project", async () => {
+    const account = createAccount();
+    const run = promisify(execFile);
+    const query = `select public.get_or_create_scan_project('${account.workspaceId}', null, 'Product', 'https://concurrent.example/', 1)`;
+    const results = await Promise.all([0, 1].map(() => run(
+      join(postgresBin!, process.platform === "win32" ? "psql.exe" : "psql"),
+      ["-X", "-h", "127.0.0.1", "-p", process.env.TEST_POSTGRES_PORT ?? "55439",
+        "-U", process.env.TEST_POSTGRES_USER ?? "audit", "-d", databaseName,
+        "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", query],
+      { encoding: "utf8", windowsHide: true },
+    )));
+    expect(results[0].stdout.trim()).toMatch(/^[0-9a-f-]{36}$/);
+    expect(results[1].stdout.trim()).toBe(results[0].stdout.trim());
+    expect(sql(`select count(*) from public.projects where workspace_id='${account.workspaceId}'`)).toBe("1");
+  });
+
+  it("keeps an existing campaign's project when rescanning a legacy duplicate", () => {
+    const account = createAccount();
+    const original = sql(`select public.get_or_create_scan_project('${account.workspaceId}', null, 'Original', 'https://example.com/', 2)`);
+    sql(`insert into public.projects (workspace_id, name, public_url, active_slot) values ('${account.workspaceId}', 'Legacy duplicate', 'https://example.com/', 2)`);
+    expect(sql(`select public.get_or_create_scan_project('${account.workspaceId}', '${original}', 'Original', 'https://example.com/', 2)`)).toBe(original);
+  });
 
   it("blocks provider-side user deletion while its workspace has live billing", () => {
     const account = createAccount();

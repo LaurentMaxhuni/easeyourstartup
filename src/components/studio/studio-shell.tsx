@@ -824,6 +824,7 @@ export function StudioShell({
   }, [brand, campaignId, composition, draft, generation, hydrated, jobId, jobType, outputs, persistStudioState, projectId, scan, selectedCreativeId, startFresh, step]);
 
   const applyScanResult = useCallback((data: ScanResult, nextProjectId: string | null) => {
+    if (nextProjectId !== projectId) setCampaignId(null);
     setProjectId(nextProjectId);
     const withProjectCaptures = nextProjectId ? {
       ...data,
@@ -924,7 +925,7 @@ export function StudioShell({
         ? `/studio?projectId=${encodeURIComponent(nextProjectId)}`
         : "/studio");
     }
-  }, [startFresh]);
+  }, [projectId, startFresh]);
   applyScanResultRef.current = applyScanResult;
 
   const runScan = useCallback(async (url?: string) => {
