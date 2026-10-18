@@ -22,18 +22,18 @@
   color-scheme: light;
   --font-body: var(--font-outfit, "Segoe UI", sans-serif);
   --font-display-family: var(--font-outfit, "Segoe UI", sans-serif);
-  --canvas: #f7f8fc;
-  --surface: #eef1f7;
-  --surface-raised: #ffffff;
+  --canvas: #e8e7df;
+  --surface: #deded5;
+  --surface-raised: #efeee7;
   --ink: #172036;
-  --muted: #5f6b81;
-  --line: #dce2ed;
+  --muted: #596478;
+  --line: #c4c7bd;
   --accent: #365cf5;
   --accent-ink: #ffffff;
   --danger: #b3261e;
   --accent-halo: rgba(54, 92, 245, 0.12);
-  --scrollbar-thumb: #7a879e;
-  --scrollbar-hover: #5f6b81;
+  --scrollbar-thumb: #6e7a8d;
+  --scrollbar-hover: #515e71;
 }
 
 :root[data-theme="dark"] {
@@ -103,6 +103,18 @@
 html {
   scrollbar-gutter: stable;
   background: var(--canvas);
+}
+
+/* Keep the native scrollbar and gutter while Radix pauses Lenis scrolling. */
+html.lenis,
+html.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow-y: scroll;
+}
+
+/* Radix's injected compensation is redundant because the scrollbar stays put. */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  --removed-body-scroll-bar-size: 0px;
 }
 
 section[id] {
