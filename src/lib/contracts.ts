@@ -58,7 +58,7 @@ const brandEvidenceItemSchema = z.object({
 
 export type BrandEvidenceItem = z.infer<typeof brandEvidenceItemSchema>;
 
-export const productScreenshotCandidateSchema = z.object({
+const productScreenshotCandidateSchema = z.object({
   url: z.url(),
   sourceUrl: z.url(),
   alt: z.string().max(240),
