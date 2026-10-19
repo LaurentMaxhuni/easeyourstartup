@@ -468,8 +468,6 @@ export const creativeDesignPlanSchema = z.object({
   elements: z.array(creativeDesignElementSchema).min(1).max(32),
 });
 
-export type CreativeDesignPlan = z.infer<typeof creativeDesignPlanSchema>;
-
 export const creativeDesignResultSchema = z.object({
   theme: creativeDesignThemeSchema,
   elements: z.array(creativeElementSchema).min(1).max(32),
