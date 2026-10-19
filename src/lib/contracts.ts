@@ -331,9 +331,7 @@ export const creativeMockupDeviceSchema = z.enum([
   "tablet",
   "phone",
 ]);
-export type CreativeMockupDevice = z.infer<
-  typeof creativeMockupDeviceSchema
->;
+export type CreativeMockupDevice = "desktop" | "tablet" | "phone";
 
 export const creativeMockupsSchema = z.object({
   desktop: z.string().min(1),
