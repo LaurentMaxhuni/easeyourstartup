@@ -62,13 +62,25 @@ asset project with its own instructions, not the SaaS runtime.
   channels, export assets, clean up deleted private objects, and dispatch the job
   outbox. Jobs and outbox events persist in Postgres; usage is reserved atomically
   and released on failure. Generation requires an idempotency key.
+- Export API and worker share `compositionImageUrls`: validate images used by
+  the active canvas, not unused legacy mockups. Remote rendering needs a public
+  app origin; localhost cannot receive Browserless requests.
 - Project URL identity reuses projects; dashboard groups saved campaigns under
   their product. Migration `0027_project_url_identity.sql` implements this identity.
 - Studio snapshots use database revision checks plus device-local fallback.
   Preserve conflict handling and saved work when providers or sync fail.
+  The editor's own URL updates must not rehydrate an already loaded scope;
+  that can race autosave and reset its expected revision.
+- Server-rendered session reads use the SDK's read-only context; cookie updates
+  belong to `/api/auth`. Calling the writable Next.js auth adapter during page
+  rendering can throw when the provider refreshes or clears session cookies.
+- Loading cues use the local `LoadingIndicator` and `CampaignLoader` components,
+  with CSS motion gated by reduced-motion preferences. Thinking Orbs was removed.
 - V1 remains default. `GENERATION_VERSION=v2` marks newly queued campaigns;
   stored campaign input selects the worker's version. V2 runs strategy, platform
   copy, design planning, and review with at most one rewrite, then checks claims.
+  Initial and resumed generation map the reviewed V2 design plan into the canvas
+  through `resolveGeneratedCreativeDesign`, avoiding a redundant AI design call.
 - AI routing and structured responses live in `campaign-generator.ts`. Provider
   priority: NVIDIA NIM -> OpenRouter -> Groq -> legacy OpenAI settings. OpenAI
   uses Responses; the other configured providers use Chat Completions.

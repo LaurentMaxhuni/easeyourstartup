@@ -313,6 +313,10 @@ Send an `Idempotency-Key` header when the client has a stable operation ID.
 
 Exports render an immutable saved campaign revision through a short-lived,
 random database token. The composition itself is never embedded in a URL.
+The remote Browserless renderer must reach `NEXT_PUBLIC_APP_URL` over public
+HTTP/HTTPS on a standard port. A localhost app can scan and generate posts,
+but PNG/ZIP exports require a publicly reachable deployment with the same
+database and private storage configuration. Private destinations remain blocked.
 
 ## Commands
 
