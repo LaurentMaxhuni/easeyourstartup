@@ -79,7 +79,6 @@ export const campaignStrategySchema = z.object({
 });
 
 export type CampaignStrategy = z.infer<typeof campaignStrategySchema>;
-export type ApprovedClaimEvidence = z.infer<typeof approvedClaimEvidenceSchema>;
 export type CampaignStrategyInference = z.infer<
   typeof campaignStrategyInferenceSchema
 >;
