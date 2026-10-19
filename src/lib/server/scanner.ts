@@ -447,11 +447,17 @@ export function extractPage(html: string, url: string): ExtractedPage {
     .map(evidenceFromText)
     .filter((item): item is BrandEvidenceItem => Boolean(item))
     .slice(0, 8);
-  const cta =
-    $("a, button")
-      .map((_, element) => cleanText($(element).text()))
-      .get()
-      .find((text) => text.length >= 2 && text.length <= 80) ?? "";
+  const ctaCandidates = $("a, button").toArray().filter((element) => {
+    const node = $(element);
+    const text = cleanText(node.text());
+    const href = node.attr("href") ?? "";
+    return text.length >= 2 && text.length <= 80 &&
+      !node.closest("nav, footer, [hidden], [aria-hidden='true']").length &&
+      !/^#(?:main|content|skip)(?:[-_].*)?$/i.test(href) &&
+      !/^(?:skip\b|(?:open|close|toggle) menu\b|(?:accept|reject|manage|allow)(?: all)? cookies\b|cookie (?:settings|preferences)\b)/i.test(text);
+  });
+  const ctaElement = ctaCandidates.find((element) => $(element).closest("main").length) ?? ctaCandidates[0];
+  const cta = ctaElement ? cleanText($(ctaElement).text()) : "";
 
   const internalLinks = $("a[href]")
     .map((_, element) => {

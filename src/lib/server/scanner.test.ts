@@ -36,6 +36,29 @@ describe("website scanner extraction", () => {
     safeFetchTextMock.mockResolvedValue({ text: "", finalUrl: "" });
   });
 
+  it("chooses a product action instead of skip links and navigation", () => {
+    const page = extractPage(`
+      <a href="#main">Skip to content</a>
+      <nav><a href="/">Home</a><a href="/docs">Docs</a></nav>
+      <main id="main"><h1>Kitlane</h1><a href="/download">Download for Windows</a></main>
+    `, "https://example.com");
+    expect(page.cta).toBe("Download for Windows");
+  });
+
+  it("ignores hidden actions and cookie controls", () => {
+    const page = extractPage(`
+      <div hidden><button>Try the old version</button></div>
+      <button>Accept all cookies</button>
+      <main><button>Start free</button></main>
+    `, "https://example.com");
+    expect(page.cta).toBe("Start free");
+  });
+
+  it("does not turn navigation-only pages into campaign calls to action", () => {
+    const page = extractPage(`<nav><a href="/">Home</a><a href="/privacy">Privacy</a></nav>`, "https://example.com");
+    expect(page.cta).toBe("");
+  });
+
   it("deduplicates colors before applying the palette limit", () => {
     const repeatedColor = Array.from({ length: 24 }, () => "#111111").join(" ");
     const page = extractPage(
