@@ -81,6 +81,9 @@ asset project with its own instructions, not the SaaS runtime.
   copy, design planning, and review with at most one rewrite, then checks claims.
   Initial and resumed generation map the reviewed V2 design plan into the canvas
   through `resolveGeneratedCreativeDesign`, avoiding a redundant AI design call.
+  Canvas mapping flows text by content length, adapts to aspect ratio, and uses
+  abstract brand artwork when no real screenshot is supplied. Editor font sizes
+  scale with canvas width to match export typography; avoid screen-pixel floors.
 - AI routing and structured responses live in `campaign-generator.ts`. Provider
   priority: NVIDIA NIM -> OpenRouter -> Groq -> legacy OpenAI settings. OpenAI
   uses Responses; the other configured providers use Chat Completions.

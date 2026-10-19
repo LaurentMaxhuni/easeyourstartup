@@ -417,23 +417,11 @@ function renderTextElement(
   composition: CreativeComposition,
 ) {
   const isCta = element.textRole === "cta";
-  const minimumFontSize =
-    element.textRole === "headline"
-      ? 24
-      : element.textRole === "subheadline"
-        ? 15
-        : element.textRole === "body"
-          ? 12
-          : element.textRole === "cta"
-            ? 12
-            : element.textRole === "eyebrow"
-              ? 10
-              : 9;
   return (
     <div
       className={cn(
         "h-full w-full overflow-hidden whitespace-pre-wrap break-words",
-        isCta && "flex items-center justify-center whitespace-nowrap px-[5%]",
+        isCta && "flex items-center px-[5%]",
       )}
       style={{
         color:
@@ -442,7 +430,11 @@ function renderTextElement(
         backgroundColor: isCta
           ? element.fill ?? composition.tokens.foreground
           : "transparent",
-        fontSize: `max(${minimumFontSize}px, ${element.fontSize ?? 1.5}cqw)`,
+        // Scale the export's 8px floor with the canvas, not the screen viewport.
+        fontSize: `${Math.max(800 / composition.output.width, element.fontSize ?? 1.5)}cqw`,
+        justifyContent: isCta
+          ? element.align === "right" ? "flex-end" : element.align === "center" ? "center" : "flex-start"
+          : undefined,
         fontWeight: element.fontWeight ?? 450,
         lineHeight:
           element.lineHeight ??
