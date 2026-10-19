@@ -25,7 +25,7 @@ export const campaignKindSchema = z.enum([
 
 export type CampaignKind = z.infer<typeof campaignKindSchema>;
 
-export const brandClaimSchema = z.object({
+const brandClaimSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1).max(400),
   sourceUrl: z.url(),
