@@ -16,7 +16,7 @@ import type { CampaignStrategy } from "./strategy-schema";
 
 const reviewScoreSchema = z.number().int().min(0).max(100);
 
-export const campaignGenerationScoresSchema = z.object({
+const campaignGenerationScoresSchema = z.object({
   specificity: reviewScoreSchema,
   factualAccuracy: reviewScoreSchema,
   brandFit: reviewScoreSchema,
