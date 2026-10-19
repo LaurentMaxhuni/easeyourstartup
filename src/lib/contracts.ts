@@ -531,7 +531,7 @@ export type CreativeDesignGeneration = z.infer<
   typeof creativeDesignGenerationSchema
 >;
 
-export const creativeDesignBrandSchema = brandProfileSchema.pick({
+const creativeDesignBrandSchema = brandProfileSchema.pick({
   projectName: true,
   tagline: true,
   voice: true,
