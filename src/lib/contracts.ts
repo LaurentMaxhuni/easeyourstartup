@@ -325,8 +325,6 @@ export type CreativeRewriteInput = z.infer<typeof creativeRewriteSchema>;
 export const creativeRewriteResultSchema = z.object({
   text: z.string().min(1).max(1000),
 });
-export type CreativeRewriteResult = z.infer<typeof creativeRewriteResultSchema>;
-
 export const creativeImageModeSchema = z.enum(["single", "devices"]);
 export type CreativeImageMode = z.infer<typeof creativeImageModeSchema>;
 
