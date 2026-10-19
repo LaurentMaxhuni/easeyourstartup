@@ -252,8 +252,6 @@ export const creativeElementEffectSchema = z.enum([
   "drift",
   "rise",
 ]);
-export type CreativeElementEffect = z.infer<typeof creativeElementEffectSchema>;
-
 export const creativeElementEffectTriggerSchema = z.enum([
   "always",
   "hover",
