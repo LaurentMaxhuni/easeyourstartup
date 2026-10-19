@@ -253,7 +253,7 @@ export const creativeElementShadowSchema = z.enum([
   "lift",
   "glow",
 ]);
-export const creativeTextRoleSchema = z.enum([
+const creativeTextRoleSchema = z.enum([
   "eyebrow",
   "headline",
   "subheadline",
