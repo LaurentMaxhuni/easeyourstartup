@@ -565,7 +565,7 @@ const studioStepSchema = z.enum([
   "creative",
 ]);
 
-export const studioDraftSchema = z.object({
+const studioDraftSchema = z.object({
   kind: campaignKindSchema,
   goal: z.string().max(500),
   updateDetails: z.string().max(2000),
