@@ -348,8 +348,6 @@ export const creativeLayoutSchema = z.enum([
   "feature",
 ]);
 
-export type CreativeLayout = z.infer<typeof creativeLayoutSchema>;
-
 export const creativeDirectionSchema = z.object({
   id: z.string().min(1).max(64),
   label: z.string().min(1).max(80),
