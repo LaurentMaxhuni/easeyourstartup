@@ -318,7 +318,7 @@ export const creativeRewriteResultSchema = z.object({
 export const creativeImageModeSchema = z.enum(["single", "devices"]);
 export type CreativeMockupDevice = "desktop" | "tablet" | "phone";
 
-export const creativeMockupsSchema = z.object({
+const creativeMockupsSchema = z.object({
   desktop: z.string().min(1),
   tablet: z.string().min(1),
   phone: z.string().min(1),
