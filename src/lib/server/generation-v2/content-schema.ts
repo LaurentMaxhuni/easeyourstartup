@@ -17,4 +17,3 @@ export function platformCopyResponseSchema(channel?: Channel) {
 
 export const platformCopyFeedbackSchema = z.string().trim().min(1).max(2000);
 
-export const platformCopyChannelSchema = channelSchema;
