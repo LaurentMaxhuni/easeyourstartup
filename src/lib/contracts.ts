@@ -538,8 +538,6 @@ export const generateJobResultSchema = z.object({
   generation: generationResultSchema,
 });
 
-export type GenerateJobResult = z.infer<typeof generateJobResultSchema>;
-
 export const creativeDesignGenerationSchema = z.object({
   design: creativeDesignResultSchema,
   provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "compatible"]),
