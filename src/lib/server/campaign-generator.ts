@@ -410,7 +410,7 @@ export function getOpenAIProviderConfig(
   };
 }
 
-export type OpenAIProvider = "responses" | "chat";
+type OpenAIProvider = "responses" | "chat";
 export type AiProvider =
   | "groq"
   | "nvidia-nim"
