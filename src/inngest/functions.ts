@@ -404,7 +404,7 @@ function withStoredAssetUrls(
   };
 }
 
-export const exportCampaignAssets = inngest.createFunction(
+const exportCampaignAssets = inngest.createFunction(
   {
     id: "export-campaign-assets",
     retries: 2,
