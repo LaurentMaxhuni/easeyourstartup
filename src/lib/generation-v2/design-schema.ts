@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { creativeLayoutSchema } from "@/lib/contracts";
 
-export const campaignDesignComponentKindSchema = z.enum([
+const campaignDesignComponentKindSchema = z.enum([
   "cover",
   "problem",
   "solution",
