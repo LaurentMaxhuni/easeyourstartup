@@ -227,7 +227,7 @@ export const creativeGraphicSchema = z.enum([
 
 export type CreativeGraphic = z.infer<typeof creativeGraphicSchema>;
 
-export const creativeElementKindSchema = z.enum([
+const creativeElementKindSchema = z.enum([
   "text",
   "image",
   "shape",
