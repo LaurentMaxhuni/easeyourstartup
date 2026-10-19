@@ -316,11 +316,6 @@ export const creativeRewriteResultSchema = z.object({
   text: z.string().min(1).max(1000),
 });
 export const creativeImageModeSchema = z.enum(["single", "devices"]);
-export const creativeMockupDeviceSchema = z.enum([
-  "desktop",
-  "tablet",
-  "phone",
-]);
 export type CreativeMockupDevice = "desktop" | "tablet" | "phone";
 
 export const creativeMockupsSchema = z.object({
