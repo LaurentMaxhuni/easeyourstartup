@@ -8,7 +8,7 @@ import {
 import { PLAN_LIMITS, type Plan } from "@/lib/entitlements";
 import { getUsageWindow } from "@/lib/usage-window";
 
-export function isLocalTestMode() {
+function isLocalTestMode() {
   if (
     process.env.NODE_ENV === "production" ||
     process.env.EASEYOURSTARTUP_TEST_MODE?.trim().toLowerCase() !== "true"
