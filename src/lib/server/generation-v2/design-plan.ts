@@ -62,7 +62,7 @@ const graphicByKind: Record<CampaignDesignComponentKind, CreativeDirection["grap
   cta: "orbit",
 };
 
-export class CampaignDesignPlanningError extends Error {
+class CampaignDesignPlanningError extends Error {
   readonly recoverable = true;
 
   constructor(message: string, options?: ErrorOptions) {
