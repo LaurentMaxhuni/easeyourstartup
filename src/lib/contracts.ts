@@ -25,16 +25,6 @@ export const campaignKindSchema = z.enum([
 
 export type CampaignKind = z.infer<typeof campaignKindSchema>;
 
-export const jobStatusSchema = z.enum([
-  "queued",
-  "scanning",
-  "analyzing",
-  "generating",
-  "rendering",
-  "completed",
-  "failed",
-]);
-
 export const brandClaimSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1).max(400),
