@@ -406,7 +406,7 @@ const creativeDesignAssetSchema = z.enum([
   "brand-image",
 ]);
 
-export const creativeDesignAssetRefSchema = z.union([
+const creativeDesignAssetRefSchema = z.union([
   creativeDesignAssetSchema,
   z.string().regex(/^product-screenshot-(?:[1-9]|1[0-6])$/),
   z.string().regex(/^existing-image-(?:[1-9]|[1-3][0-9]|40)$/),
