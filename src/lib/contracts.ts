@@ -257,10 +257,6 @@ export const creativeElementEffectTriggerSchema = z.enum([
   "hover",
   "click",
 ]);
-export type CreativeElementEffectTrigger = z.infer<
-  typeof creativeElementEffectTriggerSchema
->;
-
 export const creativeElementShadowSchema = z.enum([
   "none",
   "soft",
