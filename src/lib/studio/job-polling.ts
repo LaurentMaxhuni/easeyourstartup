@@ -14,7 +14,7 @@ const JOB_STATUS_RETRY_DELAY_MS = 5_000;
 const JOB_STATUS_MAX_RETRY_DELAY_MS = 60_000;
 const RETRYABLE_JOB_STATUS_CODES = new Set([429, 502, 503, 504]);
 
-export class DurableJobPollingError extends Error {
+class DurableJobPollingError extends Error {
   constructor(message: string, readonly retryable: boolean) {
     super(message);
     this.name = "DurableJobPollingError";
