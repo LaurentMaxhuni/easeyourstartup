@@ -177,8 +177,6 @@ export const claimCurationResultSchema = z.object({
   keptClaimIds: z.array(z.string().min(1).max(80)).max(30),
 });
 
-export type ClaimCurationResult = z.infer<typeof claimCurationResultSchema>;
-
 export const narrativeAngleSchema = z.object({
   id: z.string().min(1).max(64),
   title: z.string().min(1).max(120),
