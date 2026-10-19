@@ -68,7 +68,7 @@ export type ProductScreenshotCandidate = z.infer<
   typeof productScreenshotCandidateSchema
 >;
 
-export const brandFontAssetSchema = z.object({
+const brandFontAssetSchema = z.object({
   family: z.string().min(1).max(80),
   url: z.url(),
   weight: z.string().regex(/^(?:normal|bold|[1-9]00|[1-9]00\s+[1-9]00)$/),
