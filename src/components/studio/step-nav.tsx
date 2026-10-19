@@ -5,7 +5,7 @@ import {
 } from "@/lib/studio-flow";
 import { cn } from "@/lib/utils";
 
-export const STUDIO_STEPS = STUDIO_STAGES;
+const STUDIO_STEPS = STUDIO_STAGES;
 
 export type StudioStep = StudioStageId;
 
