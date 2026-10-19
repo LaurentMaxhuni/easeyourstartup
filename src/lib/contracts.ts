@@ -50,7 +50,7 @@ const brandVisualSystemSchema = z.object({
 
 export type BrandVisualSystem = z.infer<typeof brandVisualSystemSchema>;
 
-export const brandEvidenceItemSchema = z.object({
+const brandEvidenceItemSchema = z.object({
   text: z.string().min(1).max(400),
   sourceUrl: z.url(),
   sourceExcerpt: z.string().min(1).max(1200),
