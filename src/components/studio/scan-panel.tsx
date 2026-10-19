@@ -5,7 +5,8 @@ import {
   ArrowRight,
   GlobeSimple,
 } from "@phosphor-icons/react";
-import { ThinkingOrb } from "thinking-orbs";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { CampaignLoader } from "@/components/ui/campaign-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ScanResult } from "@/lib/contracts";
@@ -72,7 +73,7 @@ export function ScanPanel({
               disabled={status === "loading"}
             >
               {status === "loading" ? (
-                <ThinkingOrb state="searching" size={20} aria-hidden="true" />
+                <LoadingIndicator size="sm" />
               ) : (
                 <ArrowRight size={18} />
               )}
@@ -88,9 +89,9 @@ export function ScanPanel({
             </p>
           )}
           {status === "loading" && (
-            <div role="status" aria-live="polite" className="mt-5 flex items-center gap-4 rounded-control border border-accent/30 bg-accent/10 p-4">
-              <ThinkingOrb className="shrink-0" state="searching" size={64} aria-hidden="true" />
-              <div>
+            <div role="status" aria-live="polite" className="mt-5 flex flex-col items-center gap-2 rounded-control border border-line bg-canvas/50 p-5 text-center">
+              <CampaignLoader activity="scanning" />
+              <div className="pb-1">
                 <p className="text-sm font-semibold">Reading your public site</p>
                 <p className="mt-1 text-xs leading-5 text-muted">
                   Finding pages, brand colors, source claims, and real images.

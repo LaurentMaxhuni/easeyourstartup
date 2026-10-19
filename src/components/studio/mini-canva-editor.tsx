@@ -41,7 +41,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Select } from "@/components/ui/select";
-import { ThinkingOrb } from "thinking-orbs";
 import {
   creativeElementEffectSchema,
   creativeElementShadowSchema,
@@ -1488,7 +1487,7 @@ export function MiniCanvaEditor({
               <p className="font-semibold">
                 <span className="flex items-center gap-2">
                   {effectiveAutoDesignStatus === "loading" && (
-                    <ThinkingOrb state="shaping" size={20} aria-hidden="true" />
+                    <LoadingIndicator size="sm" />
                   )}
                   {canvasSourceLabel(effectiveAutoDesignStatus, generationProvider)}
                 </span>
@@ -1513,7 +1512,7 @@ export function MiniCanvaEditor({
             onClick={() => void designEntireCanvas()}
             disabled={designStatus === "loading"}
           >
-            {designStatus === "loading" ? <ThinkingOrb state="shaping" size={20} aria-hidden="true" /> : <Sparkle size={16} />}
+            {designStatus === "loading" ? <LoadingIndicator size="sm" /> : <Sparkle size={16} />}
             {designStatus === "loading" ? "Designing canvas" : "Design entire canvas"}
           </Button>
           {designError && (
@@ -1570,7 +1569,7 @@ export function MiniCanvaEditor({
                 onClick={() => void rewriteSelectedText()}
                 disabled={aiStatus === "loading"}
               >
-                {aiStatus === "loading" ? <ThinkingOrb state="composing" size={20} aria-hidden="true" /> : <Sparkle size={16} />}
+                {aiStatus === "loading" ? <LoadingIndicator size="sm" /> : <Sparkle size={16} />}
                 {aiStatus === "loading" ? "Rewriting" : "Rewrite with AI"}
               </Button>
               {aiError && (

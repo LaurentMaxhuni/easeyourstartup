@@ -78,9 +78,6 @@ importers:
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.6.0
-      thinking-orbs:
-        specifier: 0.3.1
-        version: 0.3.1(react@19.2.8)
       undici:
         specifier: 7.29.1
         version: 7.29.1
@@ -4654,11 +4651,6 @@ packages:
 
   temporal-spec@0.2.4:
     resolution: {integrity: sha512-lDMFv4nKQrSjlkHKAlHVqKrBG4DyFfa9F74cmBZ3Iy3ed8yvWnlWSIdi4IKfSqwmazAohBNwiN64qGx4y5Q3IQ==}
-
-  thinking-orbs@0.3.1:
-    resolution: {integrity: sha512-3BG1aeB1RUTxItCml/BBuIz5JRM4kZqGuyx+vouv0fXTtcR9ZNoKjWGneHPx94y74GxgArwJZ1qbJR5dt54kSw==}
-    peerDependencies:
-      react: '>=18.0.0'
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
@@ -9892,10 +9884,6 @@ snapshots:
       temporal-spec: 0.2.4
 
   temporal-spec@0.2.4: {}
-
-  thinking-orbs@0.3.1(react@19.2.8):
-    dependencies:
-      react: 19.2.8
 
   tinybench@2.9.0: {}
 

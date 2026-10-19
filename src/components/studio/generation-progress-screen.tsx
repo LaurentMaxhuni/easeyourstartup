@@ -3,9 +3,9 @@
 import { Check } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ThinkingOrb } from "thinking-orbs";
 import { LogoMark } from "@/components/logo";
-import { generationOrbState, type GenerationScreenStage } from "@/lib/studio/generation-progress";
+import { CampaignLoader } from "@/components/ui/campaign-loader";
+import type { GenerationScreenStage } from "@/lib/studio/generation-progress";
 
 export type { GenerationScreenStage } from "@/lib/studio/generation-progress";
 
@@ -31,7 +31,6 @@ export function GenerationProgressScreen({
     : stage === "writing"
       ? 1
       : 2;
-  const orbState = generationOrbState(stage, elapsedSeconds);
   const activityLabel = stage === "visuals"
     ? "Creating your visual"
     : stage === "writing"
@@ -72,19 +71,7 @@ export function GenerationProgressScreen({
           aria-live="polite"
           className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center py-4 text-center sm:py-12"
         >
-          <div className="relative mb-4 grid size-40 place-items-center sm:mb-9 sm:size-64" aria-hidden="true">
-            <div className="absolute size-40 rounded-full bg-accent/15 blur-3xl" />
-            <div className="absolute size-44 rounded-full border border-accent/15 motion-safe:animate-[spin_24s_linear_infinite]" />
-            <div className="absolute size-32 rounded-full border border-dashed border-accent/20 motion-safe:animate-[spin_32s_linear_infinite_reverse]" />
-            <ThinkingOrb
-              className="relative z-10"
-              state={orbState}
-              size={64}
-              style={{ transform: "scale(2)" }}
-              data-generation-orb={orbState}
-              aria-hidden="true"
-            />
-          </div>
+          <CampaignLoader activity={stage} className="mb-5 sm:mb-9" />
 
           <p className="text-sm font-medium text-accent">{activityLabel}</p>
           <h1 className="mt-3 text-balance text-3xl font-semibold sm:text-4xl">
