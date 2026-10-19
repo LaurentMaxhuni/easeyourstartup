@@ -427,8 +427,6 @@ export const creativeDesignAssetRefSchema = z.union([
   z.string().regex(/^existing-image-(?:[1-9]|[1-3][0-9]|40)$/),
 ]);
 
-export type CreativeDesignAsset = z.infer<typeof creativeDesignAssetRefSchema>;
-
 const creativeDesignElementBaseSchema = creativeElementSchema.omit({ src: true });
 
 export const creativeDesignElementSchema = z.discriminatedUnion("kind", [
