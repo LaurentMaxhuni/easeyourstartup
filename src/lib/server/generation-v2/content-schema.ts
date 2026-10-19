@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { channelOutputSchema, channelSchema, type Channel } from "@/lib/contracts";
+import { channelOutputSchema, type Channel } from "@/lib/contracts";
 
 const platformCopyFieldsSchema = channelOutputSchema.omit({
   channel: true,
@@ -16,4 +16,3 @@ export function platformCopyResponseSchema(channel?: Channel) {
 }
 
 export const platformCopyFeedbackSchema = z.string().trim().min(1).max(2000);
-
