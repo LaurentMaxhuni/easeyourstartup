@@ -414,7 +414,7 @@ const creativeDesignAssetRefSchema = z.union([
 
 const creativeDesignElementBaseSchema = creativeElementSchema.omit({ src: true });
 
-export const creativeDesignElementSchema = z.discriminatedUnion("kind", [
+const creativeDesignElementSchema = z.discriminatedUnion("kind", [
   creativeDesignElementBaseSchema.extend({
     kind: z.literal("text"),
     textRole: creativeTextRoleSchema,
