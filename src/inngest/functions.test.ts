@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   generateCampaignV2: vi.fn(),
   analyzeBrandIntelligence: vi.fn(),
   inngestSend: vi.fn(),
+  captureCompositionPng: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -38,7 +39,7 @@ vi.mock("@/lib/server/object-storage", () => ({
   putPrivateObject: vi.fn(),
 }));
 
-vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: vi.fn() }));
+vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: mocks.captureCompositionPng }));
 
 vi.mock("@/lib/server/campaign-generator", () => ({
   generateCampaign: mocks.generateCampaign,
@@ -57,10 +58,11 @@ vi.mock("@/lib/server/brand-intelligence", () => ({
 import {
   dispatchJobOutbox,
   generateCampaignAssets,
+  inngestFunctions,
   parseStoredGenerationInput,
   scanProject,
 } from "@/inngest/functions";
-import { DEMO_ANGLES, DEMO_BRAND } from "@/lib/demo-data";
+import { DEMO_ANGLES, DEMO_BRAND, DEMO_COMPOSITION } from "@/lib/demo-data";
 
 type RegisteredFunction = {
   config: {
@@ -114,6 +116,39 @@ describe("stored campaign generator version", () => {
 type DispatchFunction = {
   handler: (input: { step: { run: (name: string, callback: () => Promise<unknown>) => Promise<unknown> } }) => Promise<unknown>;
 };
+
+describe("queued export image validation", () => {
+  it.each([false, true])("validates only rendered images (active external image: %s)", async (activeImage) => {
+    const { database } = recordingDatabase();
+    mocks.requireDatabase.mockReturnValue(database);
+    mocks.captureCompositionPng.mockRejectedValueOnce(new Error("render reached"));
+    const request = {
+      format: "png", projectId: "project", campaignId: "campaign", revision: 1,
+      requestedBy: "user", watermarked: false,
+      state: {
+        projectId: "project", campaignId: "campaign", brand: DEMO_BRAND,
+        scan: {}, generation: {}, outputs: [{}],
+        composition: {
+          ...DEMO_COMPOSITION, designSource: "ai",
+          screenshotUrl: "https://example.com/unused.png",
+          elements: activeImage ? [{ kind: "image", src: "https://example.com/active.png" }] : [],
+        },
+      },
+    };
+    const worker = inngestFunctions.find((entry) =>
+      (entry as unknown as { config: { id: string } }).config.id === "export-campaign-assets",
+    ) as unknown as {
+      handler: (input: { event: unknown; step: unknown }) => Promise<unknown>;
+    };
+    await expect(worker.handler({
+      event: { data: { jobId: "job", workspaceId: "workspace" } },
+      step: { run: (name: string, callback: () => Promise<unknown>) =>
+        name === "load-saved-export-revision" ? Promise.resolve(request) : callback() },
+    })).rejects.toThrow(activeImage
+      ? "Replace embedded or external screenshots"
+      : "render reached");
+  });
+});
 
 describe("durable job failure cleanup", () => {
   it("caps campaign generation at 15 minutes", () => {

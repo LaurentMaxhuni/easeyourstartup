@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/object-storage";
 import { captureCompositionPng } from "@/lib/server/browserless";
 import { buildLaunchKitFiles } from "@/lib/launch-kit";
+import { compositionImageUrls } from "@/lib/studio-export";
 import { absoluteUrl } from "@/lib/utils";
 import {
   serializeGenerateJobResult,
@@ -370,18 +371,6 @@ function storedAssetId(value: string) {
   }
 }
 
-function imageUrls(composition: ReturnType<typeof studioStateSchema.parse>["composition"]) {
-  return [
-    composition.screenshotUrl,
-    composition.mockups.desktop,
-    composition.mockups.tablet,
-    composition.mockups.phone,
-    ...(composition.elements ?? []).flatMap((element) =>
-      element.kind === "image" && element.src ? [element.src] : [],
-    ),
-  ];
-}
-
 function withStoredAssetUrls(
   composition: ReturnType<typeof studioStateSchema.parse>["composition"],
   urls: Map<string, string>,
@@ -469,7 +458,7 @@ const exportCampaignAssets = inngest.createFunction(
         throw new Error("The saved campaign is incomplete.");
       }
 
-      const ids = imageUrls(state.composition).map(storedAssetId);
+      const ids = compositionImageUrls(state.composition).map(storedAssetId);
       if (ids.some((id) => id === null)) {
         throw new Error("Replace embedded or external screenshots with a saved project image before exporting.");
       }
