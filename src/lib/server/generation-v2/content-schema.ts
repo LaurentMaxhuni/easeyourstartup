@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { channelOutputSchema, channelSchema, type Channel } from "@/lib/contracts";
 
-export const platformCopyFieldsSchema = channelOutputSchema.omit({
+const platformCopyFieldsSchema = channelOutputSchema.omit({
   channel: true,
   cta: true,
   associatedCreativeIds: true,
