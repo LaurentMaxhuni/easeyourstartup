@@ -11,11 +11,3 @@ export function absoluteUrl(path: string) {
     "http://localhost:3000";
   return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
 }
-
-export function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
