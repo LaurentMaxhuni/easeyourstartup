@@ -7,7 +7,7 @@ const ONBOARDING_ROLES = [
   "other",
 ] as const;
 
-export const ONBOARDING_GOALS = [
+const ONBOARDING_GOALS = [
   "new_product",
   "product_update",
   "waitlist",
