@@ -338,8 +338,6 @@ export const creativeMockupsSchema = z.object({
   tablet: z.string().min(1),
   phone: z.string().min(1),
 });
-export type CreativeMockups = z.infer<typeof creativeMockupsSchema>;
-
 export const creativeLayoutSchema = z.enum([
   "browser",
   "phone",
