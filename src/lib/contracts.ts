@@ -35,8 +35,6 @@ export const jobStatusSchema = z.enum([
   "failed",
 ]);
 
-export type JobStatus = z.infer<typeof jobStatusSchema>;
-
 export const brandClaimSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1).max(400),
