@@ -244,8 +244,6 @@ export const creativeElementKindSchema = z.enum([
   "gradient",
   "icon",
 ]);
-export type CreativeElementKind = z.infer<typeof creativeElementKindSchema>;
-
 export const creativeElementEffectSchema = z.enum([
   "none",
   "float",
