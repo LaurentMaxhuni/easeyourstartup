@@ -440,7 +440,7 @@ const creativeDesignElementSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const creativeDesignThemeSchema = z.object({
+const creativeDesignThemeSchema = z.object({
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
