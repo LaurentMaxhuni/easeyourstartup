@@ -396,7 +396,7 @@ export const creativeCompositionSchema = z.object({
 
 export type CreativeComposition = z.infer<typeof creativeCompositionSchema>;
 
-export const creativeDesignAssetSchema = z.enum([
+const creativeDesignAssetSchema = z.enum([
   "primary",
   "desktop",
   "tablet",
