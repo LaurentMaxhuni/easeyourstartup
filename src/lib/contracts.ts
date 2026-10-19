@@ -534,8 +534,6 @@ export const scanJobResultSchema = z.object({
   scan: scanResultSchema,
 });
 
-export type ScanJobResult = z.infer<typeof scanJobResultSchema>;
-
 export const generateJobResultSchema = z.object({
   generation: generationResultSchema,
 });
