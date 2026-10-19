@@ -1,4 +1,4 @@
-export const NEON_AUTH_SESSION_VERIFIER_PARAM =
+const NEON_AUTH_SESSION_VERIFIER_PARAM =
   "neon_auth_session_verifier";
 
 export type AuthenticationNavigation = Pick<Location, "assign">;
