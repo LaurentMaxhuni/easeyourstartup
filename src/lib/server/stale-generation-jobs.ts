@@ -3,7 +3,7 @@ import "server-only";
 import type { DatabaseClient } from "@/lib/server/database";
 
 export const STALE_GENERATION_AFTER = "20 minutes";
-export const STALE_GENERATION_ERROR =
+const STALE_GENERATION_ERROR =
   "Generation stopped after 20 minutes without a result. Try generating this campaign again.";
 
 export async function failStaleGenerationJobs(
