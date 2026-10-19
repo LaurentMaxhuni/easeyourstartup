@@ -4,8 +4,12 @@ import {
   createNeonAuth,
   type NeonAuth,
 } from "@neondatabase/auth/next/server";
+import { createAuthServer, extractNeonAuthCookies, validateCookieConfig } from "@neondatabase/auth/server";
+import { headers } from "next/headers";
 
 let cachedAuth: NeonAuth | null | undefined;
+type SessionReader = Pick<NeonAuth, "getSession">;
+let cachedSessionReader: SessionReader | null | undefined;
 const AUTH_RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 const RETRYABLE_AUTH_STATUSES = new Set([502, 503, 504]);
 const RETRYABLE_NETWORK_CODES = new Set([
@@ -83,7 +87,32 @@ export function getNeonAuth(): NeonAuth | null {
   return cachedAuth;
 }
 
-async function getSessionWithTransientRetry(auth: NeonAuth) {
+function getSessionReader(): SessionReader | null {
+  if (cachedSessionReader !== undefined) return cachedSessionReader;
+  const baseUrl = process.env.NEON_AUTH_BASE_URL;
+  const cookieSecret = process.env.NEON_AUTH_COOKIE_SECRET;
+  if (!baseUrl || !cookieSecret) return (cachedSessionReader = null);
+  validateCookieConfig({ secret: cookieSecret });
+
+  cachedSessionReader = createAuthServer({
+    baseUrl,
+    cookieSecret,
+    context: async () => {
+      const requestHeaders = await headers();
+      return {
+        getCookies: () => extractNeonAuthCookies(requestHeaders),
+        // Page rendering is read-only. /api/auth owns browser cookie updates.
+        setCookie: () => {},
+        getHeader: (name) => requestHeaders.get(name),
+        getOrigin: () => requestHeaders.get("origin") || requestHeaders.get("referer")?.split("/").slice(0, 3).join("/") || "",
+        getFramework: () => "nextjs",
+      };
+    },
+  });
+  return cachedSessionReader;
+}
+
+async function getSessionWithTransientRetry(auth: SessionReader) {
   for (let attempt = 0; ; attempt += 1) {
     let result;
     try {
@@ -136,7 +165,7 @@ async function getSessionWithTransientRetry(auth: NeonAuth) {
 }
 
 async function getCurrentSession() {
-  const auth = getNeonAuth();
+  const auth = getSessionReader();
   if (!auth) return null;
 
   const { data, error } = await getSessionWithTransientRetry(auth);
@@ -177,7 +206,7 @@ export class AuthenticationRequiredError extends Error {
 }
 
 export async function getAuthenticatedUser(): Promise<AuthenticationCheck> {
-  const auth = getNeonAuth();
+  const auth = getSessionReader();
   if (!auth) return authenticationUnavailable();
 
   try {

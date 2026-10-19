@@ -9,6 +9,11 @@ vi.mock("server-only", () => ({}));
 vi.mock("@neondatabase/auth/next/server", () => ({
   createNeonAuth: mocks.createNeonAuth,
 }));
+vi.mock("@neondatabase/auth/server", () => ({
+  createAuthServer: () => ({ getSession: mocks.getSession }),
+  extractNeonAuthCookies: (headers: Headers) => headers.get("cookie") || "",
+  validateCookieConfig: vi.fn(),
+}));
 
 import { getAuthenticatedUser } from "./server";
 
