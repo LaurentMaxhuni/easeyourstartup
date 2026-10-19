@@ -350,7 +350,7 @@ export const creativeDirectionSchema = z.object({
 
 export type CreativeDirection = z.infer<typeof creativeDirectionSchema>;
 
-export const screenshotCropSchema = z.object({
+const screenshotCropSchema = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
   width: z.number().positive().max(100),
