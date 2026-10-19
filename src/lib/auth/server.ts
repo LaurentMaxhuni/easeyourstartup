@@ -135,7 +135,7 @@ async function getSessionWithTransientRetry(auth: NeonAuth) {
   }
 }
 
-export async function getCurrentSession() {
+async function getCurrentSession() {
   const auth = getNeonAuth();
   if (!auth) return null;
 
