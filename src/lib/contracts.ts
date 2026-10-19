@@ -124,7 +124,7 @@ export const brandProfileSchema = z.object({
 
 export type BrandProfile = z.infer<typeof brandProfileSchema>;
 
-export const sourcePageSchema = z.object({
+const sourcePageSchema = z.object({
   url: z.url(),
   title: z.string().max(240),
   excerpt: z.string().max(1200),
