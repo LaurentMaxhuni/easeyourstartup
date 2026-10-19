@@ -10,6 +10,26 @@ const plan = campaignDesignPlanSchema.parse({
 });
 
 describe("reviewed campaign canvas", () => {
+  it("groups supporting copy with its headline and sizes a short CTA to its label", () => {
+    const design = campaignDesignPlanToCanvas(plan, DEMO_COMPOSITION, DEMO_BRAND);
+    const headline = design.elements.find((element) => element.textRole === "headline")!;
+    const supporting = design.elements.find((element) => element.textRole === "subheadline")!;
+    const cta = design.elements.find((element) => element.textRole === "cta")!;
+    expect(supporting.y - (headline.y + headline.height)).toBeLessThanOrEqual(4);
+    expect(cta.width).toBeLessThan(45);
+    expect(design.elements.filter((element) => element.kind === "shape" && element.height > 12).length).toBeGreaterThan(1);
+  });
+
+  it.each([{ width: 1200, height: 1500 }, { width: 1080, height: 1080 }, { width: 1920, height: 1080 }])("fits dense reviewed copy at $width × $height", (output) => {
+    const component = { ...plan.components[0], headline: "Long reviewed headline ".repeat(7).slice(0, 180), supportingCopy: "Supporting detail ".repeat(19).slice(0, 320), body: "Useful product context ".repeat(24).slice(0, 520), cta: "Read the complete announcement and see everything included in this release" };
+    const design = campaignDesignPlanToCanvas({ ...plan, components: [component] }, { ...DEMO_COMPOSITION, output }, DEMO_BRAND);
+    const texts = design.elements.filter((element) => element.kind === "text");
+    expect(texts.map((element) => element.text)).toContain(component.body);
+    expect(design.elements.every((element) => element.x + element.width <= 100 && element.y + element.height <= 100)).toBe(true);
+    texts.forEach((element, index) => {
+      for (const next of texts.slice(index + 1)) expect(element.y + element.height <= next.y || next.y + next.height <= element.y || element.x + element.width <= next.x || next.x + next.width <= element.x).toBe(true);
+    });
+  });
   it("uses the reviewed V2 plan for the initial canvas without another design request", () => {
     const design = resolveGeneratedCreativeDesign(
       { generationV2: { designPlan: plan } }, DEMO_COMPOSITION, DEMO_BRAND, "cover",
