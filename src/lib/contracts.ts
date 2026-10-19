@@ -36,7 +36,7 @@ const brandClaimSchema = z.object({
 
 export type BrandClaim = z.infer<typeof brandClaimSchema>;
 
-export const brandVisualSystemSchema = z.object({
+const brandVisualSystemSchema = z.object({
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   foregroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
