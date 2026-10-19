@@ -580,8 +580,6 @@ export const studioStepSchema = z.enum([
   "creative",
 ]);
 
-export type StudioStep = z.infer<typeof studioStepSchema>;
-
 export const studioDraftSchema = z.object({
   kind: campaignKindSchema,
   goal: z.string().max(500),
