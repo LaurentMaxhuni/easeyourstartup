@@ -19,7 +19,7 @@ const strategyBriefSchema = z.object({
   channels: z.array(channelSchema).min(1).max(9),
 });
 
-export const campaignStrategyInferenceSchema = z.object({
+const campaignStrategyInferenceSchema = z.object({
   positioning: z.string().min(1).max(500),
   audienceInsight: z.string().min(1).max(500),
   narrativeArc: z.object({
