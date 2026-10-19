@@ -263,7 +263,7 @@ const creativeTextRoleSchema = z.enum([
 ]);
 export type CreativeTextRole = z.infer<typeof creativeTextRoleSchema>;
 
-export const creativeElementSchema = z.object({
+const creativeElementSchema = z.object({
   id: z.string().min(1).max(80),
   kind: creativeElementKindSchema,
   x: z.number().min(0).max(100),
