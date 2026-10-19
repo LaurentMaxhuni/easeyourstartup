@@ -72,7 +72,7 @@ export type UnsupportedClaimLink = {
  * is below 80, any craft score is below 55, or the reviewer flags a claim.
  * Invalid claim links are independently deterministic and always require a rewrite.
  */
-export const CAMPAIGN_REWRITE_THRESHOLDS = {
+const CAMPAIGN_REWRITE_THRESHOLDS = {
   average: 70,
   factualAccuracy: 80,
   individualCraftScore: 55,
