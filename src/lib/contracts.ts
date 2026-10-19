@@ -132,7 +132,7 @@ const sourcePageSchema = z.object({
 
 export type SourcePage = z.infer<typeof sourcePageSchema>;
 
-export const readinessFindingSchema = z.object({
+const readinessFindingSchema = z.object({
   category: z.enum([
     "missing_proof",
     "unclear_cta",
