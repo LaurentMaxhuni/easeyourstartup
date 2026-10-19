@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ONBOARDING_ROLES = [
+const ONBOARDING_ROLES = [
   "founder",
   "marketing",
   "product",
