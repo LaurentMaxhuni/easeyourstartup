@@ -14,7 +14,7 @@ const ONBOARDING_GOALS = [
   "milestone",
 ] as const;
 
-export const ONBOARDING_CHANNELS = [
+const ONBOARDING_CHANNELS = [
   "linkedin",
   "x",
   "product_hunt",
