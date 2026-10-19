@@ -478,7 +478,7 @@ const generationV2ArtifactSchema = z
   .record(z.string().max(80), z.json())
   .refine((artifact) => JSON.stringify(artifact).length <= 100_000);
 
-export const generationV2ResultSchema = z.object({
+const generationV2ResultSchema = z.object({
   strategy: generationV2ArtifactSchema,
   designPlan: generationV2ArtifactSchema,
   review: generationV2ArtifactSchema,
