@@ -242,7 +242,7 @@ export const creativeElementEffectSchema = z.enum([
   "drift",
   "rise",
 ]);
-export const creativeElementEffectTriggerSchema = z.enum([
+const creativeElementEffectTriggerSchema = z.enum([
   "always",
   "hover",
   "click",
