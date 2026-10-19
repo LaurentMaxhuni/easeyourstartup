@@ -97,6 +97,9 @@ asset project with its own instructions, not the SaaS runtime.
   Locally, database integration tests skip without `TEST_POSTGRES_BIN` and a
   configured disposable localhost server. Live AI tests require explicit
   `RUN_LIVE_AI_TESTS=true`; they call providers. Check skips before claiming coverage.
+- ESLint excludes generated `output/` files. Fallow can help identify unused code,
+  but verify references first: README-invoked operator scripts and the Windows
+  dev-service launcher are runtime entry points outside its import graph.
 - Runtime service setup is documented in `README.md` and `.env.example`.
   Environment file presence does not prove services are working. Never put
   credentials, environment values, or customer data in this map.
