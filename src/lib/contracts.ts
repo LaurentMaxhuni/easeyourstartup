@@ -263,10 +263,6 @@ export const creativeElementShadowSchema = z.enum([
   "lift",
   "glow",
 ]);
-export type CreativeElementShadow = z.infer<
-  typeof creativeElementShadowSchema
->;
-
 export const creativeTextRoleSchema = z.enum([
   "eyebrow",
   "headline",
