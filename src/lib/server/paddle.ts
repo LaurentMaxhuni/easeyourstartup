@@ -32,7 +32,7 @@ type PaddleRequestOptions = {
   body?: unknown;
 };
 
-export class PaddleApiError extends Error {
+class PaddleApiError extends Error {
   constructor(public readonly status: number) {
     super(`Paddle API request failed with status ${status}.`);
     this.name = "PaddleApiError";
