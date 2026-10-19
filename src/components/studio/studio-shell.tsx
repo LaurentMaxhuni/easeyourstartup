@@ -52,7 +52,7 @@ import {
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 import { campaignDraftWithDefaults } from "@/lib/studio/campaign-defaults";
-import { campaignDesignPlanToCanvas } from "@/lib/generation-v2/design-canvas";
+import { campaignDesignPlanToCanvas, resolveGeneratedCreativeDesign } from "@/lib/generation-v2/design-canvas";
 import { campaignDesignPlanSchema } from "@/lib/generation-v2/design-schema";
 
 const EMPTY_DRAFT: CampaignDraft = {
@@ -427,6 +427,12 @@ export function StudioShell({
   );
 
   useEffect(() => {
+    // Our own history update already has this scope in memory. Rehydrating it
+    // races autosave and can replace its revision with an older database read.
+    if (!hydrating.current && !startFresh && !newCampaign) {
+      const current = buildStudioStateRef.current();
+      if (current.projectId === requestedProjectId && current.campaignId === requestedCampaignId) return;
+    }
     let cancelled = false;
     hydrating.current = true;
     saveRevision.current = null;
@@ -713,8 +719,9 @@ export function StudioShell({
         } else {
           const firstDirection = generation.creativeDirections[0];
           const currentState = buildStudioStateRef.current();
-          const generatedComposition = generation.creativeDesign
-            ? applyCreativeDesign(currentState.composition, generation.creativeDesign)
+          const generatedDesign = resolveGeneratedCreativeDesign(generation, currentState.composition, currentState.brand);
+          const generatedComposition = generatedDesign
+            ? applyCreativeDesign(currentState.composition, generatedDesign)
             : firstDirection ? applyCreativeDirection(currentState.composition, firstDirection) : currentState.composition;
           const migrated = await migrateEditorImages({ ...currentState, composition: generatedComposition });
           if (cancelled) return;
@@ -1253,8 +1260,9 @@ export function StudioShell({
           },
         };
       }
-      if (data.creativeDesign) {
-        let designedComposition = applyCreativeDesign(composition, data.creativeDesign);
+      const generatedDesign = resolveGeneratedCreativeDesign(data, composition, brand, firstDirection?.id);
+      if (generatedDesign) {
+        let designedComposition = applyCreativeDesign(composition, generatedDesign);
         if (projectId) {
           const migrated = await migrateEditorImages({
             ...buildStudioState(),

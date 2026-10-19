@@ -2,12 +2,26 @@ import {
   creativeDesignResultSchema,
   type BrandProfile,
   type CreativeComposition,
+  type CreativeDesignResult,
   type CreativeElement,
   type CreativeTextRole,
 } from "@/lib/contracts";
 import { campaignDesignPlanSchema, type CampaignDesignPlan } from "./design-schema";
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { toExportableImageUrl } from "@/lib/studio-export";
+
+export function resolveGeneratedCreativeDesign(
+  generation: { creativeDesign?: CreativeDesignResult; generationV2?: { designPlan: unknown } },
+  composition: CreativeComposition,
+  brand: BrandProfile | null,
+  componentId?: string,
+) {
+  if (generation.creativeDesign) return generation.creativeDesign;
+  const plan = campaignDesignPlanSchema.safeParse(generation.generationV2?.designPlan);
+  return plan.success && brand
+    ? campaignDesignPlanToCanvas(plan.data, composition, brand, componentId)
+    : null;
+}
 
 function luminance(color: string) {
   const rgb = color.match(/[a-f\d]{2}/gi)!.map((hex) => {

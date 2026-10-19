@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campaignDesignPlanToCanvas } from "./design-canvas";
+import { campaignDesignPlanToCanvas, resolveGeneratedCreativeDesign } from "./design-canvas";
 import { campaignDesignPlanSchema } from "./design-schema";
 import { DEMO_BRAND, DEMO_COMPOSITION } from "@/lib/demo-data";
 
@@ -10,6 +10,19 @@ const plan = campaignDesignPlanSchema.parse({
 });
 
 describe("reviewed campaign canvas", () => {
+  it("uses the reviewed V2 plan for the initial canvas without another design request", () => {
+    const design = resolveGeneratedCreativeDesign(
+      { generationV2: { designPlan: plan } }, DEMO_COMPOSITION, DEMO_BRAND, "cover",
+    );
+    expect(design?.elements.find((element) => element.textRole === "headline")?.text).toBe("A reviewed product announcement");
+    expect(design?.theme.foreground).toBe("#000000");
+  });
+
+  it("preserves an explicit generated canvas and leaves legacy generation unchanged", () => {
+    const design = campaignDesignPlanToCanvas(plan, DEMO_COMPOSITION, DEMO_BRAND);
+    expect(resolveGeneratedCreativeDesign({ creativeDesign: design }, DEMO_COMPOSITION, DEMO_BRAND)).toBe(design);
+    expect(resolveGeneratedCreativeDesign({}, DEMO_COMPOSITION, DEMO_BRAND)).toBeNull();
+  });
   it("keeps reviewed text, omits invented imagery, and corrects invisible foreground colors", () => {
     const design = campaignDesignPlanToCanvas(plan, DEMO_COMPOSITION, DEMO_BRAND);
     expect(design.theme.foreground).toBe("#000000");
