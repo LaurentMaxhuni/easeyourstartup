@@ -558,7 +558,7 @@ export const creativeDesignRequestSchema = z.object({
 
 export type CreativeDesignInput = z.infer<typeof creativeDesignRequestSchema>;
 
-export const studioStepSchema = z.enum([
+const studioStepSchema = z.enum([
   "scan",
   "brand",
   "campaign",
