@@ -455,10 +455,6 @@ export const creativeDesignElementSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export type CreativeDesignElement = z.infer<
-  typeof creativeDesignElementSchema
->;
-
 export const creativeDesignThemeSchema = z.object({
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   foreground: z.string().regex(/^#[0-9a-fA-F]{6}$/),
