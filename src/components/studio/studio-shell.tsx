@@ -52,8 +52,7 @@ import {
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 import { campaignDraftWithDefaults } from "@/lib/studio/campaign-defaults";
-import { campaignDesignPlanToCanvas, resolveGeneratedCreativeDesign } from "@/lib/generation-v2/design-canvas";
-import { campaignDesignPlanSchema } from "@/lib/generation-v2/design-schema";
+import { resolveGeneratedCreativeDesign } from "@/lib/generation-v2/design-canvas";
 
 const EMPTY_DRAFT: CampaignDraft = {
   kind: "launch",
@@ -1343,15 +1342,6 @@ export function StudioShell({
     setAutoDesignStatus("idle");
     setAutoDesignWarning("");
     setSelectedCreativeId(id);
-    const reviewedPlan = campaignDesignPlanSchema.safeParse(generation?.generationV2?.designPlan);
-    if (reviewedPlan.success && brand) {
-      const next = applyCreativeDesign(composition, campaignDesignPlanToCanvas(reviewedPlan.data, composition, brand, id));
-      const migrated = await migrateEditorImages({ ...buildStudioState(), composition: next });
-      if (requestId !== autoDesignRequest.current) return;
-      setComposition(migrated.state.composition);
-      setUploadError(migrated.failed ? "This image could not be saved. Try uploading it in Edit visual before downloading." : "");
-      return;
-    }
     const nextComposition = applyCreativeDirection(composition, direction);
     if (autoDesignRequest.current !== requestId) return;
     if (!brand) {
