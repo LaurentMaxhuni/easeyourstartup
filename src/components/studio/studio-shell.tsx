@@ -718,7 +718,7 @@ export function StudioShell({
         } else {
           const firstDirection = generation.creativeDirections[0];
           const currentState = buildStudioStateRef.current();
-          const generatedDesign = resolveGeneratedCreativeDesign(generation, currentState.composition, currentState.brand);
+          const generatedDesign = resolveGeneratedCreativeDesign(generation);
           const generatedComposition = generatedDesign
             ? applyCreativeDesign(currentState.composition, generatedDesign)
             : firstDirection ? applyCreativeDirection(currentState.composition, firstDirection) : currentState.composition;
@@ -1259,7 +1259,7 @@ export function StudioShell({
           },
         };
       }
-      const generatedDesign = resolveGeneratedCreativeDesign(data, composition, brand, firstDirection?.id);
+      const generatedDesign = resolveGeneratedCreativeDesign(data);
       if (generatedDesign) {
         let designedComposition = applyCreativeDesign(composition, generatedDesign);
         if (projectId) {
