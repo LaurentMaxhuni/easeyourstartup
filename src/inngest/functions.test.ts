@@ -111,6 +111,28 @@ describe("stored campaign generator version", () => {
       parseStoredGenerationInput({ generatorVersion: "v2", brief }),
     ).toEqual({ generatorVersion: "v2", brief });
   });
+
+  it.each(["v1", "v2"])("requests a provider canvas before completing a durable %s campaign", async (version) => {
+    vi.clearAllMocks();
+    const { database } = recordingDatabase([
+      [{ generation_input: version === "v2" ? { generatorVersion: "v2", brief } : brief }],
+      [{ id: "job" }],
+    ]);
+    mocks.requireDatabase.mockReturnValue(database);
+    const generate = version === "v2" ? mocks.generateCampaignV2 : mocks.generateCampaign;
+    generate.mockResolvedValue({ outputs: [] });
+    const worker = generateCampaignAssets as unknown as {
+      handler: (input: { event: unknown; step: { run: (name: string, callback: () => Promise<unknown>) => Promise<unknown> } }) => Promise<unknown>;
+    };
+    await expect(worker.handler({
+      event: { data: { jobId: "job", workspaceId: "workspace", campaignId: "campaign" } },
+      step: { run: async (name, callback) => {
+        if (name === "persist-success-and-consume-usage") throw new Error("persistence reached");
+        return callback();
+      } },
+    })).rejects.toThrow("persistence reached");
+    expect(generate).toHaveBeenCalledWith(brief, expect.objectContaining({ includeCreativeDesign: true }));
+  });
 });
 
 type DispatchFunction = {

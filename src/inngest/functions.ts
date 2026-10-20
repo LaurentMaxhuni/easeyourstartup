@@ -178,11 +178,11 @@ export const generateCampaignAssets = inngest.createFunction(
         return await (campaign.generatorVersion === "v2"
           ? generateCampaignV2(campaign.brief, {
               onDesignStart,
-              includeCreativeDesign: false,
+              includeCreativeDesign: true,
             })
           : generateCampaign(campaign.brief, {
               onDesignStart,
-              includeCreativeDesign: false,
+              includeCreativeDesign: true,
             }));
       } catch (error) {
         if (
