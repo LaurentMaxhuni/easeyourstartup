@@ -18,7 +18,6 @@ import {
 } from "@/lib/generation-v2/design-schema";
 import {
   campaignDesignPlanToDirections,
-  fallbackCampaignDesignPlan,
   normalizeCampaignDesignPlan,
   planCampaignDesign,
 } from "./design-plan";
@@ -176,14 +175,6 @@ describe("campaign design plan schema", () => {
 });
 
 describe("campaign design plan normalization", () => {
-  it("keeps fallback headlines short without repeating the announcement or inventing copy", () => {
-    const input = { ...makeInput(), updateDetails: "Shared folders are available. Keep related projects in one folder." };
-    const plan = fallbackCampaignDesignPlan(input, makeStrategy(input), [{ ...DEMO_OUTPUTS[1], primaryCopy: "Shared folders are available.\n\nKeep related projects in one folder." }]);
-    expect(plan.components[0]).toMatchObject({
-      headline: "Shared folders are available.",
-      supportingCopy: "Keep related projects in one folder.",
-    });
-  });
   it("sorts components, renumbers order, and accepts only available screenshot refs", () => {
     const input = makeInput();
     const strategy = makeStrategy(input);
@@ -283,67 +274,19 @@ describe("planCampaignDesign", () => {
     expect(requestStructuredAiJsonMock).not.toHaveBeenCalled();
   });
 
-  it("uses a normalized deterministic plan when the planner provider times out", async () => {
+  it("surfaces planner failure instead of quietly returning fixed copy", async () => {
     const input = makeInput();
-    vi.stubEnv("AI_GENERATION_ENABLED", "true");
-    const strategy = makeStrategy(input);
-    const generatedOutput = {
-      ...DEMO_OUTPUTS[1],
-      primaryCopy: `${input.updateDetails}\n\nA campaign plan now organizes the launch story.`,
-    };
     requestStructuredAiJsonMock.mockRejectedValue(new Error("provider timed out"));
-
-    const plan = await planCampaignDesign(input, strategy, [generatedOutput]);
-
-    expect(plan.components).toEqual([
-      expect.objectContaining({
-        id: "launch-message",
-        order: 0,
-        headline: input.updateDetails,
-        supportingCopy: "",
-        cta: input.cta,
-        supportingClaimIds: [],
-        screenshotRef: null,
-      }),
-    ]);
-    expect(plan.brandAdaptation.theme).toMatchObject({
-      background: input.brand.visualSystem?.backgroundColor.toLowerCase(),
-      foreground: input.brand.visualSystem?.foregroundColor.toLowerCase(),
-      accent: input.brand.visualSystem?.accentColor.toLowerCase(),
-      headingFontFamily: "Outfit",
-      bodyFontFamily: "Outfit",
-      usesGradient: input.brand.visualSystem?.usesGradient,
-    });
-    expect(requestStructuredAiJsonMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        task: "designPlannerModel",
-        schemaName: "campaign_design_plan",
-      }),
-    );
-    expect(() =>
-      normalizeCampaignDesignPlan(
-        {
-          ...plan,
-          components: [
-            {
-              ...plan.components[0],
-              supportingClaimIds: ["not-approved"],
-            },
-          ],
-        },
-        input,
-        strategy,
-      ),
-    ).toThrow(/approved campaign claims/i);
+    await expect(planCampaignDesign(input, makeStrategy(input), [DEMO_OUTPUTS[1]]))
+      .rejects.toMatchObject({ name: "CampaignDesignPlanningError", recoverable: true });
   });
 
-  it.each([null, "product-screenshot-2"])("recovers with a typographic plan when AI selects an unavailable screenshot %s", async (screenshotRef) => {
+  it.each([null, "product-screenshot-2"])("rejects an unavailable planned screenshot %s instead of replacing the design", async (screenshotRef) => {
     const input = makeInput();
-    const strategy = makeStrategy(input);
     requestStructuredAiJsonMock.mockResolvedValue({ value: makePlan([
       makeComponent({ kind: "screenshot", screenshotRef }),
     ]), metadata: { task: "designPlannerModel", provider: "groq", model: "test", promptVersion: "2", latencyMs: 1, success: true } });
-    const plan = await planCampaignDesign(input, strategy, [DEMO_OUTPUTS[1]]);
-    expect(plan.components).toEqual([expect.objectContaining({ kind: "cover", screenshotRef: null })]);
+    await expect(planCampaignDesign(input, makeStrategy(input), [DEMO_OUTPUTS[1]]))
+      .rejects.toThrow(/screenshot/i);
   });
 });

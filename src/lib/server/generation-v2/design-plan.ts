@@ -9,6 +9,7 @@ import {
   type GenerateCampaignInput,
 } from "@/lib/contracts";
 import {
+  OpenRouterFreeModelQuotaError,
   requestStructuredAiJson,
 } from "@/lib/server/campaign-generator";
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
@@ -148,67 +149,6 @@ function allowedThemeOptions(input: GenerateCampaignInput) {
     colors: [...new Set(colors.map((color) => color.toLowerCase()))],
     fonts: [OUTFIT_FONT_FAMILY],
     usesGradient: system?.usesGradient ?? false,
-  };
-}
-
-export function fallbackCampaignDesignPlan(
-  input: GenerateCampaignInput,
-  strategy: CampaignStrategy,
-  outputs: ChannelOutput[],
-) {
-  const generatedCopy = outputs.map((output) => output.primaryCopy).join("\n").replace(/\s+/g, " ");
-  const supportedHeadline = [
-    input.updateDetails,
-    ...strategy.evidence.approvedClaims.map((claim) => claim.text),
-  ].flatMap((source) => source.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+/)).find(
-    (source) =>
-      source.length > 0 && source.length <= 80 && generatedCopy.includes(source),
-  );
-  const system = input.brand.visualSystem;
-  const headline = supportedHeadline ?? input.brand.projectName;
-  const supportingSource =
-    (input.updateDetails.length <= 320 ? input.updateDetails : "") ||
-    strategy.evidence.approvedClaims.find((claim) => claim.text.length <= 320)
-      ?.text ||
-    "";
-  const supportingCopy = supportingSource.startsWith(headline)
-    ? supportingSource.slice(headline.length).trim()
-    : supportingSource;
-
-  return {
-    version: "1" as const,
-    brandAdaptation: {
-      tone: "editorial" as const,
-      rationale: "Use the approved brand palette with a simple text hierarchy.",
-      theme: {
-        background: system?.backgroundColor ?? neutralColors[0],
-        foreground: system?.foregroundColor ?? neutralColors[1],
-        accent:
-          system?.accentColor ?? input.brand.colors[0] ?? neutralColors[1],
-        headingFontFamily: OUTFIT_FONT_FAMILY,
-        bodyFontFamily: OUTFIT_FONT_FAMILY,
-        density: system?.density ?? "comfortable",
-        usesGradient: system?.usesGradient ?? false,
-      },
-    },
-    components: [
-      {
-        id: "launch-message",
-        order: 0,
-        kind: "cover" as const,
-        layoutVariant: "editorial" as const,
-        eyebrow: headline === input.brand.projectName ? "" : input.brand.projectName.slice(0, 80),
-        headline,
-        supportingCopy,
-        body: "",
-        cta: input.cta.length <= 80 ? input.cta : "",
-        footer: "",
-        alignment: "left" as const,
-        emphasis: "headline" as const,
-        supportingClaimIds: [],
-        screenshotRef: null,
-      },
-    ],
   };
 }
 
@@ -391,22 +331,15 @@ export async function planCampaignDesign(
       maxCompletionTokens: 5_000,
     });
     planValue = result.value;
-  } catch {
-    planValue = fallbackCampaignDesignPlan(
-      parsedInput,
-      parsedStrategy,
-      parsedOutputs,
+  } catch (error) {
+    if (error instanceof OpenRouterFreeModelQuotaError) throw error;
+    throw new CampaignDesignPlanningError(
+      "AI campaign design planning failed. Your existing campaign was preserved. Please retry.",
+      { cause: error },
     );
   }
 
-  try {
-    return normalizeCampaignDesignPlan(planValue, parsedInput, parsedStrategy);
-  } catch (error) {
-    if (!(error instanceof UnavailableCampaignScreenshotError)) throw error;
-    return normalizeCampaignDesignPlan(
-      fallbackCampaignDesignPlan(parsedInput, parsedStrategy, parsedOutputs), parsedInput, parsedStrategy,
-    );
-  }
+  return normalizeCampaignDesignPlan(planValue, parsedInput, parsedStrategy);
 }
 
 export function campaignDesignPlanToDirections(
