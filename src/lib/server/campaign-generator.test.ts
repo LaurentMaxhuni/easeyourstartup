@@ -410,6 +410,7 @@ describe("provider creative design validation", () => {
       "AI design omitted the requested call to action.",
     );
   });
+
   it("does not repurpose other approved wording as the reviewed headline", () => {
     const plan = validPlan();
     const composition = { ...DEMO_COMPOSITION, text: { ...DEMO_COMPOSITION.text, headline: "Reviewed announcement" } };
@@ -418,6 +419,15 @@ describe("provider creative design validation", () => {
     })).toThrow(/reviewed headline/i);
   });
 
+  it("accepts omitted optional provider styles expressed as null without changing geometry", () => {
+    const plan = validPlan();
+    const value = { ...plan, elements: plan.elements.map((element) => ({ ...element, effectTrigger: null, shadow: null, blur: null })) };
+    const result = parseProviderCreativeDesign(value, DEMO_COMPOSITION);
+    expect(result.elements.map(({ x, y, width, height }) => ({ x, y, width, height })))
+      .toEqual(plan.elements.map(({ x, y, width, height }) => ({ x, y, width, height })));
+    expect(result.elements[0]).not.toHaveProperty("effectTrigger");
+    expect(() => parseProviderCreativeDesign({ ...value, elements: [{ ...value.elements[0], x: null }] }, DEMO_COMPOSITION)).toThrow();
+  });
 });
 
 describe("OpenAI-compatible provider configuration", () => {

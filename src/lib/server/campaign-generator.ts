@@ -1530,6 +1530,20 @@ export function parseProviderCreativeDesign(
   context: Pick<CreativeDesignInput, "brand" | "copyCandidates"> = {},
 ): CreativeDesignResult {
   const input = { ...context, composition };
+  // Some JSON-mode providers emit null for omitted optional style fields.
+  // Strip only those omissions; required fields and invalid values still fail validation.
+  if (value && typeof value === "object" && "elements" in value && Array.isArray(value.elements)) {
+    value = { ...value, elements: value.elements.map((element: unknown) => {
+      if (!element || typeof element !== "object" || !("kind" in element)) return element;
+      const layer: Record<string, unknown> = { ...element };
+      const fields = creativeDesignPlanSchema.shape.elements.element.options
+        .find((option) => option.shape.kind.value === element.kind)?.shape;
+      for (const [key, field] of Object.entries(fields ?? {})) {
+        if (layer[key] === null && field.isOptional()) delete layer[key];
+      }
+      return layer;
+    }) };
+  }
   const plan = creativeDesignPlanSchema.parse(value);
   const colors = designColorOptions(input);
   const fonts = designFontOptions();
