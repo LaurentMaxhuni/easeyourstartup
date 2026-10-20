@@ -11,13 +11,12 @@ import {
 } from "@/lib/contracts";
 import {
   createInitialCreativeCanvas,
+  designCreativeComposition,
 } from "@/lib/server/campaign-generator";
-import { campaignDesignPlanToCanvas } from "@/lib/generation-v2/design-canvas";
 import { generateCampaignStrategy } from "./strategy";
 import { generatePlatformContent } from "./content";
 import {
   campaignDesignPlanToDirections,
-  fallbackCampaignDesignPlan,
   planCampaignDesign,
 } from "./design-plan";
 import {
@@ -168,7 +167,7 @@ export async function generateCampaignV2(
       outputs,
       review.unsupportedStatements,
     );
-    designPlan = fallbackCampaignDesignPlan(brief, strategy, outputs);
+    designPlan = await planCampaignDesign(brief, strategy, outputs);
     review = await reviewCampaignGeneration({
       input: brief,
       strategy,
@@ -194,7 +193,33 @@ export async function generateCampaignV2(
     const firstComponent = designPlan.components[0];
     if (!firstComponent) throw new Error("Campaign generation did not produce launch copy for its canvas.");
     const canvas = createInitialCreativeCanvas(brief, firstComponent.headline);
-    creativeDesign = campaignDesignPlanToCanvas(designPlan, canvas, brief.brand);
+    canvas.text = {
+      eyebrow: firstComponent.eyebrow,
+      headline: firstComponent.headline,
+      subheadline: firstComponent.supportingCopy,
+      body: firstComponent.body,
+      cta: firstComponent.cta,
+      footer: firstComponent.footer,
+    };
+    const creative = await designCreativeComposition({
+      projectName: brief.brand.projectName,
+      brand: brief.brand,
+      context: JSON.stringify({
+        goal: brief.goal,
+        audience: brief.audience,
+        update: brief.updateDetails,
+        positioning: strategy.inferred.positioning,
+        artDirection: designPlan.brandAdaptation,
+        emphasis: firstComponent.emphasis,
+        screenshotRef: firstComponent.screenshotRef,
+      }),
+      approvedFacts: strategy.evidence.approvedClaims.map((claim) => claim.text),
+      copyCandidates: Object.values(canvas.text).filter((copy) => copy.trim().length > 0),
+      instruction:
+        "Design a bespoke campaign visual from the brand, announcement, and reviewed wording. Choose the actual layer geometry, visual concept, hierarchy, and image treatment yourself. Keep the reviewed headline and CTA exact. Do not substitute a stock arrangement or decorative tiles and arrows for a campaign-specific visual idea.",
+      composition: canvas,
+    });
+    creativeDesign = creative.design;
   }
 
   return generationResultSchema.parse({

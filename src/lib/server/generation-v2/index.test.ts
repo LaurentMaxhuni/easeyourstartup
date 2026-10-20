@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   generateCampaignStrategy: vi.fn(),
   generatePlatformContent: vi.fn(),
   planCampaignDesign: vi.fn(),
-  fallbackCampaignDesignPlan: vi.fn(),
   campaignDesignPlanToDirections: vi.fn(),
   assertApprovedClaimLinks: vi.fn(),
   reviewCampaignGeneration: vi.fn(),
@@ -24,7 +23,6 @@ vi.mock("./content", () => ({
 }));
 vi.mock("./design-plan", () => ({
   planCampaignDesign: mocks.planCampaignDesign,
-  fallbackCampaignDesignPlan: mocks.fallbackCampaignDesignPlan,
   campaignDesignPlanToDirections: mocks.campaignDesignPlanToDirections,
 }));
 vi.mock("./critic", async (importOriginal) => ({
@@ -110,12 +108,7 @@ describe("Generation V2 orchestration", () => {
     mocks.planCampaignDesign.mockResolvedValue({
       version: "1",
       brandAdaptation: { tone: "editorial", theme: {} },
-      components: [{ id: "cover", order: 0, kind: "cover" }],
-    });
-    mocks.fallbackCampaignDesignPlan.mockReturnValue({
-      version: "1",
-      brandAdaptation: { tone: "editorial", theme: {} },
-      components: [{ id: "cover", order: 0, kind: "cover" }],
+      components: [{ ...direction, order: 0, kind: "cover", supportingCopy: direction.subheadline }],
     });
     mocks.campaignDesignPlanToDirections.mockReturnValue([direction]);
     mocks.reviewCampaignGeneration.mockResolvedValue(assessment(false));
@@ -127,7 +120,7 @@ describe("Generation V2 orchestration", () => {
     });
   });
 
-  it("renders the reviewed visual copy without a second unreviewed AI design", async () => {
+  it("uses AI-authored geometry with the reviewed copy as its only wording options", async () => {
     mocks.planCampaignDesign.mockResolvedValue({
       version: "1",
       brandAdaptation: {
@@ -136,9 +129,24 @@ describe("Generation V2 orchestration", () => {
       },
       components: [{ ...direction, order: 0, kind: "cover", layoutVariant: "editorial", supportingCopy: direction.subheadline, alignment: "left", emphasis: "headline", supportingClaimIds: [], screenshotRef: null }],
     });
+    const design = {
+      theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit" },
+      elements: [{ id: "bespoke-headline", kind: "text", textRole: "headline", text: direction.headline, x: 27, y: 41, width: 65, height: 24, rotation: -3, opacity: 1, locked: false, hidden: false }],
+    };
+    mocks.designCreativeComposition.mockResolvedValue({ design });
     const result = await generateCampaignV2(input);
     expect(result.creativeDesign?.elements.find((element) => element.textRole === "headline")?.text).toBe(direction.headline);
-    expect(mocks.designCreativeComposition).not.toHaveBeenCalled();
+    expect(result.creativeDesign).toEqual(design);
+    expect(mocks.designCreativeComposition).toHaveBeenCalledWith(expect.objectContaining({
+      brand: input.brand,
+      copyCandidates: [direction.eyebrow, direction.headline, direction.subheadline, direction.body, direction.cta],
+      composition: expect.objectContaining({ text: expect.objectContaining({ headline: direction.headline, cta: direction.cta }) }),
+    }));
+  });
+
+  it("fails generation when custom canvas design fails instead of returning a template", async () => {
+    mocks.designCreativeComposition.mockRejectedValue(new Error("Custom design failed"));
+    await expect(generateCampaignV2(input)).rejects.toThrow("Custom design failed");
   });
 
   it("stores strategy, design plan, and review in the validated result", async () => {
@@ -276,7 +284,7 @@ describe("Generation V2 orchestration", () => {
     expect(result.outputs[0]?.primaryCopy).toBe("A clear launch.\n\nA useful close.");
     expect(result.outputs[0]?.alternateHooks).toEqual([]);
     expect(result.generationV2?.review.needsRewrite).toBe(false);
-    expect(mocks.fallbackCampaignDesignPlan).toHaveBeenCalledTimes(1);
+    expect(mocks.planCampaignDesign).toHaveBeenCalledTimes(3);
     expect(mocks.reviewCampaignGeneration).toHaveBeenCalledTimes(3);
     expect(mocks.assertApprovedClaimLinks).toHaveBeenCalledTimes(1);
   });
