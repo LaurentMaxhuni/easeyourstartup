@@ -79,11 +79,15 @@ asset project with its own instructions, not the SaaS runtime.
 - V1 remains default. `GENERATION_VERSION=v2` marks newly queued campaigns;
   stored campaign input selects the worker's version. V2 runs strategy, platform
   copy, design planning, and review with at most one rewrite, then checks claims.
-  Initial and resumed generation map the reviewed V2 design plan into the canvas
-  through `resolveGeneratedCreativeDesign`, avoiding a redundant AI design call.
-  Canvas mapping flows text by content length, adapts to aspect ratio, and uses
-  abstract brand artwork when no real screenshot is supplied. Editor font sizes
-  scale with canvas width to match export typography; avoid screen-pixel floors.
+  Reviewed V2 visual copy goes to `designCreativeComposition`: AI authors the
+  actual canvas layers, geometry, hierarchy, and imagery. The former fixed
+  plan-to-canvas composition and silent planner fallback have been removed.
+  Durable V1/V2 generation includes and persists the provider-authored canvas;
+  initial and resumed clients use that result. Selecting another direction runs
+  custom AI design with that direction's copy. Provider validation preserves the
+  reviewed headline/CTA, approved wording, verified image references, and brand
+  palette. Null optional styles are omitted without changing layer geometry.
+  Editor font sizes scale with canvas width to match export typography.
 - AI routing and structured responses live in `campaign-generator.ts`. Provider
   priority: NVIDIA NIM -> OpenRouter -> Groq -> legacy OpenAI settings. OpenAI
   uses Responses; the other configured providers use Chat Completions.
@@ -112,6 +116,10 @@ asset project with its own instructions, not the SaaS runtime.
   Locally, database integration tests skip without `TEST_POSTGRES_BIN` and a
   configured disposable localhost server. Live AI tests require explicit
   `RUN_LIVE_AI_TESTS=true`; they call providers. Check skips before claiming coverage.
+  `creative-design.live.test.ts` exercises two public/synthetic design briefs and
+  saves provider responses, canvas JSON, and HTML previews in ignored
+  `output/custom-canvas/` for inspection. Passing unit tests does not establish
+  visual quality; inspect real rendered results and provider quota failures.
 - ESLint excludes generated `output/` files. Fallow can help identify unused code,
   but verify references first: README-invoked operator scripts and the Windows
   dev-service launcher are runtime entry points outside its import graph.
