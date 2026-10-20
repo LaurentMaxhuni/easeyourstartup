@@ -410,6 +410,14 @@ describe("provider creative design validation", () => {
       "AI design omitted the requested call to action.",
     );
   });
+  it("does not repurpose other approved wording as the reviewed headline", () => {
+    const plan = validPlan();
+    const composition = { ...DEMO_COMPOSITION, text: { ...DEMO_COMPOSITION.text, headline: "Reviewed announcement" } };
+    expect(() => parseProviderCreativeDesign(plan, composition, {
+      copyCandidates: [composition.text.headline, "A launch visual made for your next big release", composition.text.cta],
+    })).toThrow(/reviewed headline/i);
+  });
+
 });
 
 describe("OpenAI-compatible provider configuration", () => {

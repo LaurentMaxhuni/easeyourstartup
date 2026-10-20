@@ -1576,6 +1576,9 @@ export function parseProviderCreativeDesign(
       if (approvedCopy && !approvedCopy.has(element.text.trim())) {
         throw new Error("AI design changed campaign copy outside the reviewed campaign text.");
       }
+      if (approvedCopy && element.textRole === "headline" && element.text.trim() !== composition.text.headline.trim()) {
+        throw new Error("AI design changed the reviewed headline.");
+      }
       if (element.fontFamily) exactAllowedValue(element.fontFamily, fonts, "text font");
       return { ...element, fontFamily: OUTFIT_FONT_FAMILY };
     }
