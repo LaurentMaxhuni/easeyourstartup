@@ -77,10 +77,15 @@ asset project with its own instructions, not the SaaS runtime.
 - Loading cues use the local `LoadingIndicator` and `CampaignLoader` components,
   with CSS motion gated by reduced-motion preferences. Thinking Orbs was removed.
   Queued website scans request a desktop preview through the existing authenticated,
-  project-scoped `/api/capture` route. `ScanPanel` overlays a CSS scan sweep once
-  that image loads; capture failures and direct scans retain `CampaignLoader`.
+  project-scoped `/api/capture` route. `ScanPanel` fills the viewport below the
+  step bar with the website image and overlays a CSS sweep during scanning.
+  Returning to Website shows the last scan's desktop preview, with project access
+  restored on hydrated capture URLs. Preview requests use `preview=1` for a
+  viewport-only capture; failed captures retain the normal controls.
   Browserless request filters use plain regex sources and short address-range
   patterns; tests match them with `String.match`, as the provider does.
+  Website capture waits for DOM content and a short render settle rather than
+  network idleness, so long-lived background requests do not stall previews.
 - V1 remains default. `GENERATION_VERSION=v2` marks newly queued campaigns;
   stored campaign input selects the worker's version. V2 runs strategy, platform
   copy, design planning, and review with at most one rewrite, then checks claims.
