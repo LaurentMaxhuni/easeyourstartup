@@ -46,6 +46,7 @@ type Registry = {
       temperature?: number;    // 0–2; check the model's narrower constraints
       topP?: number;           // 0–1
       seed?: number;           // integer 0–2147483647; model must support it
+      reasoningEffort?: "none" | "low" | "medium" | "high"; // openai protocol only
     };
   }[];
 }[];                            // at most 30 providers
@@ -58,6 +59,17 @@ requests use `strict:false`, accommodating optional properties. The schema uses
 Zod's input representation so defaulted fields can be omitted and then hydrated
 locally. `tokenParameter` defaults to `max_tokens`. Parameter support is
 model-specific; configure only options verified against the selected model.
+
+For OpenAI-compatible endpoints, `parameters.reasoningEffort` maps to
+`reasoning_effort` and is omitted unless explicitly configured. Native Gemini and
+Workers AI registries reject this setting; their reasoning controls are different
+protocol features. Groq documents `low`, `medium`, and `high` for GPT-OSS 20B/120B,
+with `medium` as the default. `none` is supported by some other compatible models
+and is not a supported GPT-OSS choice. Verify the selected model's accepted values
+before configuring it. For a verified GPT-OSS model, a parameter block such as
+`"parameters":{"reasoningEffort":"low"}` can reduce reasoning effort and leave
+more of a bounded completion budget available for design JSON. It does not raise
+account token-per-minute limits or guarantee that a particular output fits.
 
 ### Six-provider registry example
 
@@ -210,6 +222,7 @@ Protocol references checked during implementation on 2026-10-25:
 - [Z.AI Chat Completion](https://docs.z.ai/api-reference/llm/chat-completion): Bearer authorization, JSON object format, text and image request shapes.
 - [Gemini Generate Content](https://ai.google.dev/api/generate-content) and [structured outputs](https://ai.google.dev/gemini-api/docs/structured-output): native content, streaming, and schema shapes.
 - [Groq API reference](https://console.groq.com/docs/api-reference) and [structured outputs](https://console.groq.com/docs/structured-outputs): compatibility and model-dependent JSON format limits.
+- [Groq reasoning](https://console.groq.com/docs/reasoning): model-specific reasoning effort values and GPT-OSS defaults.
 - [Workers AI run API](https://developers.cloudflare.com/api/resources/ai/methods/run/), [JSON Mode](https://developers.cloudflare.com/workers-ai/features/json-mode/), and [vision input](https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/): native model payloads and streaming limitations.
 - [OpenRouter API](https://openrouter.ai/developers): compatible completions, model routing, and streaming.
 - [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create): optional compatible provider protocol.

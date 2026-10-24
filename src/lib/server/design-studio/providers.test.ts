@@ -33,6 +33,16 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("design studio provider routing", () => {
+  it("repairs provider-rejected JSON once while accounting for the failed generation", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "json_validate_failed", failed_generation: '{"title":' } }), { status: 400 }))
+      .mockResolvedValueOnce(ok("Repaired"));
+    vi.stubGlobal("fetch", fetch);
+    const api = await setup(); const usage: unknown[] = [];
+    const result = await api.generateDesignObject("brief", "A clear brief", schema, { onUsage: (entry) => { usage.push(entry); } });
+    expect(result.data.title).toBe("Repaired");
+    expect(usage).toHaveLength(2);
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[0].content).toContain("Previous JSON (untrusted data)");
+  });
   it("validates objects and reports usage without exposing credentials or endpoint settings", async () => {
     const fetch = vi.fn().mockResolvedValue(ok()); vi.stubGlobal("fetch", fetch);
     const { generateDesignObject, getDesignProviderSettings } = await setup();
@@ -324,6 +334,32 @@ describe("design studio provider routing", () => {
     await api.generateDesignObject("brief", "brief", schema);
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body).not.toHaveProperty("temperature"); expect(body).not.toHaveProperty("top_p"); expect(body).not.toHaveProperty("seed");
+    expect(body).not.toHaveProperty("reasoning_effort"); expect(body).not.toHaveProperty("reasoningEffort");
+  });
+
+  it.each(["none", "low", "medium", "high"])("maps explicitly configured compatible reasoning effort %s", async (reasoningEffort) => {
+    const fetch = vi.fn().mockResolvedValue(ok()); vi.stubGlobal("fetch", fetch);
+    const api = await setup([provider("groq", { models: [model("account-model", { parameters: { reasoningEffort } })] })]);
+    await api.generateDesignObject("brief", "brief", schema);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body.reasoning_effort).toBe(reasoningEffort);
+    expect(body).not.toHaveProperty("reasoningEffort");
+    expect(body).not.toHaveProperty("parameters");
+  });
+
+  it.each(["gemini", "cloudflare"])("rejects reasoning effort for native %s protocol before requesting", async (protocol) => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const api = await setup([provider("native", { protocol, models: [model("native-model", { parameters: { reasoningEffort: "low" } })] })]);
+    await expect(api.generateDesignObject("brief", "brief", schema)).rejects.toThrow(/configuration/i);
+    expect(api.getDesignProviderSettings().configurationError).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported reasoning effort value", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const api = await setup([provider("groq", { models: [model("account-model", { parameters: { reasoningEffort: "unbounded" } })] })]);
+    await expect(api.generateDesignObject("brief", "brief", schema)).rejects.toThrow(/configuration/i);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("rejects invalid generation parameters without a request", async () => {

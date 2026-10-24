@@ -36,6 +36,7 @@ const modelSchema = z.object({
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
     seed: z.number().int().min(0).max(2147483647).optional(),
+    reasoningEffort: z.enum(["none", "low", "medium", "high"]).optional(),
   }).strict().default({}),
 }).strict().refine((model) => model.maxOutputTokens <= model.contextTokens);
 const providerSchema = z.object({
@@ -52,7 +53,14 @@ const providerSchema = z.object({
   maxRetries: z.number().int().min(0).max(3).default(1),
   retryBaseMs: z.number().int().min(1).max(10000).default(500),
   requestsPerMinute: z.number().int().min(1).max(100000).optional(),
-}).strict();
+}).strict().superRefine((provider, context) => {
+  if (provider.protocol !== "openai") provider.models.forEach((model, index) => {
+    if (model.parameters.reasoningEffort !== undefined) context.addIssue({
+      code: "custom", path: ["models", index, "parameters", "reasoningEffort"],
+      message: "Reasoning effort requires the OpenAI-compatible protocol.",
+    });
+  });
+});
 type Provider = z.infer<typeof providerSchema>;
 type Model = z.infer<typeof modelSchema>;
 type FailureCode = "rate_limit" | "authentication" | "timeout" | "network" | "upstream" | "invalid_output" | "response_too_large" | "stream_interrupted";
@@ -252,6 +260,7 @@ function requestSpec(candidate: Candidate, prompt: string, options: DesignAiOpti
       ...(model.parameters.temperature !== undefined ? { temperature: model.parameters.temperature } : {}),
       ...(model.parameters.topP !== undefined ? { top_p: model.parameters.topP } : {}),
       ...(model.parameters.seed !== undefined ? { seed: model.parameters.seed } : {}),
+      ...(provider.protocol === "openai" && model.parameters.reasoningEffort !== undefined ? { reasoning_effort: model.parameters.reasoningEffort } : {}),
       ...(provider.protocol === "cloudflare" && options.imageDataUrl
         ? { prompt, image: Array.from(Buffer.from(options.imageDataUrl.split(",")[1], "base64")) }
         : { messages: [{ role: "user", content }] }),
@@ -352,7 +361,20 @@ async function requestObject(candidate: Candidate, prompt: string, options: Desi
     const started = Date.now();
     try {
       const response = await fetch(request.url, { method: "POST", headers: request.headers, body: JSON.stringify(request.body), signal, redirect: "error", cache: "no-store" });
-      if (!response.ok) { const error = httpFailure(response); await response.body?.cancel(); throw error; }
+      if (!response.ok) {
+        // Some compatible endpoints reject their own generated JSON with 400.
+        // Treat only this specific code as billable invalid output and route it
+        // through the same bounded local repair path as a malformed 200 result.
+        if (response.status === 400) {
+          const raw = await readBounded(response);
+          try {
+            const rejected = z.object({ error: z.object({ code: z.literal("json_validate_failed"), failed_generation: z.string().optional() }) }).safeParse(JSON.parse(raw));
+            if (rejected.success) return { text: rejected.data.error.failed_generation?.slice(0, 12000) ?? "", invalid: true, inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started };
+          } catch { /* Other HTTP errors retain their original status. */ }
+          throw httpFailure(response);
+        }
+        const error = httpFailure(response); await response.body?.cancel(); throw error;
+      }
       const raw = await readBounded(response);
       let json: unknown;
       try {
@@ -420,6 +442,7 @@ export async function generateDesignObject<T>(task: DesignTask, prompt: string, 
         else if (!parsed.success) validationIssues = parsed.error.issues.slice(0, 12).map((issue) => ({
           path: issue.path.map((part) => String(part).replace(/[^\w.\[\]-]/g, "").slice(0, 80)).join(".") || "$",
           code: issue.code,
+          message: issue.message.slice(0, 240),
           ...("expected" in issue ? { expected: issue.expected } : {}),
           ...("minimum" in issue ? { minimum: issue.minimum } : {}),
           ...("maximum" in issue ? { maximum: issue.maximum } : {}),
