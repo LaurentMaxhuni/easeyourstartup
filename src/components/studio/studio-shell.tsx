@@ -320,6 +320,7 @@ export function StudioShell({
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [scanError, setScanError] = useState("");
+  const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null);
   const [generateStatus, setGenerateStatus] = useState<
     "idle" | "loading" | "error"
   >("idle");
@@ -944,6 +945,7 @@ export function StudioShell({
 
     setScanStatus("loading");
     setScanError("");
+    setScanPreviewUrl(null);
     const startedAt = Date.now();
     trackStudioEvent("scan_started", {
       mode: initialAuthenticated ? "durable" : "direct",
@@ -979,6 +981,7 @@ export function StudioShell({
           setProjectId(queued.projectId);
           setJobId(activeJobId);
           setJobType("scan");
+          setScanPreviewUrl(`/api/capture?target=${encodeURIComponent(normalized)}&viewport=desktop&projectId=${encodeURIComponent(queued.projectId)}`);
           window.history.replaceState(null, "", `/studio?projectId=${encodeURIComponent(queued.projectId)}`);
           const recoveryState = studioStateSchema.parse({
             ...buildStudioState(),
@@ -1703,6 +1706,7 @@ export function StudioShell({
             status={jobType === "scan" && jobId && scanStatus === "idle" ? "loading" : scanStatus}
             error={scanError}
             result={scan}
+            previewUrl={scanPreviewUrl}
             onScan={runScan}
           />
         )}

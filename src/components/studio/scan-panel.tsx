@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Image from "next/image";
 import {
   ArrowRight,
   GlobeSimple,
@@ -15,14 +16,19 @@ export function ScanPanel({
   status,
   error,
   result,
+  previewUrl = null,
   onScan,
 }: {
   status: "idle" | "loading" | "success" | "error";
   error: string;
   result: ScanResult | null;
+  previewUrl?: string | null;
   onScan: (url?: string) => Promise<void>;
 }) {
   const [url, setUrl] = useState("");
+  const [preview, setPreview] = useState<{ url: string; loaded: boolean } | null>(null);
+  const previewReady = preview?.url === previewUrl && preview.loaded;
+  const previewFailed = preview?.url === previewUrl && !preview.loaded;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,8 +36,8 @@ export function ScanPanel({
   }
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:py-20">
-      <div>
+    <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)] lg:py-20">
+      <div className="min-w-0">
         <p className="font-sans text-xs uppercase  text-accent">
           Start with your website
         </p>
@@ -43,7 +49,7 @@ export function ScanPanel({
           then help you share your next announcement.
         </p>
       </div>
-      <div className="rounded-container border border-line bg-surface-raised p-5 sm:p-8">
+      <div className="min-w-0 rounded-container border border-line bg-surface-raised p-5 sm:p-8">
         <form onSubmit={submit} aria-busy={status === "loading"}>
           <label className="text-sm font-semibold" htmlFor="scan-url">
             Website URL
@@ -90,7 +96,26 @@ export function ScanPanel({
           )}
           {status === "loading" && (
             <div role="status" aria-live="polite" className="mt-5 flex flex-col items-center gap-2 rounded-control border border-line bg-canvas/50 p-5 text-center">
-              <CampaignLoader activity="scanning" />
+              <div className="website-scan-preview" data-ready={previewReady ? "true" : "false"}>
+                {previewUrl && !previewFailed && (
+                  <Image
+                    key={previewUrl}
+                    src={previewUrl}
+                    alt="Screenshot of the website being scanned"
+                    fill
+                    unoptimized
+                    loading="eager"
+                    className="website-scan-image"
+                    onLoad={() => setPreview({ url: previewUrl, loaded: true })}
+                    onError={() => setPreview({ url: previewUrl, loaded: false })}
+                  />
+                )}
+                {previewReady ? (
+                  <div aria-hidden="true" className="website-scan-sweep" />
+                ) : (
+                  <div className="website-scan-fallback"><CampaignLoader activity="scanning" /></div>
+                )}
+              </div>
               <div className="pb-1">
                 <p className="text-sm font-semibold">Reading your public site</p>
                 <p className="mt-1 text-xs leading-5 text-muted">

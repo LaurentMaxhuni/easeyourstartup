@@ -455,6 +455,55 @@ summary:focus-visible {
   90% { top: 95%; opacity: 0; }
 }
 
+.website-scan-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  min-height: 220px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.website-scan-image {
+  object-fit: cover;
+  object-position: top;
+  opacity: 0;
+}
+
+.website-scan-preview[data-ready="true"] .website-scan-image {
+  opacity: 1;
+}
+
+.website-scan-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.website-scan-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-bottom: 2px solid var(--accent);
+  background: linear-gradient(transparent 55%, var(--accent-halo));
+  transform: translateY(-100%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .website-scan-sweep {
+    animation: website-scan-sweep 3s ease-in-out infinite;
+  }
+}
+
+@keyframes website-scan-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+
 @media (forced-colors: active) {
   * {
     scrollbar-color: auto;
