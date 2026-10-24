@@ -74,9 +74,12 @@ export async function captureWebsite(
           url: safeTarget.toString(),
           rejectRequestPattern: REJECT_PRIVATE_BROWSER_REQUESTS,
           gotoOptions: {
-            waitUntil: "networkidle2",
+            waitUntil: "domcontentloaded",
             timeout: 15_000,
           },
+          // Let entrance animations settle without waiting on background
+          // requests that a public site may leave loading indefinitely.
+          waitForTimeout: 1_500,
           options: {
             type: "png",
             fullPage: true,

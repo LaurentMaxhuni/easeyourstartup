@@ -76,4 +76,11 @@ describe("Browserless capture boundaries", () => {
     await expect(captureWebsite("https://example.com", "mobile"))
       .rejects.toThrow("The website could not be captured.");
   });
+
+  it("waits for visible content without requiring persistent site requests to stop", async () => {
+    await captureWebsite("https://example.com", "desktop");
+    const request = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body));
+    expect(request.gotoOptions).toEqual({ waitUntil: "domcontentloaded", timeout: 15_000 });
+    expect(request.waitForTimeout).toBe(1_500);
+  });
 });
