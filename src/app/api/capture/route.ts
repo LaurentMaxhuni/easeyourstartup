@@ -70,7 +70,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await captureWebsite(target, viewport);
+    const result = await captureWebsite(target, viewport, {
+      fullPage: url.searchParams.get("preview") !== "1",
+    });
     return new NextResponse(result.buffer, {
       headers: {
         "Content-Type": result.contentType,

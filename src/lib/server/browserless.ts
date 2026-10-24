@@ -49,6 +49,7 @@ function assertSafeBrowserlessResponse(response: Response) {
 export async function captureWebsite(
   target: string,
   viewport: "desktop" | "mobile",
+  captureOptions: { fullPage?: boolean } = {},
 ) {
   const safeTarget = await assertPublicHttpUrl(target);
   const apiUrl = process.env.BROWSERLESS_API_URL;
@@ -82,7 +83,7 @@ export async function captureWebsite(
           waitForTimeout: 1_500,
           options: {
             type: "png",
-            fullPage: true,
+            fullPage: captureOptions.fullPage ?? true,
             captureBeyondViewport: false,
           },
           viewport: dimensions,

@@ -981,7 +981,7 @@ export function StudioShell({
           setProjectId(queued.projectId);
           setJobId(activeJobId);
           setJobType("scan");
-          setScanPreviewUrl(`/api/capture?target=${encodeURIComponent(normalized)}&viewport=desktop&projectId=${encodeURIComponent(queued.projectId)}`);
+          setScanPreviewUrl(`/api/capture?target=${encodeURIComponent(normalized)}&viewport=desktop&projectId=${encodeURIComponent(queued.projectId)}&preview=1`);
           window.history.replaceState(null, "", `/studio?projectId=${encodeURIComponent(queued.projectId)}`);
           const recoveryState = studioStateSchema.parse({
             ...buildStudioState(),
