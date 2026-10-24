@@ -6,13 +6,28 @@ import {
   parsePublicHttpUrl,
 } from "@/lib/server/url-security";
 
-// Browserless accepts regex strings for rejecting requests made by the page.
+// Browserless matches these strings with request.url().match(pattern), so use
+// regex sources rather than /pattern/flags literals. Keep address ranges in
+// short, unnested expressions: the combined filter made live captures fail.
 // These cover local hostnames, private/reserved IPv4 literals, and all IPv6
 // literals; the Browserless deployment must still deny non-public resolved
 // addresses at its network boundary to cover DNS changes between checks/use.
+const OCTET = String.raw`[0-9]{1,3}`;
 const REJECT_PRIVATE_BROWSER_REQUESTS = [
-  String.raw`/^https?:[/][/](?:localhost|[^/?#]+[.]localhost|metadata(?:[.]google[.]internal)?|instance-data|[^/?#]+[.](?:local|internal))(?::[0-9]+)?(?:[/?#]|$)/i`,
-  /^https?:\/\/(?:\[[^\]]+\]|(?:0|10|127|22[4-9]|23[0-9]|24[0-9]|25[0-5])(?:\.[0-9]{1,3}){3}|169\.254(?:\.[0-9]{1,3}){2}|172\.(?:1[6-9]|2[0-9]|3[01])(?:\.[0-9]{1,3}){2}|192\.(?:0\.(?:0|2)|88\.99|168)(?:\.[0-9]{1,3}){2}|198\.(?:18|19)(?:\.[0-9]{1,3}){2}|198\.51\.100\.[0-9]{1,3}|203\.0\.113\.[0-9]{1,3}|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.[0-9]{1,3}){2})(?::[0-9]+)?(?:[/?#]|$)/i.toString(),
+  String.raw`^https?://(?:localhost|[^/?#]+\.localhost|metadata(?:\.google\.internal)?|instance-data|[^/?#]+\.(?:local|internal))(?::[0-9]+)?(?:[/?#]|$)`,
+  String.raw`^https?://\[`,
+  ...[
+    String.raw`(?:0|10|127|22[4-9]|23[0-9]|24[0-9]|25[0-5])\.${OCTET}\.${OCTET}\.${OCTET}`,
+    String.raw`169\.254\.${OCTET}\.${OCTET}`,
+    String.raw`172\.(?:1[6-9]|2[0-9]|3[01])\.${OCTET}\.${OCTET}`,
+    String.raw`192\.0\.(?:0|2)\.${OCTET}`,
+    String.raw`192\.88\.99\.${OCTET}`,
+    String.raw`192\.168\.${OCTET}\.${OCTET}`,
+    String.raw`198\.(?:18|19)\.${OCTET}\.${OCTET}`,
+    String.raw`198\.51\.100\.${OCTET}`,
+    String.raw`203\.0\.113\.${OCTET}`,
+    String.raw`100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.${OCTET}\.${OCTET}`,
+  ].map((address) => String.raw`^https?://${address}(?::[0-9]+)?(?:[/?#]|$)`),
 ];
 
 function assertSafeBrowserlessResponse(response: Response) {

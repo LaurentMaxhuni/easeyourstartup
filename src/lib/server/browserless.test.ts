@@ -45,13 +45,21 @@ describe("Browserless capture boundaries", () => {
         expect.stringContaining("127"),
       ]));
     }
-    const filters = (requests[0]?.rejectRequestPattern ?? []).map((pattern) => {
-      const delimiter = pattern.lastIndexOf("/");
-      return new RegExp(pattern.slice(1, delimiter), pattern.slice(delimiter + 1));
-    });
-    expect(filters.some((filter) => filter.test("http://127.0.0.1/"))).toBe(true);
-    expect(filters.some((filter) => filter.test("http://[::1]/"))).toBe(true);
-    expect(filters.some((filter) => filter.test("https://example.com/"))).toBe(false);
+    // Match exactly as Browserless does, without repairing serialized patterns.
+    const blocked = (url: string) => requests[0]?.rejectRequestPattern?.some((pattern) => url.match(pattern));
+    for (const host of [
+      "localhost", "app.localhost", "metadata.google.internal", "instance-data", "app.local", "app.internal",
+      "0.0.0.0", "10.1.2.3", "127.0.0.1", "169.254.169.254", "172.16.0.1", "172.31.255.255",
+      "192.0.0.8", "192.0.2.1", "192.88.99.1", "192.168.1.1", "198.18.0.1", "198.19.255.255",
+      "198.51.100.1", "203.0.113.1", "100.64.0.1", "100.127.255.255", "224.0.0.1", "255.255.255.255",
+      "[::1]", "[fd00::1]", "[::ffff:127.0.0.1]",
+    ]) {
+      expect(blocked(`http://${host}/`), host).toBe(true);
+      expect(blocked(`https://${host}:8443/path?q=1`), host).toBe(true);
+    }
+    for (const host of ["example.com", "8.8.8.8", "172.15.0.1", "172.32.0.1", "100.63.255.255", "100.128.0.1", "10.example.com"]) {
+      expect(blocked(`https://${host}/`), host).toBe(false);
+    }
   });
 
   it("fails closed when Browserless reports a private connected address", async () => {
