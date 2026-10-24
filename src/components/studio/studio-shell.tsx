@@ -1648,6 +1648,14 @@ export function StudioShell({
         warnings: ["Scan a product before creating a launch kit."],
       };
 
+  let savedScanPreviewUrl = scan?.desktopCaptureUrl ?? null;
+  if (savedScanPreviewUrl?.startsWith("/api/capture?") && projectId) {
+    const captureQuery = new URLSearchParams(savedScanPreviewUrl.slice("/api/capture?".length));
+    captureQuery.set("projectId", projectId);
+    captureQuery.set("preview", "1");
+    savedScanPreviewUrl = `/api/capture?${captureQuery}`;
+  }
+
   if (
     step === "campaign" &&
     (generateStatus === "loading" ||
@@ -1668,7 +1676,9 @@ export function StudioShell({
       className={
         step === "creative"
           ? "h-[100dvh] max-h-[100dvh] overflow-hidden bg-canvas"
-          : "min-h-screen bg-canvas"
+          : step === "scan"
+            ? "flex min-h-[100dvh] flex-col bg-canvas"
+            : "min-h-screen bg-canvas"
       }
     >
       {step !== "creative" && (
@@ -1698,7 +1708,7 @@ export function StudioShell({
         className={
           step === "creative"
             ? "h-[100dvh] max-h-[100dvh] overflow-hidden"
-            : undefined
+            : step === "scan" ? "flex flex-1 flex-col" : undefined
         }
       >
         {step === "scan" && (
@@ -1706,7 +1716,9 @@ export function StudioShell({
             status={jobType === "scan" && jobId && scanStatus === "idle" ? "loading" : scanStatus}
             error={scanError}
             result={scan}
-            previewUrl={scanPreviewUrl}
+            previewUrl={scanStatus === "loading" || (jobType === "scan" && jobId)
+              ? scanPreviewUrl
+              : savedScanPreviewUrl}
             onScan={runScan}
           />
         )}
