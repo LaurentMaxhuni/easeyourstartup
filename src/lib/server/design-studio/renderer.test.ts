@@ -171,4 +171,24 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("real isolated 
     expect(result.issues).toEqual([]);
     expect(await sharp(result.png).metadata()).toMatchObject({ width: 1080, height: 1350 });
   }, 30_000);
+  it("renders catalog fonts and rich paint without fallbacks, network access or layout errors", async () => {
+    const doc = designDocumentSchema.parse({ version: 1, title: "Launch poster", brand: { headingFont: "Instrument Serif", bodyFont: "Space Grotesk" }, assets: [], pages: [{ id: "page-1", name: "Poster", width: 1080, height: 1350, background: "#0e0d0b", nodes: [
+      { id: "glow-a", type: "ellipse", x: -260, y: -220, width: 900, height: 900, fill: "#f05228", blur: 160, opacity: 0.85 },
+      { id: "glow-b", type: "ellipse", x: 520, y: 760, width: 760, height: 760, fill: "#3b5bff", blur: 180, opacity: 0.6 },
+      { id: "grain", type: "rect", x: 0, y: 0, width: 1080, height: 1350, fill: "transparent", pattern: { kind: "grain", color: "#ffffff", opacity: 0.12 }, blendMode: "overlay" },
+      { id: "dots", type: "rect", x: 80, y: 1010, width: 300, height: 200, fill: "transparent", pattern: { kind: "dots", color: "#f5f3ef", opacity: 0.35, size: 18 } },
+      { id: "kicker", type: "text", role: "label", x: 80, y: 96, width: 600, height: 40, text: "Launching today", fontFamily: "Space Grotesk", fontSize: 26, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", fill: "#f5f3ef" },
+      { id: "headline", type: "text", role: "headline", x: 80, y: 300, width: 920, height: 520, text: "Ship it.\nThen tell everyone.", fontFamily: "Instrument Serif", fontStyle: "italic", fontSize: 168, fontWeight: 400, lineHeight: 0.95, letterSpacing: -4, textWrap: "balance", gradient: { kind: "linear", angle: 160, stops: [{ color: "#fff4ec", position: 0 }, { color: "#ffb08f", position: 100 }] } },
+      { id: "body", type: "text", role: "body", x: 80, y: 860, width: 760, height: 100, text: "Turn every product update into a launch campaign in minutes.", fontFamily: "Space Grotesk", fontSize: 34, fontWeight: 400, lineHeight: 1.3, fill: "#f5f3ef" },
+      { id: "cta-box", type: "rect", x: 640, y: 1110, width: 360, height: 100, fill: "#f5f3ef", shadows: [{ x: 10, y: 10, color: "#f05228", opacity: 1 }] },
+      { id: "cta", type: "text", role: "cta", x: 640, y: 1138, width: 360, height: 48, text: "Try it free", align: "center", fontFamily: "Space Grotesk", fontSize: 34, fontWeight: 700, fill: "#0e0d0b" },
+      { id: "brand", type: "text", role: "logo", x: 80, y: 1250, width: 500, height: 40, text: "EaseYourStartup", fontFamily: "Space Grotesk", fontSize: 26, fontWeight: 700, fill: "#f5f3ef" },
+    ] }] });
+    const result = await renderDesignPage(doc, "page-1");
+    await mkdir("output/design-studio", { recursive: true });
+    await writeFile("output/design-studio/renderer-rich-poster.png", result.png);
+    expect(result.issues.filter((issue) => issue.code !== "canvas_violation")).toEqual([]);
+    // Blurred color fields intentionally bleed off-canvas; nothing else may.
+    expect(result.issues.every((issue) => issue.nodeId === "glow-a" || issue.nodeId === "glow-b")).toBe(true);
+  }, 30_000);
 });

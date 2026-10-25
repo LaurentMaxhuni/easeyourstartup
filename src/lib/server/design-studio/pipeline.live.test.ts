@@ -79,7 +79,7 @@ describe.skipIf(process.env.RUN_LIVE_AI_TESTS !== "true")("live AI design studio
     for (const [index, page] of document.pages.entries()) {
       const render = await renderDesignPage(document, page.id);
       writeFileSync(`output/design-studio/examples/${example.id}-${index + 1}.png`, render.png);
-      writeFileSync(`output/design-studio/examples/${example.id}-${index + 1}.html`, renderDesignHtml(document, page.id, await getDesignFontCss()));
+      writeFileSync(`output/design-studio/examples/${example.id}-${index + 1}.html`, renderDesignHtml(document, page.id, await getDesignFontCss(document)));
       expect(render.width).toBe(1080); expect(render.height).toBe(1350);
       expect(render.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     }

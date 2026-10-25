@@ -5,6 +5,7 @@ import path from "node:path";
 import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import sharp from "sharp";
 import { designDocumentSchema, renderDesignHtml, type DesignDocument } from "@/lib/design-studio/document";
+import { designFont, designFontFaceCss } from "@/lib/design-studio/fonts";
 
 export type RenderIssue = { pageId: string; nodeId?: string; code: string; severity: "error" | "warning"; message: string; suggestedFontSize?: number; suggestedFill?: string };
 type RenderOptions = { scale?: 1 | 2; signal?: AbortSignal; watermark?: boolean };
@@ -38,13 +39,34 @@ async function acquire(signal: AbortSignal): Promise<() => void> {
   return () => { const next = waiting.shift(); if (next) next(); else active--; };
 }
 
-export function getDesignFontCss(): Promise<string> {
+function getOutfitCss(): Promise<string> {
   fontCss ??= Promise.all(["outfit-latin.woff2", "outfit-latin-ext.woff2"].map(async (file) => {
     const bytes = await readFile(path.join(process.cwd(), "src", "app", "fonts", file));
     const range = file.includes("-ext") ? "unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;" : "";
     return `@font-face{font-family:Outfit;src:url(data:font/woff2;base64,${bytes.toString("base64")}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;${range}}`;
   })).then((rules) => rules.join("\n")).catch((error) => { fontCss = undefined; throw error; });
   return fontCss;
+}
+
+const fontFiles = new Map<string, Promise<string>>();
+function fontDataUrl(file: string) {
+  let data = fontFiles.get(file);
+  if (!data) {
+    data = readFile(path.join(process.cwd(), "public", "design-fonts", file)).then((bytes) => `data:font/woff2;base64,${bytes.toString("base64")}`);
+    data.catch(() => fontFiles.delete(file));
+    fontFiles.set(file, data);
+  }
+  return data;
+}
+
+// Embeds Outfit plus only the catalog families a document actually uses.
+export async function getDesignFontCss(document?: DesignDocument): Promise<string> {
+  const outfit = await getOutfitCss();
+  if (!document) return outfit;
+  const families = new Set<string>([document.brand.headingFont, document.brand.bodyFont, ...document.pages.flatMap((page) => page.nodes.filter((node) => node.type === "text").map((node) => node.fontFamily))]);
+  const files = [...families].flatMap((family) => designFont(family).faces.map((face) => face.file));
+  const urls = new Map(await Promise.all(files.map(async (file) => [file, await fontDataUrl(file)] as const)));
+  return `${outfit}\n${designFontFaceCss(families, (file) => urls.get(file)!)}`;
 }
 
 function browserConfig(): { executablePath: string } | { endpoint: string } {
@@ -112,7 +134,7 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
     release = await acquire(signal);
     await validateAssets(design);
     const config = browserConfig();
-    const css = await getDesignFontCss();
+    const css = await getDesignFontCss(design);
     checkCancellation(signal);
     stage = "browser connection";
     try {
@@ -179,6 +201,8 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
           if (box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) continue;
           const fill = rgb(css.backgroundColor);
           const border = parseFloat(css.borderWidth) || 0;
+          // Gradients, patterns, blur and blending have no single color; leave them to vision.
+          if (css.backgroundImage !== "none" || css.filter !== "none" || css.mixBlendMode !== "normal") { background = null; continue; }
           if (layer.dataset.nodeType === "rect" && Number(css.opacity) === 1 && fill && css.transform === "matrix(1, 0, 0, 1, 0, 0)" && parseFloat(css.borderRadius) === 0 && box.left + border <= bounds.left && box.top + border <= bounds.top && box.right - border >= bounds.right && box.bottom - border >= bounds.bottom) background = fill;
           else if (layer.dataset.nodeType !== "rect" || fill || border > 0) background = null;
         }
@@ -212,7 +236,7 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
         const range = document.createRange();
         range.selectNodeContents(element);
         const { boxes, overflow } = measureInk(element, range);
-        if (boxes.length && Number(style.opacity) === 1) {
+        if (boxes.length && Number(style.opacity) === 1 && style.mixBlendMode === "normal" && style.filter === "none") {
           const background = solidBackground(element, range.getBoundingClientRect());
           const foreground = rgb(style.color);
           const outline = rgb(style.webkitTextStrokeColor);
@@ -260,7 +284,7 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
           const top = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-node-id]");
           if (!top || top === element || !["rect", "ellipse"].includes(top.dataset.nodeType || "")) return false;
           const cover = getComputedStyle(top);
-          return Number(cover.opacity) === 1 && cover.backgroundColor !== "transparent" && !cover.backgroundColor.endsWith(", 0)");
+          return Number(cover.opacity) === 1 && cover.mixBlendMode === "normal" && cover.backgroundColor !== "transparent" && !cover.backgroundColor.endsWith(", 0)");
         });
         if (occluded) add("text_occluded", "A later opaque shape covers this text. Review its layer order.", nodeId, "warning");
         text.push({ id: nodeId, boxes, bounds: range.getBoundingClientRect() });

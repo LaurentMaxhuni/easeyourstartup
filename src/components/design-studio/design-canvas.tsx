@@ -2,7 +2,11 @@
 
 import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { designNodeStyle, type DesignAsset, type DesignNode, type DesignPage } from "@/lib/design-studio/document";
+import { DESIGN_FONTS, DESIGN_FONT_URL_PREFIX, designFontFaceCss } from "@/lib/design-studio/fonts";
 import styles from "./design-studio.module.css";
+
+// Browsers only download faces that rendered text actually uses.
+const FONT_FACE_CSS = designFontFaceCss(DESIGN_FONTS, (file) => `${DESIGN_FONT_URL_PREFIX}${file}`);
 
 export function DesignCanvas({ page, assets, selectedId, onSelect, onMove, zoom, pan, onPan, hand, onInteraction }: {
   page: DesignPage; assets: DesignAsset[]; selectedId: string | null;
@@ -41,8 +45,9 @@ export function DesignCanvas({ page, assets, selectedId, onSelect, onMove, zoom,
     setMoving(null);
   }
   return <div className={`${styles.viewport} ${hand ? styles.hand : ""}`} onPointerDown={(event) => start(event)} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-label="Design canvas. Select a layer and drag to move it.">
+    <style>{FONT_FACE_CSS}</style>
     <div className={styles.canvasPosition} style={{ width: page.width * zoom, height: page.height * zoom, transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-      <div className={styles.canvas} style={{ width: page.width, height: page.height, background: page.background, transform: `scale(${zoom})` }}>
+      <div className={styles.canvas} style={{ width: page.width, height: page.height, background: page.background, isolation: "isolate", transform: `scale(${zoom})` }}>
         {page.nodes.map((node) => {
           const actual = moving?.id === node.id ? { ...node, x: moving.x, y: moving.y } : node;
           const style = designNodeStyle(actual) as CSSProperties;

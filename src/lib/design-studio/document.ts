@@ -1,8 +1,28 @@
 import { z } from "zod";
+import { clampDesignFontWeight, DESIGN_FONTS, designFontStack } from "./fonts";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
 const color = z.string().regex(/^(#[\da-fA-F]{6}|transparent)$/);
-export const DESIGN_FONTS = ["Outfit", "Arial", "Georgia", "Verdana", "Courier New"] as const;
+const hex = z.string().regex(/^#[\da-fA-F]{6}$/);
+const unit = z.number().min(0).max(1);
+export { DESIGN_FONTS };
+export const BLEND_MODES = ["normal", "multiply", "screen", "overlay", "soft-light", "hard-light", "color-dodge", "color-burn", "darken", "lighten", "difference", "exclusion"] as const;
+export const PATTERN_KINDS = ["grain", "dots", "grid", "lines", "diagonal"] as const;
+// Rich paint stays declarative data. The trusted compiler turns it into CSS;
+// models never supply CSS strings, URLs or filters directly.
+export const designGradientSchema = z.object({
+  kind: z.enum(["linear", "radial", "conic"]), angle: z.number().min(-360).max(360).default(180),
+  centerX: z.number().min(0).max(100).default(50), centerY: z.number().min(0).max(100).default(50),
+  stops: z.array(z.object({ color: hex, position: z.number().min(0).max(100), opacity: unit.default(1) })).min(2).max(6),
+});
+export const designShadowSchema = z.object({
+  x: z.number().min(-400).max(400).default(0), y: z.number().min(-400).max(400).default(0),
+  blur: z.number().min(0).max(400).default(0), spread: z.number().min(-200).max(200).default(0),
+  color: hex.default("#000000"), opacity: unit.default(0.25),
+});
+export const designPatternSchema = z.object({
+  kind: z.enum(PATTERN_KINDS), color: hex.default("#000000"), opacity: unit.default(0.15), size: z.number().min(2).max(400).default(12),
+});
 export const CANVAS_PRESETS = { portrait: [1080, 1350], square: [1080, 1080], story: [1080, 1920], landscape: [1920, 1080] } as const;
 export const designAssetSchema = z.object({
   id, name: z.string().max(120), kind: z.enum(["logo", "image", "reference"]),
@@ -35,6 +55,10 @@ export const designNodeSchema = z.object({
   align: z.enum(["left", "center", "right"]).default("left"),
   path: z.string().max(16000).regex(/^[MmZzLlHhVvCcSsQqTtAa0-9.,+\-\seE]*$/).default(""),
   assetId: id.optional(), fit: z.enum(["contain", "cover"]).default("contain"),
+  fontStyle: z.enum(["normal", "italic"]).default("normal"), textTransform: z.enum(["none", "uppercase", "lowercase"]).default("none"),
+  textWrap: z.enum(["wrap", "balance"]).default("wrap"),
+  gradient: designGradientSchema.optional(), shadows: z.array(designShadowSchema).max(3).optional(),
+  pattern: designPatternSchema.optional(), blur: z.number().min(0).max(200).default(0), blendMode: z.enum(BLEND_MODES).default("normal"),
 });
 export const designPageSchema = z.object({
   id, name: z.string().min(1).max(120), width: z.number().int().min(320).max(4096),
@@ -75,6 +99,12 @@ export const designNodeChangesSchema = z.object({
   lineHeight: designNodeSchema.shape.lineHeight.removeDefault().optional(), letterSpacing: designNodeSchema.shape.letterSpacing.removeDefault().optional(),
   align: designNodeSchema.shape.align.removeDefault().optional(), path: designNodeSchema.shape.path.removeDefault().optional(),
   assetId: designNodeSchema.shape.assetId, fit: designNodeSchema.shape.fit.removeDefault().optional(),
+  fontStyle: designNodeSchema.shape.fontStyle.removeDefault().optional(), textTransform: designNodeSchema.shape.textTransform.removeDefault().optional(),
+  textWrap: designNodeSchema.shape.textWrap.removeDefault().optional(),
+  blur: designNodeSchema.shape.blur.removeDefault().optional(), blendMode: designNodeSchema.shape.blendMode.removeDefault().optional(),
+  // null removes the optional paint; omission leaves it unchanged.
+  gradient: designGradientSchema.nullable().optional(), shadows: designNodeSchema.shape.shadows.unwrap().nullable().optional(),
+  pattern: designPatternSchema.nullable().optional(),
 });
 export const designPatchSchema = z.object({
   explanation: z.string().max(1200),
@@ -104,7 +134,10 @@ export function applyDesignPatch(document: DesignDocument, input: DesignPatch): 
     const node = result.pages.find((page) => page.id === operation.pageId)?.nodes.find((item) => item.id === operation.nodeId);
     if (!node) throw new Error("The edit refers to a missing layer.");
     if (node.locked) throw new Error("Unlock the layer before editing it.");
-    Object.assign(node, operation.changes);
+    for (const [key, value] of Object.entries(operation.changes)) {
+      if (value === null) delete (node as Record<string, unknown>)[key];
+      else if (value !== undefined) (node as Record<string, unknown>)[key] = value;
+    }
   }
   for (const operation of patch.removals ?? []) {
     const page = result.pages.find((item) => item.id === operation.pageId);
@@ -120,20 +153,60 @@ export function applyDesignPatch(document: DesignDocument, input: DesignPatch): 
   }
   return designDocumentSchema.parse(result);
 }
+const rgba = (color: string, opacity: number) => `rgba(${[1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16)).join(",")},${Math.round(opacity * 1000) / 1000})`;
+export function designGradientCss(gradient: z.infer<typeof designGradientSchema>) {
+  const stops = [...gradient.stops].sort((a, b) => a.position - b.position).map((stop) => `${rgba(stop.color, stop.opacity)} ${stop.position}%`).join(",");
+  if (gradient.kind === "radial") return `radial-gradient(circle at ${gradient.centerX}% ${gradient.centerY}%,${stops})`;
+  if (gradient.kind === "conic") return `conic-gradient(from ${gradient.angle}deg at ${gradient.centerX}% ${gradient.centerY}%,${stops})`;
+  return `linear-gradient(${gradient.angle}deg,${stops})`;
+}
+// Returns paired image/size layers so multi-image patterns stay aligned.
+function patternLayers(pattern: z.infer<typeof designPatternSchema>): Array<[string, string]> {
+  const ink = rgba(pattern.color, pattern.opacity);
+  const size = pattern.size;
+  if (pattern.kind === "dots") return [[`radial-gradient(circle,${ink} ${size * 0.18}px,transparent ${size * 0.18 + 0.75}px)`, `${size}px ${size}px`]];
+  if (pattern.kind === "grid") return [[`linear-gradient(${ink} 1px,transparent 1px)`, `${size}px ${size}px`], [`linear-gradient(90deg,${ink} 1px,transparent 1px)`, `${size}px ${size}px`]];
+  if (pattern.kind === "lines") return [[`repeating-linear-gradient(0deg,${ink} 0 1px,transparent 1px ${size}px)`, "auto"]];
+  if (pattern.kind === "diagonal") return [[`repeating-linear-gradient(45deg,${ink} 0 1px,transparent 1px ${size}px)`, "auto"]];
+  // Film grain: SVG turbulence tinted to the pattern color. It is a data-URL
+  // image, so it renders under the renderer's no-network, no-script policy.
+  const [r, g, b] = [1, 3, 5].map((offset) => parseInt(pattern.color.slice(offset, offset + 2), 16) / 255);
+  const frequency = Math.round(Math.max(0.2, Math.min(2, 8 / size)) * 100) / 100;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><filter id="g"><feTurbulence type="fractalNoise" baseFrequency="${frequency}" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 ${r} 0 0 0 0 ${g} 0 0 0 0 ${b} 0 0 0 ${pattern.opacity * 2} 0"/></filter><rect width="100%" height="100%" filter="url(#g)"/></svg>`;
+  return [[`url("data:image/svg+xml,${encodeURIComponent(svg)}")`, "240px 240px"]];
+}
 export function designNodeStyle(node: DesignNode): Record<string, string | number> {
+  const box = node.type === "rect" || node.type === "ellipse";
+  const gradientText = node.type === "text" && node.gradient;
+  const layers: Array<[string, string]> = [];
+  if (box && node.pattern) layers.push(...patternLayers(node.pattern));
+  if ((box || node.type === "text") && node.gradient) layers.push([designGradientCss(node.gradient), "auto"]);
+  const shadows = node.shadows ?? [];
+  // Box shadows follow the layer's shape; text uses text-shadow; vectors and
+  // clipped gradient text need drop-shadow so the shadow follows the glyphs.
+  const dropShadows = node.type === "line" || node.type === "path" || gradientText ? shadows.map((shadow) => `drop-shadow(${shadow.x}px ${shadow.y}px ${shadow.blur / 2}px ${rgba(shadow.color, shadow.opacity)})`) : [];
+  const filters = [...(node.blur ? [`blur(${node.blur}px)`] : []), ...dropShadows];
   return {
     position: "absolute", left: node.x, top: node.y, width: node.width, height: node.height,
     transform: `rotate(${node.rotation}deg)`, transformOrigin: "center", opacity: node.opacity,
-    display: node.visible ? "block" : "none", boxSizing: "border-box", color: node.fill,
-    background: node.type === "rect" || node.type === "ellipse" ? node.fill : "transparent",
+    display: node.visible ? "block" : "none", boxSizing: "border-box", color: gradientText ? "transparent" : node.fill,
+    backgroundColor: box ? node.fill : "transparent",
+    backgroundImage: layers.length ? layers.map(([image]) => image).join(",") : "none",
+    backgroundSize: layers.length ? layers.map(([, size]) => size).join(",") : "auto",
+    ...(gradientText ? { WebkitBackgroundClip: "text", backgroundClip: "text" } : {}),
     border: ["rect", "ellipse", "image"].includes(node.type) ? `${node.strokeWidth}px solid ${node.stroke}` : "none",
     borderRadius: node.type === "ellipse" ? "50%" : node.radius,
     overflow: node.type === "image" ? "hidden" : "visible",
+    boxShadow: (box || node.type === "image") && shadows.length ? shadows.map((shadow) => `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.spread}px ${rgba(shadow.color, shadow.opacity)}`).join(",") : "none",
+    textShadow: node.type === "text" && !gradientText && shadows.length ? shadows.map((shadow) => `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${rgba(shadow.color, shadow.opacity)}`).join(",") : "none",
+    filter: filters.length ? filters.join(" ") : "none",
+    mixBlendMode: node.blendMode,
     WebkitTextStroke: node.type === "text" ? `${node.strokeWidth}px ${node.stroke}` : "0 transparent",
     paintOrder: "stroke fill",
-    fontFamily: `"${node.fontFamily}", ${node.fontFamily === "Georgia" ? "serif" : "sans-serif"}`,
-    fontSize: node.fontSize, fontWeight: node.fontWeight, lineHeight: node.lineHeight,
-    letterSpacing: node.letterSpacing, textAlign: node.align, whiteSpace: "pre-wrap", overflowWrap: "break-word",
+    fontFamily: designFontStack(node.fontFamily),
+    fontSize: node.fontSize, fontWeight: clampDesignFontWeight(node.fontFamily, node.fontWeight), fontStyle: node.fontStyle, lineHeight: node.lineHeight,
+    letterSpacing: node.letterSpacing, textAlign: node.align, textTransform: node.textTransform, textWrapStyle: node.textWrap === "balance" ? "balance" : "auto",
+    whiteSpace: "pre-wrap", overflowWrap: "break-word",
   };
 }
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -151,5 +224,5 @@ export function renderDesignHtml(input: DesignDocument, pageId: string, fontCss 
     return `<div data-node-id="${node.id}" data-node-type="${node.type}" data-node-role="${node.role}" style="${escape(style)}">${content}</div>`;
   }).join("");
   const watermark = options.watermark ? '<div style="position:fixed;right:24px;bottom:24px;padding:8px 12px;background:#ffffff;color:#181818;border:1px solid #d5d5d5;font:600 18px Outfit,sans-serif;z-index:2147483647">Made with EaseYourStartup</div>' : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>${escape(doc.title)}</title><style>${fontCss}*{box-sizing:border-box}html,body{margin:0;width:${page.width}px;height:${page.height}px}#design-canvas{position:relative;width:${page.width}px;height:${page.height}px;background:${page.background};overflow:hidden}img{display:block}svg{display:block}</style></head><body><main id="design-canvas">${layers}</main>${watermark}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>${escape(doc.title)}</title><style>${fontCss}*{box-sizing:border-box}html,body{margin:0;width:${page.width}px;height:${page.height}px}#design-canvas{position:relative;isolation:isolate;width:${page.width}px;height:${page.height}px;background:${page.background};overflow:hidden}img{display:block}svg{display:block}</style></head><body><main id="design-canvas">${layers}</main>${watermark}</body></html>`;
 }

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const name = document.title.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80) || "design";
     const headers = { "Cache-Control": "private, no-store", "Content-Disposition": `attachment; filename="${name}.${format}"` };
     if (format === "json") return new Response(JSON.stringify(document, null, 2), { headers: { ...headers, "Content-Type": "application/json" } });
-    if (format === "html") return new Response(renderDesignHtml(document, pageId, await getDesignFontCss(), { watermark: limits.watermarked }), { headers: { ...headers, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'" } });
+    if (format === "html") return new Response(renderDesignHtml(document, pageId, await getDesignFontCss(document), { watermark: limits.watermarked }), { headers: { ...headers, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'" } });
     if (format === "png") {
       const rendered = await renderDesignPage(document, pageId, { scale, signal: request.signal, watermark: limits.watermarked });
       assertExportLayout(rendered.issues);
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const zip = new JSZip();
     let archiveBytes = 0;
     zip.file("design.json", JSON.stringify(document, null, 2));
-    const fontCss = await getDesignFontCss();
+    const fontCss = await getDesignFontCss(document);
     for (const [index, page] of document.pages.entries()) {
       const rendered = await renderDesignPage(document, page.id, { scale, signal: request.signal, watermark: limits.watermarked });
       assertExportLayout(rendered.issues);

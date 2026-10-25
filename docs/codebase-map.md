@@ -145,6 +145,10 @@ asset project with its own instructions, not the SaaS runtime.
   for brand kits, raster asset references, slides, text/shape/SVG layers and
   incremental property patches. `renderDesignHtml` emits escaped HTML/CSS/SVG;
   model-authored scripts, raw markup and external asset URLs are not accepted.
+- `src/lib/design-studio/fonts.ts` is the font catalog (Outfit, 21 self-hosted
+  Fontsource families in `public/design-fonts`, four system fonts) and pairings.
+  Layers support declarative gradients, textures, shadows, blur and blend modes;
+  `designNodeStyle` is the only CSS compiler, shared by editor and renderer.
 - `src/lib/server/design-studio/providers.ts` supplies capability-aware adapters
   for Hetzner, Z.AI, Gemini, Groq, Workers AI, OpenRouter and compatible hosts.
   Explicit `DESIGN_AI_PROVIDERS_JSON` or per-provider model capability arrays are

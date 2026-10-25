@@ -16,8 +16,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
-    "/api/design-studio/**/*": ["./src/app/fonts/*.woff2"],
-    "/api/inngest": ["./src/app/fonts/*.woff2"],
+    "/api/design-studio/**/*": ["./src/app/fonts/*.woff2", "./public/design-fonts/*.woff2"],
+    "/api/inngest": ["./src/app/fonts/*.woff2", "./public/design-fonts/*.woff2"],
   },
   poweredByHeader: false,
   images: {
