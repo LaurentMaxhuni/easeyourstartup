@@ -104,6 +104,28 @@ describe("creative production pipeline", () => {
     expect(headline.fontFamily).toBe("Anton");
     expect(result.variants[0].document.pages[1].nodes.some((node) => node.id === "slide-counter" && node.text === "02 / 02")).toBe(true);
   });
+  it("records vision critique on template variants without rearranging them on vision alone", async () => {
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0, templateDirection: true, revisionLimit: 3 });
+    const tasks: string[] = [];
+    const result = await runDesignPipeline(input, {
+      visionAvailable: true, checkpoint: async () => {},
+      render: async () => ({ png, width: 1080, height: 1350, issues: [] }),
+      generate: async (task, prompt, schema) => {
+        tasks.push(task);
+        const slide = { kicker: "New", headline: "Integration is here", body: "", cta: "Try it" };
+        const data: Record<string, unknown> = {
+          brief: { purpose: "Announce", audience: "Founders", message: "Integration is here", mood: "Confident", inspiration: "Editorial", requiredInformation: [], cta: "Try it", constraints: [] },
+          copy: prompt.startsWith("Choose the hand-designed") ? { templateId: "swiss-grid", reason: "Clear", slides: [slide] } : { headline: "Integration is here", supportingCopy: "", cta: "Try it", slides: [{ headline: "Integration is here", body: "", cta: "Try it" }] },
+          critique: { score: 60, issues: [{ pageId: "page-1", nodeId: "headline", severity: "error", category: "typography", message: "Headline looks clipped", suggestion: "Shrink it" }] },
+        };
+        return { data: schema.parse(data[task]), usage: { provider: "test", model: "test", inputTokens: 40, outputTokens: 40, latencyMs: 1, fallbacks: 0 } };
+      },
+    });
+    expect(tasks).not.toContain("edit");
+    expect(result.variants[0].feedback).toHaveLength(1);
+    expect(result.variants[0].feedback[0].vision?.score).toBe(60);
+  });
   it("requires at least one direction", () => {
     expect(generationInputSchema.safeParse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0 }).success).toBe(false);
   });

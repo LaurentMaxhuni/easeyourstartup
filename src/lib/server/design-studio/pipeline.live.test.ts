@@ -7,12 +7,16 @@ import { runDesignPipeline } from "./pipeline";
 import { getDesignFontCss, renderDesignPage } from "./renderer";
 import { generateDesignObject, getDesignProviderSettings } from "./providers";
 
-const examples = [
+const examples: Array<{ id: string; prompt: string; slides: number; variants?: number; templateDirection?: boolean; brand?: Record<string, unknown> }> = [
   { id: "groq", prompt: "Create a premium Instagram poster announcing that EaseYourStartup now supports Groq. Audience: startup founders. Message: Groq is now available in our AI design studio. CTA: Make your next statement. Bold editorial typography; orange, warm paper and charcoal brand palette.", slides: 1 },
   { id: "launch", prompt: "A minimalist startup launch graphic for EaseYourStartup. Headline: Your next chapter starts here. CTA: Build your first campaign. Audience: solo founders. Use generous negative space and beautifully balanced type; no generic decoration.", slides: 1 },
   { id: "experimental", prompt: "An experimental typography-based technology advertisement for EaseYourStartup. Headline: Make some noise. Audience: independent makers. Radical type scale, asymmetry and purposeful SVG graphic geometry. CTA: Design your launch. No fabricated metrics.", slides: 1 },
   { id: "feature", prompt: "A premium product feature announcement: EaseYourStartup introduces editable design layers. Headline: Every detail is yours. Show an abstract, clearly illustrative type-and-grid diagram. CTA: Meet your design studio. No product screenshot or invented evidence.", slides: 1 },
   { id: "carousel", prompt: "A three-slide Instagram carousel for EaseYourStartup. Slide 1 headline: An idea deserves a voice. Slide 2 headline: Make it unmistakably yours. Slide 3 headline: Ready for the world. Explain brief, editable design, and export, respectively. Consistent brand, distinct page compositions, precise typography. Final CTA: Start your next design.", slides: 3 },
+  // Template direction: a non-default brand checks color and font handling.
+  { id: "template", prompt: "A launch poster for Northwind Ledger, bookkeeping software for freelancers. Message: invoices, receipts and tax estimates now live in one place. Audience: freelance designers and developers. CTA: Start free. Tone: calm, trustworthy, a little bold.", slides: 1, variants: 0, templateDirection: true, brand: { name: "Northwind Ledger", primary: "#2f6bff", secondary: "#101828", background: "#f4f1ea", headingFont: "Fraunces", bodyFont: "Inter", personality: "Calm, precise, trustworthy" } },
+  { id: "template-carousel", prompt: "A three-slide LinkedIn carousel for EaseYourStartup announcing its AI design studio. Slide 1: turn every ship into a campaign. Slide 2: editable layers, real fonts, your brand. Slide 3: try it free today.", slides: 3, variants: 0, templateDirection: true },
+  { id: "template-mixed", prompt: "An Instagram poster announcing that EaseYourStartup now exports launch kits for Product Hunt, X and LinkedIn in one click. Audience: indie hackers. Energetic, developer-native.", slides: 1, variants: 1, templateDirection: true },
 ];
 describe.skipIf(process.env.RUN_LIVE_AI_TESTS !== "true")("live AI design studio examples", () => {
   beforeAll(() => {
@@ -43,7 +47,7 @@ describe.skipIf(process.env.RUN_LIVE_AI_TESTS !== "true")("live AI design studio
   });
   afterAll(() => vi.restoreAllMocks());
   it.each(examples.filter((example) => !process.env.DESIGN_LIVE_EXAMPLE || process.env.DESIGN_LIVE_EXAMPLE === example.id))("renders the $id brief through the real creative pipeline", async (example) => {
-    const input = generationInputSchema.parse({ action: "generate", prompt: example.prompt, brand: brandKitSchema.parse({}), width: 1080, height: 1350, variants: 1, slides: example.slides, revisionLimit: 3, tokenBudget: 120000 });
+    const input = generationInputSchema.parse({ action: "generate", prompt: example.prompt, brand: brandKitSchema.parse(example.brand ?? {}), width: 1080, height: 1350, variants: example.variants ?? 1, templateDirection: example.templateDirection ?? false, slides: example.slides, revisionLimit: 3, tokenBudget: 120000 });
     const result = await runDesignPipeline(input, {
       // Separately exercise the supported text-only deployment path. Real
       // provider outputs and actual browser measurements remain in use.
@@ -72,16 +76,21 @@ describe.skipIf(process.env.RUN_LIVE_AI_TESTS !== "true")("live AI design studio
         writeFileSync(`output/design-studio/examples/${example.id}-progress.json`, JSON.stringify({ stage, ...state }, null, 2));
       },
     });
-    expect(result.variants).toHaveLength(1);
-    expect(result.variants[0].document.pages).toHaveLength(example.slides);
-    const document = result.variants[0].document;
+    expect(result.variants).toHaveLength((example.variants ?? 1) + (example.templateDirection ? 1 : 0));
     writeFileSync(`output/design-studio/examples/${example.id}.json`, JSON.stringify(result, null, 2));
-    for (const [index, page] of document.pages.entries()) {
-      const render = await renderDesignPage(document, page.id);
-      writeFileSync(`output/design-studio/examples/${example.id}-${index + 1}.png`, render.png);
-      writeFileSync(`output/design-studio/examples/${example.id}-${index + 1}.html`, renderDesignHtml(document, page.id, await getDesignFontCss(document)));
-      expect(render.width).toBe(1080); expect(render.height).toBe(1350);
-      expect(render.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    for (const variant of result.variants) {
+      const document = variant.document;
+      expect(document.pages).toHaveLength(example.slides);
+      // Variant-qualified names keep template and custom outputs side by side.
+      const name = result.variants.length > 1 || variant.id.startsWith("template-") ? `${example.id}-${variant.id}` : example.id;
+      for (const [index, page] of document.pages.entries()) {
+        const render = await renderDesignPage(document, page.id);
+        writeFileSync(`output/design-studio/examples/${name}-${index + 1}.png`, render.png);
+        writeFileSync(`output/design-studio/examples/${name}-${index + 1}.html`, renderDesignHtml(document, page.id, await getDesignFontCss(document)));
+        writeFileSync(`output/design-studio/examples/${name}-${index + 1}-issues.json`, JSON.stringify(render.issues, null, 2));
+        expect(render.width).toBe(1080); expect(render.height).toBe(1350);
+        expect(render.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+      }
     }
   }, 600000);
 });

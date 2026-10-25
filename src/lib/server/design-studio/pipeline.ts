@@ -3,7 +3,7 @@ import { z } from "zod";
 import sharp from "sharp";
 import { applyDesignPatch, designDocumentSchema, designNodeSchema, designPageSchema, designPatchSchema, type DesignDocument, type DesignPage } from "@/lib/design-studio/document";
 import { DESIGN_FONT_CATALOG, DESIGN_FONT_PAIRINGS, DESIGN_FONTS } from "@/lib/design-studio/fonts";
-import { availableTemplates, buildTemplatePage, LAYOUT_TEMPLATES, type LayoutTemplate, type TemplateCopy } from "@/lib/design-studio/templates";
+import { availableTemplates, buildTemplatePage, buildTemplateSlides, LAYOUT_TEMPLATES, type LayoutTemplate, type TemplateCopy } from "@/lib/design-studio/templates";
 import { alternativeLayoutCount, designJobInputSchema, generationInputSchema, type DesignJobInput, type DesignStage } from "@/lib/design-studio/workflow";
 import { generateDesignObject, hasDesignVisionModel, type AiUsage, type DesignTask } from "./providers";
 import { renderDesignPage, type RenderIssue } from "./renderer";
@@ -197,7 +197,10 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
     }
     return rendered;
   }
-  async function evaluateAndRefine(variant: DesignVariant, limit: number, initial?: Awaited<ReturnType<typeof renderPages>>) {
+  // visionRepairs=false still records the critique but revises only for
+  // browser-measured errors; hand-tuned template geometry is not rearranged
+  // on a vision opinion alone.
+  async function evaluateAndRefine(variant: DesignVariant, limit: number, initial?: Awaited<ReturnType<typeof renderPages>>, visionRepairs = true) {
     let rendered = initial ?? await renderPages(variant.document, `${variant.id}-initial`);
     await checkpoint("Evaluating design", { result: structuredClone(result), preview: { pageId: rendered[0].pageId, dataUrl: rendered[0].dataUrl } });
     for (let round = 0; round <= limit; round++) {
@@ -209,7 +212,7 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
       if (availableVision) {
         for (const page of rendered) {
           try {
-            const critique = await ask("critique", `Evaluate this actual screenshot as a creative director. Report at most five specific, actionable deficiencies. Review typography, hierarchy, contrast, readability, alignment, brand consistency, originality and composition. Intentional negative space and a single well-used brand typeface are valid; do not invent a requirement for more decoration, another font or different brand colors. Use ONLY existing page/layer IDs supplied; omit nodeId for a whole-page issue. Page: ${page.pageId}. Document context: ${JSON.stringify(documentContext(variant.document))}`, critiqueSchema, page.dataUrl);
+            const critique = await ask("critique", `Evaluate this actual screenshot as a creative director. Report at most five specific, actionable deficiencies. Review typography, hierarchy, contrast, readability, alignment, brand consistency, originality and composition. Intentional negative space and a single well-used brand typeface are valid; do not invent a requirement for more decoration, another font or different brand colors.${variant.document.brand.headingFont === "Outfit" && variant.document.brand.bodyFont === "Outfit" ? " The brand fonts are the untouched default, so any well-chosen font pairing is intentional and not a brand violation." : ""} Use ONLY existing page/layer IDs supplied; omit nodeId for a whole-page issue. Page: ${page.pageId}. Document context: ${JSON.stringify(documentContext(variant.document))}`, critiqueSchema, page.dataUrl);
             minScore = Math.min(minScore, critique.score);
             visionIssues.push(...critique.issues);
           } catch (error) {
@@ -223,11 +226,12 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
       variant.feedback.push({ round, deterministic, vision: visionStatus === "available" ? { score: minScore, issues: visionIssues } : null, visionStatus, ...(warning ? { warning } : {}) });
       variant.visionAvailable = visionStatus === "available";
       await checkpoint("Evaluating design", { result: structuredClone(result) });
-      const needsRevision = deterministic.some((issue) => issue.severity === "error") || visionIssues.some((issue) => issue.severity === "error") || (minScore < 80 && visionIssues.length > 0);
+      const measuredErrors = deterministic.some((issue) => issue.severity === "error");
+      const needsRevision = measuredErrors || (visionRepairs && (visionIssues.some((issue) => issue.severity === "error") || (minScore < 80 && visionIssues.length > 0)));
       if (!needsRevision || round >= limit) break;
       await checkpoint("Refining composition");
       try {
-        const patch = await ask("edit", `Repair the specific issues below. Preserve successful decisions, approved wording, brand palette/fonts, assets, unrelated layers and locked layers. Use incremental property patches for existing layer IDs; set gradient, pattern or shadows to null to remove them. Available fonts: ${FONT_GUIDE}. ${STYLE_GUIDE} New individual layers go in additions, and specific layer deletions go in removals only when needed. Never replace the entire document. Current document: ${JSON.stringify(documentContext(variant.document))}. Issues: ${JSON.stringify({ deterministic, visionIssues })}`, patchSchemaFor(variant.document));
+        const patch = await ask("edit", `Repair the specific issues below. Preserve successful decisions, approved wording, brand palette/fonts, assets, unrelated layers and locked layers. Use incremental property patches for existing layer IDs; set gradient, pattern or shadows to null to remove them. Available fonts: ${FONT_GUIDE}. ${STYLE_GUIDE} New individual layers go in additions, and specific layer deletions go in removals only when needed. Never replace the entire document. Current document: ${JSON.stringify(documentContext(variant.document))}. Issues: ${JSON.stringify({ deterministic, visionIssues: visionRepairs ? visionIssues : [] })}`, patchSchemaFor(variant.document));
         if (!patch.patches.length && !patch.additions?.length && !patch.removals?.length) break;
         const candidate: DesignVariant = { ...variant, document: applyDesignPatch(variant.document, patch) };
         const revised = await renderAndFit(candidate, `${variant.id}-revision-${round}`);
@@ -276,16 +280,16 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
         fill.slides.forEach((slide, index) => { if (slide.headline.length > limit) context.addIssue({ code: "custom", path: ["slides", index, "headline"], message: `This template fits headlines up to ${limit} characters.` }); });
       });
       await checkpoint("Planning layout");
-      const fill = await ask("copy", `Choose the hand-designed poster template that best fits this brief, brand and message, then fit the approved copy into its slots for exactly ${input.slides} slides. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Brand: ${brandContext}.`, fillSchema);
+      const fill = await ask("copy", `Choose the hand-designed poster template that best fits this brief, brand and message, then fit the approved copy into its slots for exactly ${input.slides} slides. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words and must not repeat the slide headline; if the approved copy repeats them, keep the headline and vary the CTA. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Brand: ${brandContext}.`, fillSchema);
       const template = templates.find((item) => item.id === fill.templateId)!;
       await checkpoint("Building composition");
-      const pages = fill.slides.map((slide: TemplateCopy, index) => buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: slide, slideIndex: index, slideCount: input.slides }, `page-${index + 1}`, input.slides > 1 ? `Slide ${index + 1}` : "Poster"));
+      const pages = buildTemplateSlides(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets }, fill.slides as TemplateCopy[], (index) => input.slides > 1 ? `Slide ${index + 1}` : "Poster");
       const document = designDocumentSchema.parse({ version: 1, title: fill.slides[0].headline.slice(0, 180), brand: input.brand, assets: input.assets, pages });
       const variant: DesignVariant = { id: `template-${template.id}`, name: `Template · ${template.name}`, document, feedback: [], visionAvailable: false };
       const firstRender = await renderAndFit(variant, `${variant.id}-validation`);
       result.variants.push(variant);
       await checkpoint("Evaluating design", { result: structuredClone(result), preview: { pageId: firstRender[0].pageId, dataUrl: firstRender[0].dataUrl } });
-      await evaluateAndRefine(variant, input.revisionLimit, firstRender);
+      await evaluateAndRefine(variant, input.revisionLimit, firstRender, false);
       return fingerprint(variant.document);
     }
     let templateSignature: string | undefined;

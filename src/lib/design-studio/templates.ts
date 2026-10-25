@@ -9,7 +9,8 @@ import { clampDesignFontWeight, designFont, type DesignFontFamily } from "./font
 // advances and greedy word wrap inside explicit height budgets; browser
 // fitting in the pipeline repairs any residual overflow.
 export type TemplateCopy = { kicker: string; headline: string; body: string; cta: string };
-export type TemplateContext = { width: number; height: number; brand: BrandKit; assets: DesignAsset[]; copy: TemplateCopy; slideIndex: number; slideCount: number };
+// maxHeadlineSize lets a carousel share one headline size across slides.
+export type TemplateContext = { width: number; height: number; brand: BrandKit; assets: DesignAsset[]; copy: TemplateCopy; slideIndex: number; slideCount: number; maxHeadlineSize?: number };
 type NodeInput = Partial<DesignNode> & Pick<DesignNode, "id" | "type" | "x" | "y" | "width" | "height">;
 type Fonts = { heading: DesignFontFamily; body: DesignFontFamily };
 export type LayoutTemplate = {
@@ -47,6 +48,15 @@ function rotateHue(hex: string, degrees: number) {
   const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation, x = chroma * (1 - Math.abs((hue / 60) % 2 - 1)), m = lightness - chroma / 2;
   const [r1, g1, b1] = hue < 60 ? [chroma, x, 0] : hue < 120 ? [x, chroma, 0] : hue < 180 ? [0, chroma, x] : hue < 240 ? [0, x, chroma] : hue < 300 ? [x, 0, chroma] : [chroma, 0, x];
   return toHex([r1 + m, g1 + m, b1 + m].map((value) => value * 255));
+}
+
+// A second glow color that stays on-brand: the brand secondary when it is a
+// real hue, otherwise a neighbouring hue of the primary.
+function companionHue(primary: string, brand: BrandKit) {
+  const secondary = solid(brand.secondary, "#181818");
+  const [r, g, b] = channels(secondary);
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  return chroma > 60 && !isDark(secondary) ? secondary : rotateHue(primary, -32);
 }
 
 // --- Type helpers ------------------------------------------------------------
@@ -135,6 +145,20 @@ function button(prefix: string, label: string, x: number, y: number, size: numbe
     { ...textLayer(prefix, "cta", "Call to action", label, left, y + (options.height - labelHeight) / 2, width, size, type, colors.ink, { align: "center" }), height: labelHeight },
   ];
 }
+// Arrows are drawn: the self-hosted Latin subsets have no U+2192 glyph, so a
+// text arrow would render in a fallback font.
+function arrow(id: string, x: number, centerY: number, size: number, color: string): NodeInput {
+  const width = Math.round(size * 0.9), height = Math.round(size * 0.6), stroke = Math.max(1.5, size * 0.08), inset = stroke;
+  const mid = height / 2, head = height / 2 - inset;
+  return { id, type: "path", role: "decoration", name: "Arrow", x, y: centerY - height / 2, width, height, fill: "transparent", stroke: color, strokeWidth: round(stroke), path: `M${inset} ${mid} L${width - inset} ${mid} M${round(width - inset - head)} ${inset} L${width - inset} ${mid} L${round(width - inset - head)} ${height - inset}` };
+}
+// A text CTA followed by a drawn arrow, as one left- or center-aligned group.
+function arrowLink(label: string, x: number, y: number, boxWidth: number, size: number, type: Type, color: string, align: "left" | "center"): NodeInput[] {
+  const textWidth = estimateWidth(label, size, type), gap = size * 0.4, total = textWidth + gap + size * 0.9;
+  const left = align === "center" ? x + (boxWidth - total) / 2 : x;
+  const text = textLayer("cta", "cta", "Call to action", label, left, y, Math.min(textWidth, boxWidth), size, type, color);
+  return [text, arrow("cta-arrow", left + textWidth + gap, y + size * 0.25 + size * (type.lineHeight ?? 1.2) / 2 - size * 0.08, size, color)];
+}
 const has = (text: string) => text.trim().length > 0;
 const shadow = (x: number, y: number, blur: number, color: string, opacity: number) => [{ x, y, blur, spread: 0, color, opacity }];
 
@@ -154,7 +178,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bodyY = footerY - 72 * u - bodyHeight;
       const top = M + 150 * u;
       const headType: Type = { font: fonts.heading, weight: 800, tracking: -0.035, lineHeight: 0.95 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 210 * u, maxLines: 5, maxHeight: bodyY - 64 * u - top });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(210 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyY - 64 * u - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const headlineY = Math.max(top, Math.min(H * 0.24, bodyY - 64 * u - headlineHeight));
       return { background: bg, nodes: [
@@ -168,7 +192,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
           textLayer("body", "body", "Body", copy.body, M + 32 * u, bodyY, bodyWidth, bodySize, bodyType, ink),
         ] : []),
         { id: "footer-rule", type: "rect", name: "Footer rule", x: M, y: footerY - 28 * u, width: textWidth, height: 2 * u, fill: ink },
-        textLayer("cta", "cta", "Call to action", `${copy.cta} →`, M, footerY, textWidth * 0.7, 30 * u, { font: fonts.body, weight: 700 }, ink),
+        ...arrowLink(copy.cta, M, footerY, textWidth * 0.7, 30 * u, { font: fonts.body, weight: 700 }, ink, "left"),
         ...counter(context, W - M, footerY + 4 * u, 22 * u, ink, fonts.body),
       ] };
     },
@@ -188,7 +212,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const top = M + 120 * u, bottom = H - M - 60 * u;
       const fixed = kickerSize * 1.5 + 32 * u + 48 * u + bodyHeight + 64 * u + ctaSize * 2;
       const headType: Type = { font: fonts.heading, tracking: -0.01, lineHeight: 0.98 };
-      const size = fitSize(copy.headline, headWidth, headType, { maxSize: 200 * u, maxLines: 5, maxHeight: bottom - top - fixed });
+      const size = fitSize(copy.headline, headWidth, headType, { maxSize: Math.min(200 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top - fixed });
       const headlineHeight = blockHeight(copy.headline, headWidth, size, headType);
       let y = Math.max(top, top + (bottom - top - fixed - headlineHeight) / 2);
       const kickerY = y; y += kickerSize * 1.5 + 32 * u;
@@ -226,12 +250,12 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const top = M + 110 * u, bottom = ctaY - 56 * u - bodyHeight - (has(copy.body) ? 40 * u : 0);
       const italic = designFont(fonts.heading).italic;
       const headType: Type = { font: fonts.heading, italic, tracking: -0.02, lineHeight: 0.95 };
-      const size = fitSize(copy.headline, headWidth, headType, { maxSize: 180 * u, maxLines: 5, maxHeight: bottom - top });
+      const size = fitSize(copy.headline, headWidth, headType, { maxSize: Math.min(180 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
       const headlineHeight = blockHeight(copy.headline, headWidth, size, headType);
       const headlineY = Math.max(top, Math.min(H * 0.42 - headlineHeight / 2, bottom - headlineHeight));
       return { background: bg, nodes: [
         { id: "glow-primary", type: "ellipse", name: "Primary glow", x: 0, y: 0, width: W * 0.8, height: H * 0.62, fill: primary, blur: 170 * u, opacity: 0.85 },
-        { id: "glow-secondary", type: "ellipse", name: "Secondary glow", x: W * 0.35, y: H * 0.5, width: W * 0.65, height: H * 0.5, fill: rotateHue(primary, 200), blur: 190 * u, opacity: 0.55 },
+        { id: "glow-secondary", type: "ellipse", name: "Secondary glow", x: W * 0.35, y: H * 0.5, width: W * 0.65, height: H * 0.5, fill: companionHue(primary, brand), blur: 190 * u, opacity: 0.55 },
         { id: "grain", type: "rect", name: "Grain", x: 0, y: 0, width: W, height: H, fill: "transparent", pattern: { kind: "grain", color: "#ffffff", opacity: 0.14, size: 12 }, blendMode: "overlay" },
         textLayer("kicker", "label", "Kicker", copy.kicker, M, M + 16 * u, textWidth * 0.7, 26 * u, { font: fonts.body, weight: 600, uppercase: true, tracking: 0.15 }, light),
         ...counter(context, W - M, M + 18 * u, 22 * u, light, fonts.body),
@@ -262,7 +286,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bandTop = Math.min(bodyY, ctaY) - 72 * u;
       const top = M + 90 * u;
       const headType: Type = { font: fonts.heading, uppercase: true, lineHeight: 0.9 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 330 * u, maxLines: 6, maxHeight: bandTop - top });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(330 * u, context.maxHeadlineSize ?? Infinity), maxLines: 6, maxHeight: bandTop - top });
       return { background: bg, nodes: [
         textLayer("kicker", "label", "Kicker", copy.kicker, M, M, textWidth * 0.6, 26 * u, { font: fonts.body, weight: 800, uppercase: true, tracking: 0.1 }, ink),
         brandMark(context, "brand", W / 2, M, 26 * u, ink, fonts.body, "right", W / 2 - M),
@@ -287,7 +311,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const top = frame + barHeight + Math.max(72 * u, H * 0.1);
       const bottom = ctaY - 64 * u - bodyHeight - (has(copy.body) ? 48 * u : 0);
       const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.03, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 170 * u, maxLines: 5, maxHeight: bottom - top });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(170 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const labelType: Type = { font: fonts.body, weight: 700, uppercase: true };
       return { background: bg, nodes: [
@@ -314,7 +338,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const headWidth = landscape ? split - 2 * M : W - 2 * M;
       const headTop = M + 80 * u, headBottom = landscape ? H - M : split - 56 * u;
       const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.03, lineHeight: 0.95 };
-      const size = fitSize(copy.headline, headWidth, headType, { maxSize: 190 * u, maxLines: 5, maxHeight: headBottom - headTop });
+      const size = fitSize(copy.headline, headWidth, headType, { maxSize: Math.min(190 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: headBottom - headTop });
       const headlineHeight = blockHeight(copy.headline, headWidth, size, headType);
       const restX = landscape ? split + M : M, restWidth = landscape ? W - split - 2 * M : W - 2 * M;
       const restY = landscape ? M + 120 * u : split + 56 * u;
@@ -348,7 +372,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const top = Math.max(M + 160 * u, H * 0.26), bottom = ctaY - 64 * u - bodyHeight - (has(copy.body) ? 40 * u : 0);
       const headType: Type = { font: fonts.heading, weight: 600, tracking: -0.03, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 160 * u, maxLines: 5, maxHeight: bottom - top });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(160 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       return { background: bg, nodes: [
         { id: "grid", type: "rect", name: "Grid", x: 0, y: 0, width: W, height: H, fill: "transparent", pattern: { kind: "grid", color: "#ffffff", opacity: 0.07, size: 54 * u } },
@@ -378,7 +402,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const ctaHeight = 92 * u, top = M + 110 * u, bottom = H - M - 40 * u;
       const fixed = chipHeight + 48 * u + 40 * u + bodyHeight + 64 * u + ctaHeight;
       const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.03, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 150 * u, maxLines: 5, maxHeight: bottom - top - fixed });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(150 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top - fixed });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       let y = Math.max(top, (H - fixed - headlineHeight) / 2);
       const chipY = y; y += chipHeight + 48 * u;
@@ -414,7 +438,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       // Text takes what it needs below the image, and the image never drops
       // below a third of the canvas.
       const textBudget = landscape ? H - 2 * M - 90 * u - bodyHeight - ctaHeight - 80 * u : H - M - imageTop - H * 0.34 - 56 * u - bodyHeight - 32 * u - 40 * u - ctaHeight;
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 120 * u, maxLines: 4, maxHeight: textBudget });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(120 * u, context.maxHeadlineSize ?? Infinity), maxLines: 4, maxHeight: textBudget });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const textBlock = headlineHeight + 32 * u + bodyHeight + (has(copy.body) ? 40 * u : 0) + ctaHeight;
       const frame = landscape
@@ -452,7 +476,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const top = M + 100 * u, bottom = ctaY - 56 * u - bodyHeight - (has(copy.body) ? 56 * u : 0);
       const headType: Type = { font: fonts.heading, weight: 700, uppercase: true, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 190 * u, maxLines: 5, maxHeight: bottom - top });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(190 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const headlineY = Math.max(top, Math.min(H * 0.4 - headlineHeight / 2, bottom - headlineHeight));
       const echo = (id: string, x: number, opacity: number) => textLayer(id, "decoration", "Headline echo", copy.headline, x, headlineY, textWidth, size, headType, "transparent", { stroke: primary, strokeWidth: 2 * u, opacity });
@@ -481,7 +505,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const top = M + 120 * u, bottom = H - M - 120 * u;
       const fixed = 36 * u + 32 * u + 56 * u + 4 * u + 56 * u + bodyHeight;
       const headType: Type = { font: fonts.heading, tracking: -0.02, lineHeight: 1.1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: 104 * u, maxLines: 5, maxHeight: bottom - top - fixed });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(104 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top - fixed });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       let y = Math.max(top, (H - fixed - headlineHeight) / 2 - 20 * u);
       const kickerY = y; y += 36 * u + 32 * u;
@@ -493,7 +517,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
         textLayer("headline", "headline", "Headline", copy.headline, (W - textWidth) / 2, headlineY, textWidth, size, headType, ink, { align: "center", textWrap: "balance" }),
         { id: "rule", type: "rect", name: "Accent rule", x: (W - 80 * u) / 2, y: ruleY, width: 80 * u, height: 4 * u, fill: accent },
         ...(has(copy.body) ? [textLayer("body", "body", "Body", copy.body, (W - bodyWidth) / 2, y, bodyWidth, bodySize, bodyType, ink, { align: "center", textWrap: "balance" })] : []),
-        textLayer("cta", "cta", "Call to action", `${copy.cta}  →`, M, H - M - 44 * u, W - 2 * M, 28 * u, { font: fonts.body, weight: 700 }, ink, { align: "center" }),
+        ...arrowLink(copy.cta, M, H - M - 44 * u, W - 2 * M, 28 * u, { font: fonts.body, weight: 700 }, ink, "center"),
         ...counter(context, W - M, M, 20 * u, ink, fonts.body),
       ] };
     },
@@ -508,7 +532,11 @@ export function templateFonts(template: LayoutTemplate, brand: BrandKit): Fonts 
   return brand.headingFont === "Outfit" && brand.bodyFont === "Outfit" ? template.fonts : { heading: brand.headingFont, body: brand.bodyFont };
 }
 const round = (value: number) => Math.round(value * 10) / 10;
-export function buildTemplatePage(template: LayoutTemplate, context: TemplateContext, pageId: string, name: string): DesignPage {
+// Models often emit typographic hyphens and spaces that the self-hosted
+// Latin subsets lack; map them to equivalents every face has.
+const normalizeSlot = (text: string) => text.replace(/[\u2010\u2011\u2012]/g, "-").replace(/[\u00a0\u2007\u202f]/g, " ");
+export function buildTemplatePage(template: LayoutTemplate, input: TemplateContext, pageId: string, name: string): DesignPage {
+  const context = { ...input, copy: { kicker: normalizeSlot(input.copy.kicker), headline: normalizeSlot(input.copy.headline), body: normalizeSlot(input.copy.body), cta: normalizeSlot(input.copy.cta) } };
   const fonts = templateFonts(template, context.brand);
   const { background, nodes } = template.build(context, fonts);
   return designPageSchema.parse({ id: pageId, name, width: context.width, height: context.height, background, nodes: nodes.map((node) => ({
@@ -524,4 +552,13 @@ export function buildTemplatePage(template: LayoutTemplate, context: TemplateCon
     ...(node.shadows ? { shadows: node.shadows.map((item) => ({ ...item, x: Math.max(-400, Math.min(400, round(item.x))), y: Math.max(-400, Math.min(400, round(item.y))), blur: Math.min(400, round(item.blur)) })) } : {}),
     ...(node.text === undefined ? {} : { text: node.text.slice(0, 4000) }),
   })) });
+}
+// Builds every slide of a carousel at the largest headline size that fits on
+// all of them, so type size and position stay steady while swiping.
+export function buildTemplateSlides(template: LayoutTemplate, base: Omit<TemplateContext, "copy" | "slideIndex" | "slideCount">, slides: TemplateCopy[], name: (index: number) => string): DesignPage[] {
+  const build = (maxHeadlineSize?: number) => slides.map((copy, index) => buildTemplatePage(template, { ...base, copy, slideIndex: index, slideCount: slides.length, maxHeadlineSize }, `page-${index + 1}`, name(index)));
+  const first = build();
+  if (slides.length < 2) return first;
+  const shared = Math.min(...first.map((page) => page.nodes.find((node) => node.role === "headline")?.fontSize ?? Infinity));
+  return Number.isFinite(shared) ? build(shared) : first;
 }
