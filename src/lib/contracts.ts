@@ -477,7 +477,7 @@ export const generationResultSchema = z.object({
   creativeDirections: z.array(creativeDirectionSchema).min(1).max(9),
   creativeDesign: creativeDesignResultSchema.optional(),
   mode: z.enum(["ai", "deterministic"]),
-  provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "compatible"]).optional(),
+  provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "gemini", "cerebras", "mistral", "compatible"]).optional(),
   generationVersion: z.enum(["v1", "v2"]).optional(),
   generationV2: generationV2ResultSchema.optional(),
 }).superRefine((generation, context) => {

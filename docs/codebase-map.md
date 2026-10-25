@@ -30,9 +30,12 @@ asset project with its own instructions, not the SaaS runtime.
 - `pnpm ai:check`: sends one real request per AI task to every configured
   provider (no failover) and fails when any task has no working provider; it
   also flags unlisted model names and free-quota models.
-- AI text requests (`requestStructuredAiJson`) fail over across every
+- AI text requests (`requestStructuredAiJson`, and V1 `generateCampaign`, which
+  is the default unless `GENERATION_VERSION=v2`) fail over across every
   configured provider (`getOpenAIProviderConfigs`): `AI_PROVIDER` leads,
   `AI_PROVIDER_ORDER` ranks the rest, otherwise OpenRouter free models go last.
+  Gemini, Cerebras, and Mistral are OpenAI-compatible extras configured by
+  `<NAME>_API_KEY` alone (`COMPATIBLE_PROVIDERS`).
   Free tiers cannot carry one full campaign: Groq free (8k TPM) rate-limits it.
 - Use `rtk` for supported Git/search/build/test commands, as required by project guidance.
 - Read relevant installed Next.js guides in `node_modules/next/dist/docs/` before writing Next.js code.

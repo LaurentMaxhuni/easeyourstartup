@@ -1237,3 +1237,121 @@ describe("AI provider failover", () => {
     }
   });
 });
+
+describe("free-tier OpenAI-compatible providers", () => {
+  it("adds Gemini, Cerebras, and Mistral behind the main provider and before free OpenRouter", () => {
+    const configs = getOpenAIProviderConfigs({
+      OPENROUTER_API_KEY: "sk-or-v1-test",
+      OPENROUTER_MODEL: "openrouter/free",
+      OPENAI_API_KEY: "gsk_test",
+      OPENAI_BASE_URL: "https://api.groq.com/openai/v1",
+      GEMINI_API_KEY: "gemini-key",
+      CEREBRAS_API_KEY: "cerebras-key",
+      MISTRAL_API_KEY: "mistral-key",
+    }, "copyModel");
+    expect(configs.map((config) => [config.providerName ?? config.baseURL, config.model])).toEqual([
+      ["https://api.groq.com/openai/v1", "openai/gpt-oss-120b"],
+      ["cerebras", "gpt-oss-120b"],
+      ["gemini", "gemini-3-flash-preview"],
+      ["mistral", "mistral-small-latest"],
+      ["https://openrouter.ai/api/v1", "openrouter/free"],
+    ]);
+  });
+
+  it("reads each provider's own model, task model, and base URL", () => {
+    const environment = {
+      GEMINI_API_KEY: "gemini-key",
+      GEMINI_MODEL: "gemini-flash-latest",
+      GEMINI_CRITIC_MODEL: "gemini-pro-latest",
+      GEMINI_BASE_URL: "https://proxy.example/v1",
+    };
+    expect(getOpenAIProviderConfig({ ...environment, AI_PROVIDER: "gemini" }, "copyModel")).toEqual({
+      apiKey: "gemini-key",
+      baseURL: "https://proxy.example/v1",
+      model: "gemini-flash-latest",
+      providerName: "gemini",
+    });
+    expect(getOpenAIProviderConfig({ ...environment, AI_PROVIDER: "gemini" }, "criticModel")?.model).toBe("gemini-pro-latest");
+    expect(getOpenAIProviderConfig({ AI_PROVIDER: "cerebras" })).toBeNull();
+  });
+
+  it("can run alone, and sends max_tokens and low reasoning to Gemini", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "gemini-key");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ model: "gemini-3-flash-preview", max_tokens: 300, reasoning_effort: "low", response_format: { type: "json_object" } });
+      expect(body).not.toHaveProperty("max_completion_tokens");
+      return new Response(JSON.stringify({
+        id: "chatcmpl-test", object: "chat.completion", created: 1, model: "gemini-3-flash-preview",
+        choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: '{"answer":"ok"}' } }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await campaignGenerator.requestStructuredAiJson({
+        task: "copyModel",
+        messages: [{ role: "system", content: "Return JSON." }, { role: "user", content: "Hi" }],
+        schema: z.object({ answer: z.string() }),
+        schemaName: "gemini_test",
+        promptVersion: "test",
+        maxCompletionTokens: 300,
+      });
+      expect(result.metadata).toMatchObject({ provider: "gemini", model: "gemini-3-flash-preview", success: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+});
+
+describe("campaign generation (V1) provider failover", () => {
+  const input = {
+    brand: DEMO_BRAND,
+    kind: "launch" as const,
+    goal: "Launch the campaign workflow to solo founders",
+    updateDetails: "The campaign workflow is now available.",
+    audience: "Solo SaaS founders",
+    launchDate: "",
+    cta: "Try it",
+    angle: DEMO_ANGLES[0],
+    channels: ["x" as const],
+  };
+
+  it("generates with the next provider when the first one fails", async () => {
+    for (const [name, value] of Object.entries({
+      AI_PROVIDER_ORDER: "openrouter,groq",
+      OPENROUTER_API_KEY: "sk-or-v1-test",
+      OPENROUTER_MODEL: "openrouter/free",
+      OPENROUTER_FALLBACK_MODELS: "",
+      OPENAI_API_KEY: "gsk_test",
+      OPENAI_BASE_URL: "https://api.groq.com/openai/v1",
+      OPENAI_MODEL: "openai/gpt-oss-120b",
+    })) vi.stubEnv(name, value);
+    const generated = { ...generateDeterministicCampaign(input), mode: "ai" };
+    const fetchMock = vi.fn(async (request: RequestInfo | URL) => String(request).includes("openrouter.ai")
+      ? new Response(JSON.stringify({ error: { message: "Provider returned error" } }), {
+          status: 400, headers: { "content-type": "application/json" },
+        })
+      : new Response(JSON.stringify({
+          id: "chatcmpl-test", object: "chat.completion", created: 1, model: "openai/gpt-oss-120b",
+          choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: JSON.stringify(generated) } }],
+        }), { status: 200, headers: { "content-type": "application/json" } }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await campaignGenerator.generateCampaign(input);
+      expect(result.mode).toBe("ai");
+      expect(result.provider).toBe("groq");
+      expect(error.mock.calls.flat().join(" ")).toContain("trying groq");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+});

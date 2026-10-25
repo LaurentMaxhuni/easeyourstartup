@@ -46,7 +46,8 @@ async function listedModels(baseURL: string | undefined, apiKey: string) {
     });
     if (!response.ok) return null;
     const data = (await response.json()) as { data?: Array<{ id?: unknown }> };
-    return new Set((data.data ?? []).map((model) => String(model.id)));
+    // Gemini lists ids as "models/<name>".
+    return new Set((data.data ?? []).map((model) => String(model.id).replace(/^models\//, "")));
   } catch {
     return null;
   }
