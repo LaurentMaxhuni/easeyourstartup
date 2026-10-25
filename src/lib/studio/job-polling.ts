@@ -12,6 +12,8 @@ const JOB_STATUS_POLL_INTERVAL_MS = 5_000;
 const JOB_STATUS_MAX_POLL_INTERVAL_MS = 10_000;
 const JOB_STATUS_RETRY_DELAY_MS = 5_000;
 const JOB_STATUS_MAX_RETRY_DELAY_MS = 60_000;
+// Website scans finish in seconds, so their status is checked more often.
+export const SCAN_JOB_POLLING = { pollIntervalMs: 1_000, maxPollIntervalMs: 2_000 } as const;
 const RETRYABLE_JOB_STATUS_CODES = new Set([429, 502, 503, 504]);
 
 class DurableJobPollingError extends Error {
@@ -63,11 +65,15 @@ export async function waitForCompletedJob(
   jobId: string,
   onUpdate?: (job: DurableJob) => void,
   maxDurationMs = 3 * 60 * 1_000,
+  {
+    pollIntervalMs = JOB_STATUS_POLL_INTERVAL_MS,
+    maxPollIntervalMs = JOB_STATUS_MAX_POLL_INTERVAL_MS,
+  }: { pollIntervalMs?: number; maxPollIntervalMs?: number } = {},
 ) {
   const deadline = Date.now() + maxDurationMs;
   let firstAttempt = true;
   let retryDelayMs = JOB_STATUS_RETRY_DELAY_MS;
-  let nextPollDelayMs = JOB_STATUS_POLL_INTERVAL_MS;
+  let nextPollDelayMs = pollIntervalMs;
   let lastJobStatus: DurableJob["status"] | undefined;
   let lastJobProgress: number | undefined;
   let unchangedPollCount = 0;
@@ -137,8 +143,8 @@ export async function waitForCompletedJob(
       lastJobProgress = job.progress;
     }
     nextPollDelayMs = Math.min(
-      JOB_STATUS_POLL_INTERVAL_MS * 2 ** unchangedPollCount,
-      JOB_STATUS_MAX_POLL_INTERVAL_MS,
+      pollIntervalMs * 2 ** unchangedPollCount,
+      maxPollIntervalMs,
     );
   }
 

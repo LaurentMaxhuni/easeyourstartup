@@ -19,6 +19,7 @@ import {
 
 const cleanText = (value: string) => value.replace(/\s+/g, " ").trim();
 const MAX_PALETTE_COLORS = 8;
+const MAX_STYLESHEETS = 8;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -609,7 +610,7 @@ function claimFromText(text: string, sourceUrl: string): BrandClaim | null {
 
 async function extractStylesheetAssets(urls: string[]) {
   const results = await Promise.allSettled(
-    urls.slice(0, 8).map(async (stylesheetUrl) => {
+    urls.slice(0, MAX_STYLESHEETS).map(async (stylesheetUrl) => {
       const result = await safeFetchText(stylesheetUrl, {
         timeoutMs: 4_000,
         maxBytes: 600_000,
@@ -652,6 +653,9 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     new Set(homeData.internalLinks.filter((link) => link !== home.finalUrl)),
   ).slice(0, 5);
 
+  // Homepage stylesheets don't depend on linked pages, so fetch them meanwhile.
+  const homeStylesheetUrls = Array.from(new Set(homeData.stylesheetUrls)).slice(0, MAX_STYLESHEETS);
+  const homeStylesheetAssets = extractStylesheetAssets(homeStylesheetUrls);
   const secondary = await Promise.allSettled(
     pageUrls.map(async (pageUrl) => {
       const result = await safeFetchHtml(pageUrl, {
@@ -665,15 +669,22 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       };
     }),
   );
-  const stylesheetUrls = Array.from(
+  const linkedStylesheetUrls = Array.from(
     new Set([
       ...homeData.stylesheetUrls,
       ...secondary.flatMap((result) =>
         result.status === "fulfilled" ? result.value.data.stylesheetUrls : [],
       ),
     ]),
-  );
-  const stylesheetAssets = await extractStylesheetAssets(stylesheetUrls);
+  )
+    .slice(0, MAX_STYLESHEETS)
+    .filter((stylesheetUrl) => !homeStylesheetUrls.includes(stylesheetUrl));
+  const stylesheetAssets = (
+    await Promise.all([
+      homeStylesheetAssets,
+      extractStylesheetAssets(linkedStylesheetUrls),
+    ])
+  ).flat();
   const colors = Array.from(
     new Set([
       ...homeData.colors,

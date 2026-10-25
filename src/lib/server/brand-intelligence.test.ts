@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { ScanResult } from "@/lib/contracts";
 const mocks = vi.hoisted(() => ({ curate: vi.fn(), interpret: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -25,4 +25,20 @@ it("interprets source-filtered evidence while curation runs, preserving the cura
     brandIntelligence: expect.objectContaining({ productPurpose: source.profile.tagline }),
   });
   expect(source.profile.brandIntelligence).toBeUndefined();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it("keeps local curation and interpretation when providers outlast the scan deadline", async () => {
+  vi.useFakeTimers();
+  mocks.curate.mockReturnValue(new Promise<ScanResult>(() => {}));
+  mocks.interpret.mockReturnValue(new Promise(() => {}));
+  const source = { ...DEMO_SCAN, mode: "live" as const };
+  const result = enrichScannedWebsite(source);
+  await vi.advanceTimersByTimeAsync(9_000);
+  const enriched = await result;
+  expect(enriched.warnings).toContain("AI curation took too long, so a local duplicate and low-signal filter was applied.");
+  expect(enriched.profile.brandIntelligence).toEqual(expect.objectContaining({ productPurpose: source.profile.tagline }));
 });

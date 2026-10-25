@@ -7,11 +7,29 @@ import {
 } from "@/lib/contracts";
 import { autoCurateClaims, curateScannedClaims, requestStructuredAiJson } from "@/lib/server/campaign-generator";
 
+// Provider timeouts don't bound the whole request (slow bodies, queued free
+// models), so the scan enforces its own wall-clock limit and keeps local results.
+const ENRICHMENT_DEADLINE_MS = 9_000;
+
+function withDeadline<T>(work: Promise<T>, fallback: () => T, ms = ENRICHMENT_DEADLINE_MS) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    work,
+    new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(fallback()), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function enrichScannedWebsite(scan: ScanResult): Promise<ScanResult> {
   // Interpretation needs source evidence, so it needn't wait for AI claim selection.
+  const locallyCurated = autoCurateClaims(scan);
   const [curated, brandIntelligence] = await Promise.all([
-    curateScannedClaims(scan),
-    analyzeBrandIntelligence(autoCurateClaims(scan)),
+    withDeadline(curateScannedClaims(scan), () => autoCurateClaims(
+      scan,
+      "AI curation took too long, so a local duplicate and low-signal filter was applied.",
+    )),
+    withDeadline(analyzeBrandIntelligence(locallyCurated), () => fallbackBrandIntelligence(locallyCurated)),
   ]);
   return { ...curated, profile: { ...curated.profile, brandIntelligence } };
 }

@@ -14,7 +14,7 @@ vi.mock("@/lib/server/url-security", () => ({
   parsePublicHttpUrl: parsePublicHttpUrlMock,
 }));
 
-import { captureCompositionPng, captureWebsite } from "@/lib/server/browserless";
+import { captureCompositionPng, captureScanPreview, captureWebsite } from "@/lib/server/browserless";
 
 describe("Browserless capture boundaries", () => {
   beforeEach(() => {
@@ -83,5 +83,40 @@ describe("Browserless capture boundaries", () => {
     expect(request.gotoOptions).toEqual({ waitUntil: "domcontentloaded", timeout: 15_000 });
     expect(request.waitForTimeout).toBe(1_500);
     expect(request.options.fullPage).toBe(false);
+  });
+
+  describe("scan preview", () => {
+    const previewResponse = (data: Record<string, unknown>) => new Response(JSON.stringify({
+      data: {
+        url: "https://example.com/",
+        ip: "93.184.216.34",
+        status: 200,
+        image: "aGVsbG8=",
+        title: "Example",
+        elements: [{ kind: "headline", text: "Ship faster", x: 0.1, y: 0.3, w: 0.5, h: 0.1 }],
+        palette: ["#ffffff"],
+        fonts: ["Inter"],
+        ...data,
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+
+    it("blocks private requests inside the browser function and returns element boxes", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(previewResponse({}));
+      const preview = await captureScanPreview("https://example.com");
+      expect(preview).toMatchObject({ image: "aGVsbG8=", elements: [expect.objectContaining({ kind: "headline" })] });
+      expect(preview).not.toHaveProperty("ip");
+      const [url, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+      expect(String(url)).toContain("/function?token=");
+      const request = JSON.parse(String(init?.body)) as { code: string; context: { rejectRequestPattern: string[] } };
+      expect(request.code).toContain("setRequestInterception(true)");
+      expect(request.context.rejectRequestPattern).toEqual(expect.arrayContaining([expect.stringContaining("localhost")]));
+    });
+
+    it("fails closed on private destinations, failed pages, and malformed output", async () => {
+      for (const data of [{ ip: "10.0.0.8" }, { ip: "" }, { status: 500 }, { elements: [{ kind: "script", text: "", x: 0, y: 0, w: 1, h: 1 }] }]) {
+        vi.mocked(fetch).mockResolvedValueOnce(previewResponse(data));
+        await expect(captureScanPreview("https://example.com")).rejects.toThrow("The website could not be captured.");
+      }
+    });
   });
 });

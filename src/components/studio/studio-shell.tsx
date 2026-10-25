@@ -32,6 +32,7 @@ import {
   type GenerationScreenStage,
 } from "@/components/studio/generation-progress-screen";
 import { ScanPanel } from "@/components/studio/scan-panel";
+import type { ScanStage } from "@/components/studio/scan-live-view";
 import { StudioContextBar } from "@/components/studio/studio-context-bar";
 import {
   StepNav,
@@ -44,6 +45,7 @@ import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 import {
   CAMPAIGN_JOB_MAX_POLL_DURATION_MS,
+  SCAN_JOB_POLLING,
   isRetryableJobPollingError,
   jobError,
   waitForCompletedJob,
@@ -71,6 +73,11 @@ const EMPTY_DRAFT: CampaignDraft = {
 const DEFAULT_ANGLES = [EMPTY_DRAFT.angle];
 
 const EMPTY_CANVAS_IMAGE = "/images/canvas-placeholder.svg";
+
+function scanStageForJob(job: DurableJob): ScanStage {
+  if (job.status === "queued") return "queued";
+  return job.status === "analyzing" || job.status === "completed" ? "analyzing" : "reading";
+}
 const LEGACY_DEMO_IMAGES = new Set([
   "/images/studio-capture.png",
   "/images/studio-capture-mobile.png",
@@ -321,6 +328,7 @@ export function StudioShell({
   >("idle");
   const [scanError, setScanError] = useState("");
   const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null);
+  const [scanStage, setScanStage] = useState<ScanStage>("queued");
   const [generateStatus, setGenerateStatus] = useState<
     "idle" | "loading" | "error"
   >("idle");
@@ -672,10 +680,11 @@ export function StudioShell({
                   : "writing",
             );
           }
-        : undefined,
+        : jobType === "scan" ? (job) => setScanStage(scanStageForJob(job)) : undefined,
       jobType === "generate" || jobType === "regenerate"
         ? CAMPAIGN_JOB_MAX_POLL_DURATION_MS
         : undefined,
+      jobType === "scan" ? SCAN_JOB_POLLING : undefined,
     )
       .then(async (result) => {
         if (cancelled) return;
@@ -946,6 +955,7 @@ export function StudioShell({
     setScanStatus("loading");
     setScanError("");
     setScanPreviewUrl(null);
+    setScanStage("queued");
     const startedAt = Date.now();
     trackStudioEvent("scan_started", {
       mode: initialAuthenticated ? "durable" : "direct",
@@ -981,7 +991,7 @@ export function StudioShell({
           setProjectId(queued.projectId);
           setJobId(activeJobId);
           setJobType("scan");
-          setScanPreviewUrl(`/api/capture?target=${encodeURIComponent(normalized)}&viewport=desktop&projectId=${encodeURIComponent(queued.projectId)}&preview=1`);
+          setScanPreviewUrl(`/api/capture/scan-preview?target=${encodeURIComponent(normalized)}&projectId=${encodeURIComponent(queued.projectId)}`);
           window.history.replaceState(null, "", `/studio?projectId=${encodeURIComponent(queued.projectId)}`);
           const recoveryState = studioStateSchema.parse({
             ...buildStudioState(),
@@ -991,7 +1001,12 @@ export function StudioShell({
             step: "scan",
           });
           await persistStudioState({ state: recoveryState });
-          const result = await waitForCompletedJob(queued.job.id);
+          const result = await waitForCompletedJob(
+            queued.job.id,
+            (job) => setScanStage(scanStageForJob(job)),
+            undefined,
+            SCAN_JOB_POLLING,
+          );
           data = parseDurableJobResult(result, scanJobResultSchema).scan;
         } else if (
           response.status === 503 &&
@@ -1716,9 +1731,9 @@ export function StudioShell({
             status={jobType === "scan" && jobId && scanStatus === "idle" ? "loading" : scanStatus}
             error={scanError}
             result={scan}
-            previewUrl={scanStatus === "loading" || (jobType === "scan" && jobId)
-              ? scanPreviewUrl
-              : savedScanPreviewUrl}
+            previewUrl={savedScanPreviewUrl}
+            livePreviewUrl={scanPreviewUrl}
+            stage={scanStage}
             onScan={runScan}
           />
         )}

@@ -76,12 +76,18 @@ asset project with its own instructions, not the SaaS runtime.
   rendering can throw when the provider refreshes or clears session cookies.
 - Loading cues use the local `LoadingIndicator` and `CampaignLoader` components,
   with CSS motion gated by reduced-motion preferences. Thinking Orbs was removed.
-  Queued website scans request a desktop preview through the existing authenticated,
-  project-scoped `/api/capture` route. `ScanPanel` fills the viewport below the
-  step bar with the website image and overlays a CSS sweep during scanning.
-  Returning to Website shows the last scan's desktop preview, with project access
-  restored on hydrated capture URLs. Preview requests use `preview=1` for a
-  viewport-only capture; failed captures retain the normal controls.
+  Queued website scans request `/api/capture/scan-preview`, which runs a
+  Browserless `/function` (in-page private-request blocking, then server-side
+  final URL/IP checks) returning a viewport JPEG plus normalized boxes for the
+  logo, nav, headline, copy, CTAs and visuals, palette and fonts. While loading,
+  `ScanPanel` renders `ScanLiveView`: a beam traces those boxes and a live feed
+  lists findings with timing shared between CSS and the component. Stages
+  come from the scan job (`scanning` -> `analyzing` at 60%), polled every 1-2s
+  via `SCAN_JOB_POLLING`. Both capture routes share `capture-access.ts`
+  authorization and hourly budget. Returning to Website shows the last scan's
+  `/api/capture?preview=1` image; failed previews keep the progress feed.
+  Scan enrichment (claim curation + brand intelligence) has a 9s wall-clock
+  deadline with local fallbacks, since provider timeouts alone overran it.
   Browserless request filters use plain regex sources and short address-range
   patterns; tests match them with `String.match`, as the provider does.
   Website capture waits for DOM content and a short render settle rather than

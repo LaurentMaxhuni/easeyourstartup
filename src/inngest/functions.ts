@@ -3,7 +3,7 @@ import { NonRetriableError } from "inngest";
 import { createHash, randomBytes } from "node:crypto";
 import JSZip from "jszip";
 import { z } from "zod";
-import { channelSchema, generateCampaignSchema, studioStateSchema } from "@/lib/contracts";
+import { channelSchema, generateCampaignSchema, studioStateSchema, type ScanResult } from "@/lib/contracts";
 import {
   generateCampaign,
   publicProviderError,
@@ -83,9 +83,21 @@ export const scanProject = inngest.createFunction(
       `;
     });
 
-    const result = await step.run("scan-public-pages", async () => {
-      return enrichScannedWebsite(await scanWebsite(url));
+    const scanned = await step.run("scan-public-pages", async () => scanWebsite(url));
+
+    // A separate stage lets the website step show that reading has finished.
+    await step.run("mark-analyzing", async () => {
+      await database()`
+        update public.jobs
+        set status = 'analyzing', progress = 60, updated_at = now()
+        where id = ${jobId} and workspace_id = ${workspaceId}
+          and status in ('queued', 'scanning', 'analyzing')
+      `;
     });
+
+    const result = await step.run("enrich-brand-dna", async () =>
+      enrichScannedWebsite(scanned as ScanResult),
+    );
 
     await step.run("persist-brand-dna", async () => {
       const database = requireDatabase();

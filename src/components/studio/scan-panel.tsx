@@ -7,7 +7,7 @@ import {
   GlobeSimple,
 } from "@phosphor-icons/react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
-import { CampaignLoader } from "@/components/ui/campaign-loader";
+import { ScanLiveView, type ScanStage } from "@/components/studio/scan-live-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ScanResult } from "@/lib/contracts";
@@ -17,12 +17,16 @@ export function ScanPanel({
   error,
   result,
   previewUrl = null,
+  livePreviewUrl = null,
+  stage = "queued",
   onScan,
 }: {
   status: "idle" | "loading" | "success" | "error";
   error: string;
   result: ScanResult | null;
   previewUrl?: string | null;
+  livePreviewUrl?: string | null;
+  stage?: ScanStage;
   onScan: (url?: string) => Promise<void>;
 }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -30,15 +34,30 @@ export function ScanPanel({
   const previewReady = preview?.url === previewUrl && preview.loaded;
   const previewFailed = preview?.url === previewUrl && !preview.loaded;
   const showingWebsite = Boolean(previewUrl && !previewFailed);
-  const immersive = showingWebsite || status === "loading";
-  const captureTarget = previewUrl?.startsWith("/api/capture?")
-    ? new URLSearchParams(previewUrl.slice("/api/capture?".length)).get("target")
-    : null;
+  const immersive = showingWebsite;
+  const captureTarget = [livePreviewUrl, previewUrl]
+    .map((source) => source?.match(/^\/api\/capture(?:\/scan-preview)?\?(.*)$/)?.[1])
+    .map((query) => (query ? new URLSearchParams(query).get("target") : null))
+    .find(Boolean) ?? null;
   const inputUrl = url ?? captureTarget ?? result?.pages[0]?.url ?? "";
+  let scanHost = inputUrl;
+  try {
+    scanHost = new URL(inputUrl).hostname.replace(/^www\./, "");
+  } catch {
+    // Keep the typed value when it isn't a full URL yet.
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await onScan(inputUrl);
+  }
+
+  if (status === "loading") {
+    return (
+      <section className="website-scan-stage" data-immersive="true" aria-label="Website scan" aria-busy="true">
+        <ScanLiveView url={livePreviewUrl} host={scanHost || "your website"} stage={stage} />
+      </section>
+    );
   }
 
   return (
@@ -49,7 +68,7 @@ export function ScanPanel({
             <Image
               key={previewUrl}
               src={previewUrl}
-              alt={status === "loading" ? "Screenshot of the website being scanned" : "Screenshot of your website"}
+              alt="Screenshot of your website"
               fill
               unoptimized
               loading="eager"
@@ -59,13 +78,10 @@ export function ScanPanel({
             />
           )}
           {previewReady ? (
-            <>
-              {status === "loading" && <div aria-hidden="true" className="website-scan-sweep" />}
-              <div aria-hidden="true" className="website-scan-shade" />
-            </>
+            <div aria-hidden="true" className="website-scan-shade" />
           ) : (
             <div className="website-scan-fallback">
-              {status === "loading" ? <CampaignLoader activity="scanning" /> : <LoadingIndicator label="Loading website preview" />}
+              <LoadingIndicator label="Loading website preview" />
             </div>
           )}
         </div>
@@ -84,7 +100,7 @@ export function ScanPanel({
           </p>
         </div>
         <div className="website-scan-form min-w-0 rounded-container border border-line bg-surface-raised p-5 sm:p-8">
-          <form onSubmit={submit} aria-busy={status === "loading"}>
+          <form onSubmit={submit}>
             <label className="text-sm font-semibold" htmlFor="scan-url">
               Website URL
             </label>
@@ -107,17 +123,9 @@ export function ScanPanel({
                   className="pl-10"
                 />
               </div>
-              <Button
-                type="submit"
-                size="lg"
-                disabled={status === "loading"}
-              >
-                {status === "loading" ? (
-                  <LoadingIndicator size="sm" />
-                ) : (
-                  <ArrowRight size={18} />
-                )}
-                {status === "loading" ? "Reading website" : "Use this website"}
+              <Button type="submit" size="lg">
+                <ArrowRight size={18} />
+                Use this website
               </Button>
             </div>
             <p className="mt-3 text-xs leading-5 text-muted">
@@ -128,16 +136,6 @@ export function ScanPanel({
                 {error}
               </p>
             )}
-            {status === "loading" && (
-              <div role="status" aria-live="polite" className="mt-5 flex flex-col items-center gap-2 rounded-control border border-line bg-canvas/50 p-5 text-center">
-                <div className="pb-1">
-                  <p className="text-sm font-semibold">Reading your public site</p>
-                  <p className="mt-1 text-xs leading-5 text-muted">
-                    Finding pages, brand colors, source claims, and real images.
-                  </p>
-                </div>
-              </div>
-            )}
           </form>
 
           {result && (
@@ -146,7 +144,7 @@ export function ScanPanel({
               pages
             </p>
           )}
-          {previewFailed && status !== "loading" && <p className="mt-3 text-xs text-muted">Website preview unavailable.</p>}
+          {previewFailed && <p className="mt-3 text-xs text-muted">Website preview unavailable.</p>}
         </div>
       </div>
     </section>
