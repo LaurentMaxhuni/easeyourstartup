@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import { failStaleGenerationJobs, STALE_GENERATION_AFTER } from "@/lib/server/stale-generation-jobs";
+import { failStaleScanAndExportJobs, STALE_EXPORT_AFTER, STALE_SCAN_AFTER } from "@/lib/server/stale-jobs";
 import { requireWorkspaceContext } from "@/lib/server/workspace-access";
 
 export async function GET(
@@ -17,7 +18,14 @@ export async function GET(
         kind = 'generate'
           and status in ('queued', 'generating')
           and updated_at < pg_catalog.now() - ${STALE_GENERATION_AFTER}::interval
-          as stale_generation
+          as stale_generation,
+        (kind = 'scan'
+          and status in ('queued', 'scanning', 'analyzing')
+          and updated_at < pg_catalog.now() - ${STALE_SCAN_AFTER}::interval)
+        or (kind = 'export'
+          and status in ('queued', 'rendering')
+          and updated_at < pg_catalog.now() - ${STALE_EXPORT_AFTER}::interval)
+          as stale_scan_or_export
       from public.jobs
       where id = ${jobId}
         and workspace_id = ${context.workspaceId}
@@ -27,8 +35,12 @@ export async function GET(
     if (!job) {
       return NextResponse.json({ error: "Job not found." }, { status: 404 });
     }
-    if (job.stale_generation === true) {
-      await failStaleGenerationJobs(context.database, jobId, context.workspaceId);
+    if (job.stale_generation === true || job.stale_scan_or_export === true) {
+      if (job.stale_generation === true) {
+        await failStaleGenerationJobs(context.database, jobId, context.workspaceId);
+      } else {
+        await failStaleScanAndExportJobs(context.database, jobId, context.workspaceId);
+      }
       [job] = await loadJob();
       if (!job) {
         return NextResponse.json({ error: "Job not found." }, { status: 404 });
@@ -36,6 +48,7 @@ export async function GET(
     }
     const responseJob = { ...job };
     delete responseJob.stale_generation;
+    delete responseJob.stale_scan_or_export;
     return NextResponse.json({ job: responseJob });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Job unavailable.";

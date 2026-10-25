@@ -24,6 +24,7 @@ import {
   serializeScanJobResult,
 } from "@/lib/job-results";
 import { failStaleGenerationJobs } from "@/lib/server/stale-generation-jobs";
+import { failStaleScanAndExportJobs } from "@/lib/server/stale-jobs";
 import { generateStudioDesign, dispatchQueuedStudioDesigns } from "@/lib/server/design-studio/jobs";
 
 function database() {
@@ -673,13 +674,16 @@ export const dispatchJobOutbox = inngest.createFunction(
     const recovered = await step.run("fail-stale-campaign-generations", () =>
       failStaleGenerationJobs(requireDatabase()),
     );
+    const recoveredScansAndExports = await step.run("fail-stale-scans-and-exports", () =>
+      failStaleScanAndExportJobs(requireDatabase()),
+    );
     await step.run("prune-old-job-outbox-receipts", async () =>
       database()`
         delete from public.job_outbox
         where delivered_at < pg_catalog.now() - interval '30 days'
       `,
     );
-    return { attempted: entries.length, delivered, retried, recovered };
+    return { attempted: entries.length, delivered, retried, recovered, recoveredScansAndExports };
   },
 );
 

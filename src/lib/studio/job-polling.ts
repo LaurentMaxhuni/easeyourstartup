@@ -11,6 +11,10 @@ const JOB_STATUS_POLL_INTERVAL_MS = 5_000;
 const JOB_STATUS_MAX_POLL_INTERVAL_MS = 10_000;
 const JOB_STATUS_RETRY_DELAY_MS = 5_000;
 const JOB_STATUS_MAX_RETRY_DELAY_MS = 60_000;
+// Jobs still running after a while are checked gently, so a stuck job cannot
+// flood the status (and session) endpoints while the server fails it.
+const LONG_RUNNING_JOB_AFTER_MS = 2 * 60 * 1_000;
+const LONG_RUNNING_JOB_POLL_INTERVAL_MS = 15_000;
 // Website scans finish in seconds, so their status is checked more often.
 export const SCAN_JOB_POLLING = { pollIntervalMs: 1_000, maxPollIntervalMs: 2_000 } as const;
 const RETRYABLE_JOB_STATUS_CODES = new Set([429, 502, 503, 504]);
@@ -71,6 +75,7 @@ export async function waitForCompletedJob(
     signal,
   }: { pollIntervalMs?: number; maxPollIntervalMs?: number; signal?: AbortSignal } = {},
 ) {
+  const startedAt = Date.now();
   let firstAttempt = true;
   let retryDelayMs = JOB_STATUS_RETRY_DELAY_MS;
   let nextPollDelayMs = pollIntervalMs;
@@ -138,9 +143,8 @@ export async function waitForCompletedJob(
       lastJobStatus = job.status;
       lastJobProgress = job.progress;
     }
-    nextPollDelayMs = Math.min(
-      pollIntervalMs * 2 ** unchangedPollCount,
-      maxPollIntervalMs,
-    );
+    nextPollDelayMs = Date.now() - startedAt >= LONG_RUNNING_JOB_AFTER_MS
+      ? Math.max(maxPollIntervalMs, LONG_RUNNING_JOB_POLL_INTERVAL_MS)
+      : Math.min(pollIntervalMs * 2 ** unchangedPollCount, maxPollIntervalMs);
   }
 }

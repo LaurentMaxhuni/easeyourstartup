@@ -58,7 +58,10 @@ asset project with its own instructions, not the SaaS runtime.
   saved project/campaign jobs. Scanning also has a direct `/api/scan` path.
   Polling has no client-side deadline: it runs until the job completes or fails,
   relying on the server (worker retries, outbox dead-lettering, stale-generation
-  cleanup) to end every job. Pass an `AbortSignal` to stop it early.
+  cleanup, and `stale-jobs.ts` failing scans idle 10 min / exports idle 20 min)
+  to end every job. After 2 minutes it slows to one check per 15s, because each
+  check also verifies the session with hosted auth, which rate-limits. Pass an
+  `AbortSignal` to stop it early.
 - `CampaignBuilder` calls `/api/studio/suggest` (`announcement-suggestions.ts`):
   it auto-drafts an empty "What should people know?" from the scanned brand
   facts and re-suggests platforms as the announcement changes, until the person

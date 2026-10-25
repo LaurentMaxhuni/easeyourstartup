@@ -59,4 +59,24 @@ describe("GET /api/jobs/:id", () => {
     expect(queries[2].sql).toContain("release_campaign_usage_reservation");
     expect(queries[2].sql).toContain("updated_at = pg_catalog.now()");
   });
+
+  it("fails a scan whose worker never finished it", async () => {
+    const { database, queries } = recordingDatabase([
+      [{ id: "job-1", kind: "scan", status: "queued", progress: 0, result: null, error_message: null, updated_at: "2026-10-25T16:15:24Z", stale_generation: false, stale_scan_or_export: true }],
+      [{ id: "job-1" }],
+      [{ id: "job-1", kind: "scan", status: "failed", progress: 0, result: null, error_message: "The scan stopped without finishing. Scan the website again.", updated_at: "2026-10-25T19:00:00Z", stale_generation: false, stale_scan_or_export: false }],
+    ]);
+    mocks.requireWorkspaceContext.mockResolvedValue({ database, workspaceId: "workspace-1" });
+
+    const response = await GET(new Request("http://example.test/api/jobs/job-1"), {
+      params: Promise.resolve({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }),
+    });
+
+    const body = await response.json();
+    expect(body.job).toMatchObject({ status: "failed", error_message: "The scan stopped without finishing. Scan the website again." });
+    expect(body.job).not.toHaveProperty("stale_scan_or_export");
+    expect(queries[0].values).toEqual(expect.arrayContaining(["10 minutes", "20 minutes"]));
+    expect(queries[1].sql).toContain("kind = 'scan' and status in ('queued', 'scanning', 'analyzing')");
+    expect(queries[1].sql).not.toContain("release_campaign_usage_reservation");
+  });
 });

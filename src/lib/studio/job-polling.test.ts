@@ -83,6 +83,20 @@ describe("waitForCompletedJob", () => {
     await expect(result).resolves.toEqual({ ok: true });
   });
 
+  it("polls a long-running job gently", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      job: { id: "job-1", status: "queued", progress: 0 },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    void waitForCompletedJob("job-1", undefined, { pollIntervalMs: 1_000, maxPollIntervalMs: 2_000 }).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    const callsAfterTwoMinutes = fetchMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls.length - callsAfterTwoMinutes).toBeLessThanOrEqual(5);
+  });
+
   it("stops polling when its signal is aborted", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
