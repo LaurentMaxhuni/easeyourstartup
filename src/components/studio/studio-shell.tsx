@@ -1403,6 +1403,7 @@ export function StudioShell({
         {step === "campaign" && brand && (
           <CampaignBuilder
             draft={campaignDraftWithDefaults(draft, brand)}
+            brand={brand}
             angles={generation?.angles ?? DEFAULT_ANGLES}
             status={(jobType === "generate" || jobType === "regenerate") && jobId && generateStatus === "idle" ? "loading" : generateStatus}
             error={generateError}

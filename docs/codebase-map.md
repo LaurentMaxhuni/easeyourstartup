@@ -59,6 +59,11 @@ asset project with its own instructions, not the SaaS runtime.
   Polling has no client-side deadline: it runs until the job completes or fails,
   relying on the server (worker retries, outbox dead-lettering, stale-generation
   cleanup) to end every job. Pass an `AbortSignal` to stop it early.
+- `CampaignBuilder` calls `/api/studio/suggest` (`announcement-suggestions.ts`):
+  it auto-drafts an empty "What should people know?" from the scanned brand
+  facts and re-suggests platforms as the announcement changes, until the person
+  toggles a platform themselves. Platform picks fall back to per-kind defaults
+  when AI is unavailable; drafts never fall back.
 - Authenticated requests resolve server-side workspace context. Project and
   campaign reads/writes must remain scoped to that workspace.
 - Inngest functions scan/enrich sites, generate campaigns, regenerate individual
