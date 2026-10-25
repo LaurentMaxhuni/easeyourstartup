@@ -302,19 +302,6 @@ const creativeElementSchema = z.object({
 });
 export type CreativeElement = z.infer<typeof creativeElementSchema>;
 
-export const creativeRewriteSchema = z.object({
-  text: z.string().min(1).max(1000),
-  role: creativeTextRoleSchema,
-  instruction: z.string().max(240).optional(),
-  projectName: z.string().min(1).max(120),
-  context: z.string().max(2000),
-  approvedFacts: z.array(z.string().min(1).max(400)).max(12),
-});
-export type CreativeRewriteInput = z.infer<typeof creativeRewriteSchema>;
-
-export const creativeRewriteResultSchema = z.object({
-  text: z.string().min(1).max(1000),
-});
 export const creativeImageModeSchema = z.enum(["single", "devices"]);
 export type CreativeMockupDevice = "desktop" | "tablet" | "phone";
 
@@ -523,41 +510,6 @@ export const generateJobResultSchema = z.object({
   generation: generationResultSchema,
 });
 
-export const creativeDesignGenerationSchema = z.object({
-  design: creativeDesignResultSchema,
-  provider: z.enum(["groq", "nvidia-nim", "openrouter", "openai", "compatible"]),
-});
-export type CreativeDesignGeneration = z.infer<
-  typeof creativeDesignGenerationSchema
->;
-
-const creativeDesignBrandSchema = brandProfileSchema.pick({
-  projectName: true,
-  tagline: true,
-  voice: true,
-  colors: true,
-  fonts: true,
-  fontAssets: true,
-  logoUrl: true,
-  faviconUrl: true,
-  imageUrl: true,
-  visualSystem: true,
-  productScreenshotCandidates: true,
-  brandIntelligence: true,
-});
-
-export const creativeDesignRequestSchema = z.object({
-  projectName: z.string().min(1).max(120),
-  context: z.string().max(2200),
-  approvedFacts: z.array(z.string().min(1).max(400)).max(12),
-  instruction: z.string().max(500).optional(),
-  brand: creativeDesignBrandSchema.optional(),
-  copyCandidates: z.array(z.string().min(1).max(1000)).max(24).optional(),
-  composition: creativeCompositionSchema,
-});
-
-export type CreativeDesignInput = z.infer<typeof creativeDesignRequestSchema>;
-
 const studioStepSchema = z.enum([
   "scan",
   "brand",
@@ -590,7 +542,11 @@ export const studioStateSchema = z.object({
   generation: generationResultSchema.nullable(),
   selectedCreativeId: z.string().max(64),
   outputs: z.array(channelOutputSchema).max(9),
+  // Holds the scan's saved screenshot; the visual itself is the design below.
   composition: creativeCompositionSchema,
+  // The campaign's visual: a design studio document at a saved revision.
+  // Exports render exactly this revision.
+  design: z.object({ id: z.uuid(), revision: z.number().int().positive() }).nullable().default(null),
 });
 
 export type StudioState = z.infer<typeof studioStateSchema>;

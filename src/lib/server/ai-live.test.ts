@@ -81,7 +81,7 @@ describe.skipIf(process.env.RUN_LIVE_AI_TESTS !== "true")("live AI verification"
       updateDetails: "Turn a website and product update into channel-specific launch copy, with real screenshots in the visuals.",
       audience: "Solo SaaS founders", launchDate: "", cta: "Build your launch campaign",
       angle: DEMO_ANGLES[0], channels: ["x", "linkedin"],
-    }, { includeCreativeDesign: false });
+    });
     results.generation = { durationMs: Date.now() - started, mode: generation.mode,
       outputs: generation.outputs.map(({ channel, primaryCopy, linkedClaimIds }) => ({ channel, primaryCopy, linkedClaimIds })),
       review: generation.generationV2?.review };

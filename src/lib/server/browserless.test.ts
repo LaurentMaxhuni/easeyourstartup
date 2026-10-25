@@ -14,7 +14,7 @@ vi.mock("@/lib/server/url-security", () => ({
   parsePublicHttpUrl: parsePublicHttpUrlMock,
 }));
 
-import { captureCompositionPng, captureScanPreview, captureWebsite } from "@/lib/server/browserless";
+import { captureScanPreview, captureWebsite } from "@/lib/server/browserless";
 
 describe("Browserless capture boundaries", () => {
   beforeEach(() => {
@@ -34,10 +34,9 @@ describe("Browserless capture boundaries", () => {
 
   it("rejects private and local destinations in page requests", async () => {
     await captureWebsite("https://example.com", "desktop");
-    await captureCompositionPng("https://example.com/render/token", { width: 1080, height: 1080 });
 
     const requests = vi.mocked(fetch).mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as { rejectRequestPattern?: string[] });
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(1);
     for (const request of requests) {
       expect(request.rejectRequestPattern).toEqual(expect.arrayContaining([
         expect.stringContaining("localhost"),

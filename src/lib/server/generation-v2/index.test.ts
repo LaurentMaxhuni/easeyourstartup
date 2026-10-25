@@ -7,14 +7,9 @@ const mocks = vi.hoisted(() => ({
   campaignDesignPlanToDirections: vi.fn(),
   assertApprovedClaimLinks: vi.fn(),
   reviewCampaignGeneration: vi.fn(),
-  designCreativeComposition: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/server/campaign-generator", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/server/campaign-generator")>(),
-  designCreativeComposition: mocks.designCreativeComposition,
-}));
 vi.mock("./strategy", () => ({
   generateCampaignStrategy: mocks.generateCampaignStrategy,
 }));
@@ -112,45 +107,10 @@ describe("Generation V2 orchestration", () => {
     });
     mocks.campaignDesignPlanToDirections.mockReturnValue([direction]);
     mocks.reviewCampaignGeneration.mockResolvedValue(assessment(false));
-    mocks.designCreativeComposition.mockResolvedValue({
-      design: {
-        theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit" },
-        elements: [{ id: "unreviewed", kind: "text", textRole: "headline", text: "Unreviewed replacement copy", x: 8, y: 10, width: 80, height: 30, rotation: 0, opacity: 1, locked: false, hidden: false }],
-      },
-    });
-  });
-
-  it("uses AI-authored geometry with the reviewed copy as its only wording options", async () => {
-    mocks.planCampaignDesign.mockResolvedValue({
-      version: "1",
-      brandAdaptation: {
-        tone: "editorial", rationale: "Use the brand palette.",
-        theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit", density: "comfortable", usesGradient: false },
-      },
-      components: [{ ...direction, order: 0, kind: "cover", layoutVariant: "editorial", supportingCopy: direction.subheadline, alignment: "left", emphasis: "headline", supportingClaimIds: [], screenshotRef: null }],
-    });
-    const design = {
-      theme: { background: "#ffffff", foreground: "#111827", accent: "#245cf0", headingFontFamily: "Outfit", bodyFontFamily: "Outfit" },
-      elements: [{ id: "bespoke-headline", kind: "text", textRole: "headline", text: direction.headline, x: 27, y: 41, width: 65, height: 24, rotation: -3, opacity: 1, locked: false, hidden: false }],
-    };
-    mocks.designCreativeComposition.mockResolvedValue({ design });
-    const result = await generateCampaignV2(input);
-    expect(result.creativeDesign?.elements.find((element) => element.textRole === "headline")?.text).toBe(direction.headline);
-    expect(result.creativeDesign).toEqual(design);
-    expect(mocks.designCreativeComposition).toHaveBeenCalledWith(expect.objectContaining({
-      brand: input.brand,
-      copyCandidates: [direction.eyebrow, direction.headline, direction.subheadline, direction.body, direction.cta],
-      composition: expect.objectContaining({ text: expect.objectContaining({ headline: direction.headline, cta: direction.cta }) }),
-    }));
-  });
-
-  it("fails generation when custom canvas design fails instead of returning a template", async () => {
-    mocks.designCreativeComposition.mockRejectedValue(new Error("Custom design failed"));
-    await expect(generateCampaignV2(input)).rejects.toThrow("Custom design failed");
   });
 
   it("stores strategy, design plan, and review in the validated result", async () => {
-    const result = await generateCampaignV2(input, { includeCreativeDesign: false });
+    const result = await generateCampaignV2(input);
 
     expect(result.generationVersion).toBe("v2");
     expect(result.generationV2).toMatchObject({
@@ -168,7 +128,7 @@ describe("Generation V2 orchestration", () => {
       .mockResolvedValueOnce(assessment(true))
       .mockResolvedValueOnce(assessment(false));
 
-    const result = await generateCampaignV2(input, { includeCreativeDesign: false });
+    const result = await generateCampaignV2(input);
 
     expect(result.generationV2?.review).toMatchObject({ needsRewrite: false });
     expect(mocks.generatePlatformContent).toHaveBeenCalledTimes(2);
@@ -206,7 +166,7 @@ describe("Generation V2 orchestration", () => {
       .mockResolvedValueOnce(firstReview)
       .mockResolvedValueOnce(assessment(false));
 
-    await generateCampaignV2(multiChannelInput, { includeCreativeDesign: false });
+    await generateCampaignV2(multiChannelInput);
 
     expect(mocks.generatePlatformContent).toHaveBeenCalledTimes(2);
     expect(mocks.generatePlatformContent.mock.calls[1]?.[3]).toEqual(drafts);
@@ -219,7 +179,7 @@ describe("Generation V2 orchestration", () => {
     mocks.reviewCampaignGeneration
       .mockResolvedValueOnce(assessment(true, true))
       .mockResolvedValueOnce(assessment(false));
-    await generateCampaignV2(input, { includeCreativeDesign: false });
+    await generateCampaignV2(input);
     expect(mocks.generatePlatformContent.mock.calls[1]?.[4]).toBeUndefined();
   });
 
@@ -228,7 +188,7 @@ describe("Generation V2 orchestration", () => {
       .mockResolvedValueOnce(assessment(true, true, []))
       .mockResolvedValueOnce(assessment(false));
 
-    await generateCampaignV2(input, { includeCreativeDesign: false });
+    await generateCampaignV2(input);
 
     const rewriteFeedback = mocks.generatePlatformContent.mock.calls[1]?.[2];
     expect(rewriteFeedback).toContain('"statement":"Unsupported feature claim"');
@@ -247,7 +207,7 @@ describe("Generation V2 orchestration", () => {
       .mockResolvedValueOnce(assessment(true, true, oversizedFeedback))
       .mockResolvedValueOnce(assessment(false));
 
-    await generateCampaignV2(input, { includeCreativeDesign: false });
+    await generateCampaignV2(input);
 
     const rewriteFeedback = mocks.generatePlatformContent.mock.calls[1]?.[2];
     expect(rewriteFeedback).toContain('"statement":"Unsupported feature claim"');
@@ -279,7 +239,7 @@ describe("Generation V2 orchestration", () => {
       .mockResolvedValueOnce(assessment(true, true))
       .mockResolvedValueOnce(assessment(false));
 
-    const result = await generateCampaignV2(input, { includeCreativeDesign: false });
+    const result = await generateCampaignV2(input);
 
     expect(result.outputs[0]?.primaryCopy).toBe("A clear launch.\n\nA useful close.");
     expect(result.outputs[0]?.alternateHooks).toEqual([]);

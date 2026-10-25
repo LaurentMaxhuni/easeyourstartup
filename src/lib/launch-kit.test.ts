@@ -5,7 +5,6 @@ import {
 } from "@/lib/launch-kit";
 import {
   DEMO_BRAND,
-  DEMO_COMPOSITION,
   DEMO_OUTPUTS,
   DEMO_SCAN,
 } from "@/lib/demo-data";
@@ -44,7 +43,6 @@ describe("launch kit", () => {
       },
       draft,
       outputs: DEMO_OUTPUTS,
-      composition: DEMO_COMPOSITION,
       scan: DEMO_SCAN,
     });
 
@@ -78,7 +76,6 @@ describe("launch kit", () => {
           warnings: ["The benefit claim needs founder review."],
         },
       ],
-      composition: DEMO_COMPOSITION,
       scan: {
         ...DEMO_SCAN,
         readiness: [

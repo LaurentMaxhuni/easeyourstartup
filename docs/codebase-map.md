@@ -38,7 +38,7 @@ asset project with its own instructions, not the SaaS runtime.
 | Sign-in and onboarding | `src/lib/auth/`, `src/proxy.ts`, `src/app/login/`, `src/app/onboarding/`, `src/lib/server/onboarding.ts` |
 | Dashboard and project grouping | `src/app/dashboard/page.tsx`, `src/components/dashboard/project-campaign-workspace.tsx`, `src/lib/server/project-storage.ts` |
 | Studio orchestration | `src/app/studio/page.tsx`, `src/components/studio/studio-shell.tsx` |
-| Brand, briefs, copy, visuals | `src/components/studio/brand-dna-panel.tsx`, `campaign-builder.tsx`, `channel-outputs.tsx`, `creative-workspace.tsx`, `mini-canva-editor.tsx` in the same directory |
+| Brand, briefs, copy, visuals | `src/components/studio/brand-dna-panel.tsx`, `campaign-builder.tsx`, `channel-outputs.tsx`, `campaign-results.tsx`, `campaign-visual.tsx` in the same directory; visual editor in `src/components/design-studio/` |
 | Editor state and job polling | `src/lib/studio/`, `src/lib/studio-flow.ts`, `src/lib/job-results.ts` |
 | Shared schemas and types | `src/lib/contracts.ts` (Zod), `src/lib/channels.ts` |
 | Website scan and brand enrichment | `src/lib/server/scanner.ts`, `src/lib/server/url-security.ts`, `src/lib/server/brand-intelligence.ts` |
@@ -48,7 +48,7 @@ asset project with its own instructions, not the SaaS runtime.
 | Database, workspace access | `src/lib/server/database.ts`, `src/lib/server/workspace-access.ts`, `migrations/` |
 | Studio persistence | `src/app/api/studio/state/route.ts`, `src/lib/server/studio-state.ts` |
 | Billing and quotas | `src/lib/server/paddle.ts`, `src/app/api/paddle/`, `src/lib/entitlements.ts`, `src/lib/pricing.ts`, `src/lib/usage-window.ts` |
-| Uploads, capture, export | `src/lib/server/object-storage.ts`, `src/lib/server/browserless.ts`, `src/app/api/uploads/`, `src/app/api/exports/`, `src/app/render/[token]/`, `src/lib/launch-kit.ts` |
+| Uploads, capture, export | `src/lib/server/object-storage.ts`, `src/lib/server/browserless.ts`, `src/app/api/uploads/`, `src/app/api/exports/`, `src/lib/server/design-studio/renderer.ts`, `src/lib/launch-kit.ts` |
 | Setup and operations | `README.md`, `.env.example`, `scripts/`, `.github/workflows/ci.yml` |
 
 ## Runtime relationships
@@ -95,23 +95,20 @@ asset project with its own instructions, not the SaaS runtime.
 - V1 remains default. `GENERATION_VERSION=v2` marks newly queued campaigns;
   stored campaign input selects the worker's version. V2 runs strategy, platform
   copy, design planning, and review with at most one rewrite, then checks claims.
-  Reviewed V2 visual copy goes to `designCreativeComposition`: AI authors the
-  actual canvas layers, geometry, hierarchy, and imagery. The former fixed
-  plan-to-canvas composition and silent planner fallback have been removed.
-  Durable V1/V2 generation includes and persists the provider-authored canvas;
-  initial and resumed clients use that result. Selecting another direction runs
-  custom AI design with that direction's copy. Provider validation preserves the
-  reviewed headline/CTA, approved wording, verified image references, and brand
-  palette. Null optional styles are omitted without changing layer geometry.
-  Editor font sizes scale with canvas width to match export typography.
+  Generation produces copy and creative directions only; it no longer authors
+  a canvas. The former `CreativeComposition` editor, `/api/ai/design|rewrite`,
+  `/render/[token]` and Browserless composition capture were removed on
+  2026-10-25 when visuals moved to the design studio (see below).
 - AI routing and structured responses live in `campaign-generator.ts`. Provider
   priority: NVIDIA NIM -> OpenRouter -> Groq -> legacy OpenAI settings. OpenAI
   uses Responses; the other configured providers use Chat Completions.
   `AI_GENERATION_ENABLED=false` pauses AI generation/design/rewrite while scans
   retain local factual curation. Never substitute demo fixtures for failed paid work.
-- Export jobs render a saved immutable revision via a short-lived random database
-  token, capture PNG through Browserless, and assemble channel files/evidence into
-  a launch kit. Private assets are served through authenticated routes.
+- Export jobs load the saved studio-state revision, render its referenced
+  `design_versions` revision with the design studio renderer (PNG: first slide;
+  ZIP: every slide under `visual/` plus `visual/design.json`), and assemble channel
+  files/evidence into a launch kit. Layout errors fail the export without retry.
+  Private assets are served through authenticated routes.
 - Plan limits are authoritative in `entitlements.ts`; catalog prices in
   `pricing.ts` and Paddle configuration. Keep quotas and billing-period logic in
   code. Webhook entitlement changes require matching configured price IDs.
@@ -145,8 +142,15 @@ asset project with its own instructions, not the SaaS runtime.
 
 ## AI Design Studio (2026-10-25)
 
-- `/studio/design` is an authenticated workspace alongside the existing launch
-  studio. Its entry link is in `StudioHeader`; campaign generation stays intact.
+- The design studio is the launch studio's visual step, not a separate page.
+  On the first visit to "Your posts", `StudioShell` seeds a design document from
+  a hand-designed template (`campaign-seed.ts`: brand kit from the scan, copy from
+  the first creative direction, the stored website screenshot as an asset), saves
+  it, and stores `{ id, revision }` as `design` in studio state. Older campaigns
+  without one are seeded the same way. `CampaignVisual` previews page 1; "Edit
+  visual" mounts `DesignStudio` with that design, which autosaves (5 s) and
+  reports each saved revision back to the campaign. Exports use that revision.
+  The editor uses the app's theme tokens (light and dark).
 - `src/lib/design-studio/document.ts` is the editable, validated source of truth
   for brand kits, raster asset references, slides, text/shape/SVG layers and
   incremental property patches. `renderDesignHtml` emits escaped HTML/CSS/SVG;
@@ -195,7 +199,8 @@ asset project with its own instructions, not the SaaS runtime.
   concurrency defaults to two and is configurable from one to eight.
 - `src/components/design-studio/` provides the real DOM editor, properties,
   layers, pan/zoom, history, variants, brand kits and conversational refinements.
-  Browser drafts are user-scoped. Background results update an untouched canvas;
+  Browser drafts are scoped per user and campaign and recovered only on top of
+  the same saved revision. Background results update an untouched canvas;
   manual edits and dragging stop automatic replacement.
 - Setup: `docs/design-studio.md`; full provider configuration:
   `docs/design-studio-providers.md`. Real browser tests opt in with

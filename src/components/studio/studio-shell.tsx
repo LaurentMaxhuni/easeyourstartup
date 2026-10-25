@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AccountProfile } from "@/components/account/account-avatar-link";
 import {
-  creativeDesignResultSchema,
   generateJobResultSchema,
   scanJobResultSchema,
   studioStateSchema,
@@ -14,9 +13,6 @@ import type {
   BrandProfile,
   ChannelOutput,
   CreativeComposition,
-  CreativeDirection,
-  CreativeDesignInput,
-  CreativeRewriteInput,
   GenerationResult,
   ScanResult,
 } from "@/lib/contracts";
@@ -26,7 +22,9 @@ import {
   CampaignBuilder,
   type CampaignDraft,
 } from "@/components/studio/campaign-builder";
-import { CreativeWorkspace } from "@/components/studio/creative-workspace";
+import { CampaignResults } from "@/components/studio/campaign-results";
+import { CampaignVisual, type CampaignDesignRef } from "@/components/studio/campaign-visual";
+import { DesignStudio } from "@/components/design-studio/design-studio";
 import {
   GenerationProgressScreen,
   type GenerationScreenStage,
@@ -39,8 +37,9 @@ import {
   type StudioStep,
 } from "@/components/studio/step-nav";
 import { StudioHeader } from "@/components/studio/studio-header";
-import { compositionImageUrls, toExportableImageUrl } from "@/lib/studio-export";
-import { applyCreativeDesign } from "@/lib/studio/editor-state";
+import { toExportableImageUrl } from "@/lib/studio-export";
+import { campaignDesignBrief, campaignDesignDocument } from "@/lib/design-studio/campaign-seed";
+import type { DesignAsset } from "@/lib/design-studio/document";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 import {
@@ -54,7 +53,6 @@ import {
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 import { campaignDraftWithDefaults } from "@/lib/studio/campaign-defaults";
-import { resolveGeneratedCreativeDesign } from "@/lib/generation-v2/design-canvas";
 
 const EMPTY_DRAFT: CampaignDraft = {
   kind: "launch",
@@ -78,12 +76,6 @@ function scanStageForJob(job: DurableJob): ScanStage {
   if (job.status === "queued") return "queued";
   return job.status === "analyzing" || job.status === "completed" ? "analyzing" : "reading";
 }
-const LEGACY_DEMO_IMAGES = new Set([
-  "/images/studio-capture.png",
-  "/images/studio-capture-mobile.png",
-  "/images/founder-launch-studio.png",
-]);
-
 function blankComposition(): CreativeComposition {
   return {
     ...DEMO_COMPOSITION,
@@ -113,6 +105,21 @@ function storedAssetId(value: string) {
   }
 }
 
+// Copies a saved project image into the design studio's sanitized asset store.
+async function importDesignAsset(source: string, description: string): Promise<DesignAsset> {
+  const image = await fetch(source, { cache: "no-store" });
+  if (!image.ok) throw new Error("The project image could not be loaded.");
+  const blob = await image.blob();
+  const form = new FormData();
+  form.set("file", new File([blob], "website-screenshot", { type: blob.type }));
+  form.set("kind", "image");
+  form.set("description", description);
+  const response = await fetch("/api/design-studio/assets", { method: "POST", body: form });
+  const data = await response.json() as { asset?: DesignAsset; error?: string };
+  if (!response.ok || !data.asset) throw new Error(data.error || "The project image could not be added to your visual.");
+  return data.asset;
+}
+
 async function storeProjectImage(source: string, projectId: string) {
   let captureUrl = source;
   if (captureUrl.startsWith("/api/capture?")) {
@@ -136,63 +143,7 @@ async function storeProjectImage(source: string, projectId: string) {
   return result.url;
 }
 
-async function migrateEditorImages(state: StudioState) {
-  if (!state.projectId) return { state, failed: false };
-  const composition = state.composition;
-  const sources = compositionImageUrls(composition);
-  const replacements = new Map<string, string>();
-  let failed = false;
-  const actualSource = state.scan?.desktopCaptureUrl || state.brand?.imageUrl || state.brand?.logoUrl || "";
-  for (const source of new Set(sources)) {
-    if (!source || storedAssetId(source) || source === EMPTY_CANVAS_IMAGE) continue;
-    let legacyDemo = false;
-    try {
-      legacyDemo = LEGACY_DEMO_IMAGES.has(new URL(source, "https://easeyourstartup.invalid").pathname);
-    } catch {
-      // Malformed legacy image references remain visible and can be replaced manually.
-    }
-    if (legacyDemo && state.scan?.mode === "live" && !actualSource) {
-      replacements.set(source, EMPTY_CANVAS_IMAGE);
-      continue;
-    }
-    const target = legacyDemo && state.scan?.mode === "live"
-      ? toExportableImageUrl(actualSource, EMPTY_CANVAS_IMAGE)
-      : /^https?:\/\//i.test(source) ? toExportableImageUrl(source, EMPTY_CANVAS_IMAGE) : source;
-    if (target === EMPTY_CANVAS_IMAGE) {
-      replacements.set(source, target);
-      continue;
-    }
-    try {
-      replacements.set(source, await storeProjectImage(target, state.projectId));
-    } catch {
-      failed = true;
-      if (legacyDemo && state.scan?.mode === "live") replacements.set(source, EMPTY_CANVAS_IMAGE);
-    }
-  }
-  if (replacements.size === 0) return { state, failed };
-  const replace = (source: string) => replacements.get(source) ?? source;
-  return {
-    failed,
-    state: {
-      ...state,
-      composition: {
-        ...composition,
-        screenshotUrl: replace(composition.screenshotUrl),
-        mockups: {
-          desktop: replace(composition.mockups.desktop),
-          tablet: replace(composition.mockups.tablet),
-          phone: replace(composition.mockups.phone),
-        },
-        elements: composition.elements?.map((element) => element.kind === "image" && element.src
-          ? { ...element, src: replace(element.src) }
-          : element),
-      },
-    },
-  };
-}
-
 type StudioSaveStatus = "idle" | "saving" | "saved" | "local" | "error";
-type AutoDesignStatus = "idle" | "loading" | "ai" | "error";
 type StudioPlan = "free" | "pro_lite" | "pro";
 type StudioEvent =
   | "scan_started"
@@ -261,28 +212,6 @@ async function postWithNetworkRetry(url: string, init: RequestInit) {
   }
 }
 
-function applyCreativeDirection(
-  composition: CreativeComposition,
-  direction: CreativeDirection,
-): CreativeComposition {
-  return {
-    ...composition,
-    templateId: "custom",
-    graphic: "none",
-    elements: undefined,
-    designSource: undefined,
-    text: {
-      ...composition.text,
-      eyebrow: direction.eyebrow,
-      headline: direction.headline,
-      subheadline: direction.subheadline,
-      body: direction.body,
-      cta: direction.cta,
-      footer: direction.footer,
-    },
-  };
-}
-
 export function StudioShell({
   initialAuthenticated = true,
   profile,
@@ -303,9 +232,7 @@ export function StudioShell({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const pollingJobId = useRef<string | null>(null);
   const applyScanResultRef = useRef<(data: ScanResult, nextProjectId: string | null) => void>(() => {});
-  const autoDesignRequest = useRef(0);
   const entitlementRequest = useRef(0);
-  const captureRef = useRef<HTMLDivElement | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<StudioStep>("scan");
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -318,9 +245,11 @@ export function StudioShell({
   const [generation, setGeneration] = useState<GenerationResult | null>(null);
   const [selectedCreativeId, setSelectedCreativeId] = useState("");
   const [outputs, setOutputs] = useState<ChannelOutput[]>([]);
-  const [autoDesignStatus, setAutoDesignStatus] =
-    useState<AutoDesignStatus>("idle");
-  const [autoDesignWarning, setAutoDesignWarning] = useState("");
+  const [design, setDesign] = useState<CampaignDesignRef | null>(null);
+  const [designStatus, setDesignStatus] = useState<"idle" | "creating" | "error">("idle");
+  const [designError, setDesignError] = useState("");
+  const [editingVisual, setEditingVisual] = useState(false);
+  const designSeeding = useRef<string | null>(null);
   const [composition, setComposition] =
     useState<CreativeComposition>(blankComposition);
   const [scanStatus, setScanStatus] = useState<
@@ -335,10 +264,6 @@ export function StudioShell({
   const [generateError, setGenerateError] = useState("");
   const [generationScreenStage, setGenerationScreenStage] =
     useState<GenerationScreenStage>("preparing");
-  const [uploadStatus, setUploadStatus] = useState<
-    "idle" | "loading" | "error"
-  >("idle");
-  const [uploadError, setUploadError] = useState("");
   const [exportStatus, setExportStatus] = useState<"idle" | "loading">("idle");
   const [exportError, setExportError] = useState("");
   const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
@@ -348,10 +273,7 @@ export function StudioShell({
   const [saveError, setSaveError] = useState("");
   const [plan, setPlan] = useState<StudioPlan>("free");
   const [canExportLaunchKit, setCanExportLaunchKit] = useState(false);
-  const [campaignsRemaining, setCampaignsRemaining] = useState<number | null>(
-    null,
-  );
-  const [usagePeriodEndsAt, setUsagePeriodEndsAt] = useState<string | null>(null);
+  const [storageScope, setStorageScope] = useState("easeyourstartup");
   const [entitlementRefreshVersion, setEntitlementRefreshVersion] =
     useState(0);
   const [regenerationRemaining, setRegenerationRemaining] = useState<Partial<Record<ChannelOutput["channel"], number>>>({});
@@ -371,8 +293,9 @@ export function StudioShell({
       selectedCreativeId,
       outputs,
       composition,
+      design,
     });
-  }, [brand, campaignId, composition, draft, generation, jobId, jobType, outputs, projectId, scan, selectedCreativeId, step]);
+  }, [brand, campaignId, composition, design, draft, generation, jobId, jobType, outputs, projectId, scan, selectedCreativeId, step]);
   const buildStudioStateRef = useRef(buildStudioState);
   useEffect(() => { buildStudioStateRef.current = buildStudioState; }, [buildStudioState]);
 
@@ -494,6 +417,7 @@ export function StudioShell({
           }
           if (typeof data.storageKey === "string" && data.storageKey.length <= 120) {
             storageKey.current = data.storageKey;
+            setStorageScope(data.storageKey);
           }
         }
       } catch {
@@ -541,8 +465,8 @@ export function StudioShell({
         setGeneration(null);
         setSelectedCreativeId("");
         setOutputs([]);
-        setAutoDesignStatus("idle");
-        setAutoDesignWarning("");
+        setDesign(null);
+        setEditingVisual(false);
         setComposition(blankComposition());
         setScanStatus("idle");
         setScanError("");
@@ -574,18 +498,9 @@ export function StudioShell({
         setGeneration(savedState.generation);
         setSelectedCreativeId(savedState.selectedCreativeId);
         setOutputs(savedState.outputs);
-        setAutoDesignStatus("idle");
-        setAutoDesignWarning("");
         setComposition(savedState.composition);
-        void migrateEditorImages(savedState).then((migrated) => {
-          if (cancelled) return;
-          if (migrated.state.composition !== savedState.composition) {
-            setComposition(migrated.state.composition);
-          }
-          if (migrated.failed) {
-            setExportError("A saved screenshot still needs to be uploaded before export. Your existing work remains available.");
-          }
-        });
+        setDesign(savedState.design);
+        setEditingVisual(false);
         setSaveStatus(persistence === "database" ? "saved" : "local");
         setSaveError("");
       } else if (!cancelled && activeJob) {
@@ -643,6 +558,7 @@ export function StudioShell({
         setGeneration(null);
         setSelectedCreativeId("");
         setOutputs([]);
+        setDesign(null);
         setComposition(blankComposition());
         setStep(hasProjectBrand ? "campaign" : "scan");
         setGenerateStatus("idle");
@@ -726,20 +642,10 @@ export function StudioShell({
             outputs: current.outputs.map((output) => output.channel === replacement.channel ? replacement : output),
           } : current);
         } else {
-          const firstDirection = generation.creativeDirections[0];
-          const currentState = buildStudioStateRef.current();
-          const generatedDesign = resolveGeneratedCreativeDesign(generation);
-          const generatedComposition = generatedDesign
-            ? applyCreativeDesign(currentState.composition, generatedDesign)
-            : firstDirection ? applyCreativeDirection(currentState.composition, firstDirection) : currentState.composition;
-          const migrated = await migrateEditorImages({ ...currentState, composition: generatedComposition });
-          if (cancelled) return;
           setGeneration(generation);
           setOutputs(generation.outputs);
-          setSelectedCreativeId(firstDirection?.id ?? "");
-          setComposition(migrated.state.composition);
-          setUploadStatus(migrated.failed ? "error" : "idle");
-          setUploadError(migrated.failed ? "This image could not be saved. Try uploading it in Edit visual before downloading." : "");
+          setSelectedCreativeId(generation.creativeDirections[0]?.id ?? "");
+          setDesign(null);
         }
         setJobId(null);
         setJobType(null);
@@ -785,22 +691,13 @@ export function StudioShell({
         const data = (await response.json()) as {
           plan?: StudioPlan;
           canExportLaunchKit?: boolean;
-          campaignsRemaining?: number;
-          usagePeriodEndsAt?: string;
         };
         if (cancelled || requestId !== entitlementRequest.current) return;
         if (data.plan === "free" || data.plan === "pro_lite" || data.plan === "pro") {
           setPlan(data.plan);
           setCanExportLaunchKit(data.canExportLaunchKit === true);
         }
-        if (
-          typeof data.campaignsRemaining === "number" &&
-          Number.isFinite(data.campaignsRemaining) &&
-          data.campaignsRemaining >= 0
-        ) {
-          setCampaignsRemaining(data.campaignsRemaining);
-        }
-        if (typeof data.usagePeriodEndsAt === "string") setUsagePeriodEndsAt(data.usagePeriodEndsAt);
+
       } catch {
         // A failed lookup intentionally leaves the safer free preview state in place.
       }
@@ -837,7 +734,7 @@ export function StudioShell({
       void persistStudioState();
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [brand, campaignId, composition, draft, generation, hydrated, jobId, jobType, outputs, persistStudioState, projectId, scan, selectedCreativeId, startFresh, step]);
+  }, [brand, campaignId, composition, design, draft, generation, hydrated, jobId, jobType, outputs, persistStudioState, projectId, scan, selectedCreativeId, startFresh, step]);
 
   const applyScanResult = useCallback((data: ScanResult, nextProjectId: string | null) => {
     if (nextProjectId !== projectId) setCampaignId(null);
@@ -852,6 +749,7 @@ export function StudioShell({
     setGeneration(null);
     setOutputs([]);
     setSelectedCreativeId("");
+    setDesign(null);
     setDraft((current) => ({
       ...current,
       audience: data.profile.audience || current.audience,
@@ -904,8 +802,6 @@ export function StudioShell({
       data.profile.logoUrl ? toExportableImageUrl(data.profile.logoUrl, EMPTY_CANVAS_IMAGE) : "",
     ].filter((source) => source && source !== EMPTY_CANVAS_IMAGE)));
     if (nextProjectId && imageCandidates.length > 0 && !storedAssetId(scanImage)) {
-      setUploadStatus("loading");
-      setUploadError("");
       void (async () => {
         let storedUrl: string | null = null;
         for (const candidate of imageCandidates) {
@@ -922,15 +818,12 @@ export function StudioShell({
             screenshotUrl: storedUrl,
             mockups: { desktop: storedUrl, tablet: storedUrl, phone: storedUrl },
           }));
-          setUploadStatus("idle");
         } else {
           setComposition((current) => current.screenshotUrl !== scanImage ? current : ({
             ...current,
             screenshotUrl: EMPTY_CANVAS_IMAGE,
             mockups: { desktop: EMPTY_CANVAS_IMAGE, tablet: EMPTY_CANVAS_IMAGE, phone: EMPTY_CANVAS_IMAGE },
           }));
-          setUploadStatus("error");
-          setUploadError("A product screenshot could not be captured or saved. Upload one before exporting.");
         }
       })();
     }
@@ -942,7 +835,7 @@ export function StudioShell({
         : "/studio");
     }
   }, [projectId, startFresh]);
-  applyScanResultRef.current = applyScanResult;
+  useEffect(() => { applyScanResultRef.current = applyScanResult; }, [applyScanResult]);
 
   const runScan = useCallback(async (url?: string) => {
     const normalized = normalizePublicWebsiteUrl(url ?? "");
@@ -1092,48 +985,6 @@ export function StudioShell({
     }
   }, [hydrated, runScan, searchParams]);
 
-  async function runAutomaticDesign(
-    baseComposition: CreativeComposition,
-    profile: BrandProfile,
-    campaignDraft: CampaignDraft,
-    requestedRequestId?: number,
-    targetCampaignId: string | null = campaignId,
-    copyCandidates: string[] = [],
-  ) {
-    const requestId = requestedRequestId ?? autoDesignRequest.current + 1;
-    autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
-    const result = await designCreativeComposition(
-      {
-        projectName: profile.projectName,
-        context: [
-          profile.tagline,
-          `Audience: ${campaignDraft.audience}`,
-          `Campaign goal: ${campaignDraft.goal}`,
-          `Update: ${campaignDraft.updateDetails}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        approvedFacts: profile.claims
-          .filter((claim) => claim.approvalState === "approved")
-          .map((claim) => claim.text),
-        brand: profile,
-        copyCandidates: [profile.projectName, profile.tagline, ...copyCandidates].filter(
-          (value) => value.trim().length > 0,
-        ),
-        instruction:
-          "Recompose this canvas as a complete, editable design based on the brand identity and selected campaign copy. Choose the visual structure, typography, colors, imagery, and icons from scratch.",
-        composition: baseComposition,
-      },
-      requestId,
-      targetCampaignId,
-    );
-    if (requestId !== autoDesignRequest.current) return;
-    setComposition({
-      ...applyCreativeDesign(baseComposition, result.design),
-      designSource: "ai",
-    });
-  }
-
   async function runGeneration() {
     if (!brand) return;
     const readyDraft = campaignDraftWithDefaults(draft, brand);
@@ -1169,10 +1020,6 @@ export function StudioShell({
     setGenerateStatus("loading");
     setGenerateError("");
     setGenerationScreenStage("preparing");
-    const requestId = autoDesignRequest.current + 1;
-    autoDesignRequest.current = requestId;
-    setAutoDesignStatus("idle");
-    setAutoDesignWarning("");
     const startedAt = Date.now();
     let activeJobId: string | null = null;
     trackStudioEvent("generation_started", {
@@ -1195,7 +1042,6 @@ export function StudioShell({
         channels: draft.channels,
       };
       let data: GenerationResult;
-      let generatedCampaignId: string | null = campaignId;
       const mode: "durable" | "direct" = projectId ? "durable" : "direct";
       if (projectId) {
         const resumableJobId = jobType === "generate" ? jobId : null;
@@ -1235,7 +1081,6 @@ export function StudioShell({
           const campaignUrl = new URLSearchParams({ projectId, campaignId: queued.campaignId });
           window.history.replaceState(null, "", `/studio?${campaignUrl}`);
           setCampaignId(queued.campaignId);
-          generatedCampaignId = queued.campaignId;
           setJobId(activeJobId);
           setJobType("generate");
           const result = await waitForCompletedJob(activeJobId, (job) => {
@@ -1260,64 +1105,9 @@ export function StudioShell({
       if (mode === "durable") {
         setEntitlementRefreshVersion((version) => version + 1);
       }
-      const firstDirection = data.creativeDirections[0];
       setGenerationScreenStage("visuals");
-      setSelectedCreativeId(firstDirection?.id ?? "");
-      let nextComposition = composition;
-      if (firstDirection) {
-        nextComposition = applyCreativeDirection(composition, firstDirection);
-      } else {
-        nextComposition = {
-          ...composition,
-          text: {
-            ...composition.text,
-            headline: brand.tagline || draft.updateDetails.split(".")[0],
-            cta: draft.cta,
-            eyebrow: brand.projectName,
-          },
-        };
-      }
-      const generatedDesign = resolveGeneratedCreativeDesign(data);
-      if (generatedDesign) {
-        let designedComposition = applyCreativeDesign(composition, generatedDesign);
-        if (projectId) {
-          const migrated = await migrateEditorImages({
-            ...buildStudioState(),
-            campaignId: generatedCampaignId,
-            composition: designedComposition,
-          });
-          designedComposition = migrated.state.composition;
-          setUploadStatus(migrated.failed ? "error" : "idle");
-          setUploadError(
-            migrated.failed
-              ? "Some brand images could not be saved to this project. They remain on the canvas, but may not export until replaced."
-              : "",
-          );
-        }
-        setComposition({
-          ...designedComposition,
-          designSource: "ai",
-        });
-      } else {
-        setComposition(nextComposition);
-        void runAutomaticDesign(
-          nextComposition,
-          brand,
-          draft,
-          requestId,
-          generatedCampaignId,
-          firstDirection
-            ? [
-                firstDirection.eyebrow,
-                firstDirection.headline,
-                firstDirection.subheadline,
-                firstDirection.body,
-                firstDirection.cta,
-                firstDirection.footer,
-              ].filter((value) => value.trim().length > 0)
-            : [],
-        ).catch(() => undefined);
-      }
+      setSelectedCreativeId(data.creativeDirections[0]?.id ?? "");
+      setDesign(null);
       setGenerateStatus("idle");
       setStep("creative");
       trackStudioEvent("generation_completed", {
@@ -1347,178 +1137,6 @@ export function StudioShell({
         channelCount: draft.channels.length,
         durationMs: Date.now() - startedAt,
       });
-    }
-  }
-
-  async function selectCreativeDirection(id: string) {
-    const direction = generation?.creativeDirections.find(
-      (candidate) => candidate.id === id,
-    );
-    if (!direction) return;
-    const requestId = autoDesignRequest.current + 1;
-    autoDesignRequest.current = requestId;
-    setAutoDesignStatus("idle");
-    setAutoDesignWarning("");
-    setSelectedCreativeId(id);
-    const nextComposition = applyCreativeDirection(composition, direction);
-    if (autoDesignRequest.current !== requestId) return;
-    if (!brand) {
-      setComposition(nextComposition);
-      return;
-    }
-    void runAutomaticDesign(
-      nextComposition,
-      brand,
-      draft,
-      requestId,
-      campaignId,
-      [
-        direction.eyebrow,
-        direction.headline,
-        direction.subheadline,
-        direction.body,
-        direction.cta,
-        direction.footer,
-      ].filter((value) => value.trim().length > 0),
-    ).catch(() => undefined);
-  }
-
-  function handleCompositionChange(nextComposition: CreativeComposition) {
-    // Any direct editor edit supersedes a pending automatic design response.
-    // The response can still finish in the background, but it must not replace
-    // the user's newer canvas state when it arrives.
-    autoDesignRequest.current += 1;
-    setAutoDesignStatus("idle");
-    setAutoDesignWarning("");
-    setComposition(nextComposition);
-  }
-
-  async function uploadScreenshot(
-    file: File,
-  ): Promise<string | null> {
-    setUploadStatus("loading");
-    setUploadError("");
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      if (projectId) form.append("projectId", projectId);
-      if (campaignId) form.append("campaignId", campaignId);
-      const response = await fetch("/api/uploads", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "Upload failed.");
-      }
-      const uploadedUrl = data.url;
-      setUploadStatus("idle");
-      return uploadedUrl;
-    } catch {
-      setUploadStatus("error");
-      setUploadError("The image could not be uploaded. Try a PNG, JPEG, or WebP.");
-      return null;
-    }
-  }
-
-  async function rewriteCreativeText(input: CreativeRewriteInput) {
-    if (!projectId || !campaignId) throw new Error("Save this campaign before using AI rewrite.");
-    const response = await fetch("/api/ai/rewrite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...input, projectId, campaignId }),
-    });
-    const data = (await response.json()) as {
-      text?: string;
-      mode?: "ai";
-      error?: string;
-    };
-    if (!response.ok || !data.text || data.mode !== "ai") {
-      throw new Error(data.error || "AI rewrite failed.");
-    }
-    return { text: data.text, mode: "ai" as const };
-  }
-
-  async function designCreativeComposition(
-    input: CreativeDesignInput,
-    requestId = autoDesignRequest.current + 1,
-    targetCampaignId: string | null = campaignId,
-  ) {
-    if (!projectId || !targetCampaignId) throw new Error("Save this campaign before using AI design.");
-    const designBrand = input.brand ?? brand;
-    const brandIdentity = designBrand
-      ? {
-          projectName: designBrand.projectName,
-          tagline: designBrand.tagline,
-          voice: designBrand.voice,
-          colors: designBrand.colors,
-          fonts: designBrand.fonts,
-          fontAssets: designBrand.fontAssets,
-          logoUrl: designBrand.logoUrl,
-          faviconUrl: designBrand.faviconUrl,
-          imageUrl: designBrand.imageUrl,
-          visualSystem: designBrand.visualSystem,
-          productScreenshotCandidates: designBrand.productScreenshotCandidates,
-          brandIntelligence: designBrand.brandIntelligence,
-        }
-      : undefined;
-    autoDesignRequest.current = Math.max(autoDesignRequest.current, requestId);
-    if (requestId === autoDesignRequest.current) {
-      setAutoDesignStatus("loading");
-      setAutoDesignWarning("");
-    }
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 165_000);
-    try {
-      const response = await fetch("/api/ai/design", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...input, brand: brandIdentity, projectId, campaignId: targetCampaignId }),
-        signal: controller.signal,
-      });
-      const body = await response.text();
-      let data: {
-        design?: unknown;
-        mode?: "ai";
-        provider?: "groq" | "nvidia-nim" | "openrouter" | "openai" | "compatible";
-        error?: string;
-      };
-      try {
-        data = JSON.parse(body) as typeof data;
-      } catch {
-        throw new Error(
-          `AI design returned an invalid server response (${response.status}).`,
-        );
-      }
-      if (!response.ok || !data.design || data.mode !== "ai") {
-        throw new Error(data.error || `AI design failed (${response.status}).`);
-      }
-      if (requestId === autoDesignRequest.current) {
-        setAutoDesignStatus("ai");
-        setAutoDesignWarning("");
-      }
-      return {
-        design: creativeDesignResultSchema.parse(data.design),
-        mode: data.mode,
-        provider: data.provider,
-      };
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        if (requestId === autoDesignRequest.current) {
-          setAutoDesignStatus("error");
-          setAutoDesignWarning("AI design timed out before a scene was returned.");
-        }
-        throw new Error("AI design timed out. No canvas was generated.");
-      }
-      if (requestId === autoDesignRequest.current) {
-        setAutoDesignStatus("error");
-        setAutoDesignWarning(
-          error instanceof Error ? error.message : "AI design failed.",
-        );
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
     }
   }
 
@@ -1633,6 +1251,46 @@ export function StudioShell({
     }
   }
 
+  async function createCampaignDesign(targetCampaignId: string) {
+    if (!brand || !generation) return;
+    setDesignStatus("creating");
+    setDesignError("");
+    try {
+      const assets: DesignAsset[] = [];
+      if (storedAssetId(composition.screenshotUrl)) {
+        try {
+          assets.push(await importDesignAsset(composition.screenshotUrl, "Website screenshot from the scan"));
+        } catch {
+          // A text-only layout is still a complete visual.
+        }
+      }
+      const document = campaignDesignDocument({ brand, direction: generation.creativeDirections[0], cta: draft.cta, assets });
+      const response = await fetch("/api/design-studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", document }),
+      });
+      const data = await response.json() as { design?: { id: string; revision: number }; error?: string };
+      if (!response.ok || !data.design) throw new Error(data.error || "Your visual could not be created.");
+      if (buildStudioStateRef.current().campaignId !== targetCampaignId) return;
+      setDesign({ id: data.design.id, revision: data.design.revision });
+      setDesignStatus("idle");
+    } catch (error) {
+      designSeeding.current = null;
+      setDesignStatus("error");
+      setDesignError(error instanceof Error ? error.message : "Your visual could not be created.");
+    }
+  }
+
+  // Every campaign gets a saved design on its first visit to the posts step,
+  // including campaigns saved before visuals moved to the design studio.
+  useEffect(() => {
+    if (!hydrated || step !== "creative" || !generation || !brand || !campaignId || design) return;
+    if (designSeeding.current === campaignId) return;
+    designSeeding.current = campaignId;
+    void createCampaignDesign(campaignId);
+  });
+
   async function exportPng() {
     await exportSavedCampaign("png");
   }
@@ -1646,15 +1304,11 @@ export function StudioShell({
     ...(scan ? (["brand", "campaign"] as StudioStep[]) : []),
     ...(generation ? (["creative"] as StudioStep[]) : []),
   ];
-  const compositionImageRefs = compositionImageUrls(composition);
-  const hasDurableCompositionImages = compositionImageRefs.every((source) => storedAssetId(source) !== null);
   const launchKitReadiness = brand
     ? (() => {
-        const readiness = getLaunchKitReadiness({ brand, draft, outputs, composition, scan });
-        const warnings = hasDurableCompositionImages
-          ? readiness.warnings
-          : ["Upload or capture a product screenshot so it is saved privately before exporting.", ...readiness.warnings];
-        return { ...readiness, ready: readiness.ready && hasDurableCompositionImages, warnings: [...new Set(warnings)] };
+        const readiness = getLaunchKitReadiness({ brand, draft, outputs, scan });
+        const warnings = design ? readiness.warnings : ["Your visual is still being prepared.", ...readiness.warnings];
+        return { ...readiness, ready: readiness.ready && Boolean(design), warnings: [...new Set(warnings)] };
       })()
     : {
         ready: false,
@@ -1759,59 +1413,49 @@ export function StudioShell({
             onGenerate={runGeneration}
           />
         )}
-        {step === "creative" && generation && brand && (
-          <CreativeWorkspace
-            composition={composition}
+        {step === "creative" && generation && brand && (editingVisual && design && campaignId ? (
+          <DesignStudio
+            key={design.id}
+            storageKey={`${storageScope}:design:${campaignId}`}
+            campaign={{
+              designId: design.id,
+              projectName: brand.projectName,
+              briefPrompt: campaignDesignBrief({ brand, goal: draft.goal, updateDetails: draft.updateDetails, audience: draft.audience, cta: draft.cta }),
+              onSaved: setDesign,
+              onBack: () => setEditingVisual(false),
+            }}
+          />
+        ) : (
+          <CampaignResults
             outputs={outputs}
+            claims={brand.claims.filter((claim) => claim.approvalState !== "rejected")}
+            onOutputsChange={setOutputs}
             onRegenerateChannel={regenerateChannel}
             regenerationRemaining={regenerationRemaining}
             regenerationBusyChannel={regenerationBusyChannel}
-            generationProvider={generation.provider}
-            autoDesignStatus={autoDesignStatus}
-            autoDesignWarning={autoDesignWarning}
-            captureRef={captureRef}
-            uploadStatus={uploadStatus}
-            uploadError={uploadError}
-            exportStatus={jobType === "export" && jobId && !exportDownloadUrl && !exportError ? "loading" : exportStatus}
-            exportError={exportError}
-            exportDownloadUrl={exportDownloadUrl}
             plan={plan}
             canExportLaunchKit={canExportLaunchKit}
-            campaignsRemaining={campaignsRemaining}
-            usagePeriodEndsAt={usagePeriodEndsAt}
-            launchKitReadiness={launchKitReadiness}
-            creativeDirections={generation.creativeDirections}
-            selectedCreativeId={selectedCreativeId}
-            onCompositionChange={handleCompositionChange}
-            onOutputsChange={setOutputs}
-            onSelectCreativeDirection={selectCreativeDirection}
-            onUpload={uploadScreenshot}
-            onAiRewrite={rewriteCreativeText}
-            onAiDesign={designCreativeComposition}
             saveStatus={saveStatus}
             saveError={saveError}
             onSave={async () => { await persistStudioState({ manual: true }); }}
-            aiContext={{
-              projectName: brand.projectName,
-              context: [
-                brand.tagline,
-                `Audience: ${draft.audience}`,
-                `Campaign goal: ${draft.goal}`,
-                `Update: ${draft.updateDetails}`,
-              ]
-                .filter(Boolean)
-                .join("\n"),
-              approvedFacts: brand.claims
-                .filter((claim) => claim.approvalState !== "rejected")
-                .map((claim) => claim.text),
-              approvedClaims: brand.claims.filter(
-                (claim) => claim.approvalState !== "rejected",
-              ),
-            }}
+            visualReady={launchKitReadiness.ready}
+            visual={
+              <CampaignVisual
+                design={design}
+                status={designStatus}
+                error={designError}
+                watermarked={plan !== "pro"}
+                onEdit={() => setEditingVisual(true)}
+                onRetry={() => { if (campaignId) { designSeeding.current = campaignId; void createCampaignDesign(campaignId); } }}
+              />
+            }
+            exportStatus={jobType === "export" && jobId && !exportDownloadUrl && !exportError ? "loading" : exportStatus}
+            exportError={exportError}
+            exportDownloadUrl={exportDownloadUrl}
             onExportPng={exportPng}
             onExportZip={exportZip}
           />
-        )}
+        ))}
       </main>
     </div>
   );

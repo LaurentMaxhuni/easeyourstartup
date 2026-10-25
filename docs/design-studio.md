@@ -1,6 +1,6 @@
 # AI Design Studio
 
-Open `/studio/design` after signing in and completing onboarding. The launch studio header links to it. The existing campaign studio and its generation/export routes keep their current behavior.
+The design studio is the launch studio's visual editor. After a campaign is generated, "Your posts" shows its visual, seeded from a hand-designed template with the campaign's copy, brand and website screenshot; "Edit visual" opens this editor on that design. Changes autosave, and launch-kit exports render the campaign's saved revision. AI directions and refinements need the model registry below; the seeded visual and manual editing do not.
 
 ## Setup
 

@@ -3,12 +3,12 @@ import type {
   BrandProfile,
   Channel,
   ChannelOutput,
-  CreativeComposition,
   NarrativeAngle,
   ScanResult,
   StudioDraft,
 } from "@/lib/contracts";
 import { CHANNEL_LABELS } from "@/lib/channels";
+import type { DesignDocument } from "@/lib/design-studio/document";
 
 export type LaunchKitFile = {
   path: string;
@@ -27,7 +27,8 @@ export type LaunchKitInput = {
   brand: BrandProfile;
   draft: LaunchKitDraft;
   outputs: ChannelOutput[];
-  composition: CreativeComposition;
+  // The saved visual; exports add one rendered PNG per slide under visual/.
+  design?: DesignDocument | null;
   scan?: ScanResult | null;
 };
 
@@ -130,12 +131,12 @@ function readmeFile(input: LaunchKitInput, files: LaunchKitFile[]) {
     "1. Read `brief.md` to confirm the audience, update, angle, and CTA.",
     "2. Review every file in `copy/` and resolve any `Review before publishing` notes.",
     "3. Use `sources/source-facts.md` when you need to verify a factual statement.",
-    "4. Use `creative-preview.png` as the accompanying visual.",
+    "4. Use the PNG files in `visual/` as the accompanying images, in slide order.",
     "",
     "## Contents",
     "",
     ...files.map((file) => `- \`${file.path}\``),
-    "- `creative-preview.png` (included during export)",
+    "- `visual/*.png` (rendered slides, included during export)",
     "",
   ].join("\n");
 }
@@ -187,7 +188,7 @@ export function buildLaunchKitFiles(input: LaunchKitInput): LaunchKitFile[] {
           brand: { ...input.brand, claims },
           draft: input.draft,
           outputs: input.outputs,
-          composition: input.composition,
+          visual: input.design ? { title: input.design.title, slides: input.design.pages.map((page) => ({ name: page.name, width: page.width, height: page.height })) } : null,
           sourcePages: input.scan?.pages ?? [],
           readiness: getLaunchKitReadiness(input),
         },
@@ -195,6 +196,7 @@ export function buildLaunchKitFiles(input: LaunchKitInput): LaunchKitFile[] {
         2,
       )}\n`,
     },
+    ...(input.design ? [{ path: "visual/design.json", contents: `${JSON.stringify(input.design, null, 2)}\n` }] : []),
   ];
   return [{ path: "README.md", contents: readmeFile(input, files) }, ...files];
 }

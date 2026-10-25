@@ -1,6 +1,6 @@
 import { inngest } from "@/inngest/client";
 import { NonRetriableError } from "inngest";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import { z } from "zod";
 import { channelSchema, generateCampaignSchema, studioStateSchema, type ScanResult } from "@/lib/contracts";
@@ -13,14 +13,12 @@ import { createDatabase, requireDatabase } from "@/lib/server/database";
 import { scanWebsite } from "@/lib/server/scanner";
 import { enrichScannedWebsite } from "@/lib/server/brand-intelligence";
 import {
-  createPrivateObjectReadUrl,
   deletePrivateObject,
   putPrivateObject,
 } from "@/lib/server/object-storage";
-import { captureCompositionPng } from "@/lib/server/browserless";
+import { renderDesignPage } from "@/lib/server/design-studio/renderer";
+import { designDocumentSchema } from "@/lib/design-studio/document";
 import { buildLaunchKitFiles } from "@/lib/launch-kit";
-import { compositionImageUrls } from "@/lib/studio-export";
-import { absoluteUrl } from "@/lib/utils";
 import {
   serializeGenerateJobResult,
   serializeScanJobResult,
@@ -189,14 +187,8 @@ export const generateCampaignAssets = inngest.createFunction(
       };
       try {
         return await (campaign.generatorVersion === "v2"
-          ? generateCampaignV2(campaign.brief, {
-              onDesignStart,
-              includeCreativeDesign: true,
-            })
-          : generateCampaign(campaign.brief, {
-              onDesignStart,
-              includeCreativeDesign: true,
-            }));
+          ? generateCampaignV2(campaign.brief, { onDesignStart })
+          : generateCampaign(campaign.brief));
       } catch (error) {
         if (
           error instanceof Error &&
@@ -326,8 +318,8 @@ export const regenerateCampaignChannel = inngest.createFunction(
     const input = { ...campaign.brief, channels: [channel] };
     const generated = await step.run("generate-replacement-channel-copy", () =>
       campaign.generatorVersion === "v2"
-        ? generateCampaignV2(input, { includeCreativeDesign: false })
-        : generateCampaign(input, { includeCreativeDesign: false }),
+        ? generateCampaignV2(input)
+        : generateCampaign(input),
     );
     const replacement = generated.outputs.find((output) => output.channel === channel);
     if (!replacement) throw new Error("The provider returned no replacement for this channel.");
@@ -373,38 +365,6 @@ export const regenerateCampaignChannel = inngest.createFunction(
     return { campaignId, channel };
   },
 );
-
-function storedAssetId(value: string) {
-  try {
-    const path = new URL(value, "https://easeyourstartup.invalid").pathname;
-    const match = path.match(/^\/api\/assets\/([0-9a-f-]{36})$/i);
-    return match?.[1]?.toLowerCase() ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function withStoredAssetUrls(
-  composition: ReturnType<typeof studioStateSchema.parse>["composition"],
-  urls: Map<string, string>,
-) {
-  const replace = (value: string) => {
-    const id = storedAssetId(value);
-    return id ? urls.get(id) ?? value : value;
-  };
-  return {
-    ...composition,
-    screenshotUrl: replace(composition.screenshotUrl),
-    mockups: {
-      desktop: replace(composition.mockups.desktop),
-      tablet: replace(composition.mockups.tablet),
-      phone: replace(composition.mockups.phone),
-    },
-    elements: composition.elements?.map((element) =>
-      element.kind === "image" && element.src ? { ...element, src: replace(element.src) } : element,
-    ),
-  };
-}
 
 const exportCampaignAssets = inngest.createFunction(
   {
@@ -471,47 +431,29 @@ const exportCampaignAssets = inngest.createFunction(
         throw new Error("The saved campaign is incomplete.");
       }
 
-      const ids = compositionImageUrls(state.composition).map(storedAssetId);
-      if (ids.some((id) => id === null)) {
-        throw new Error("Replace embedded or external screenshots with a saved project image before exporting.");
-      }
-      const distinctIds = Array.from(new Set(ids as string[]));
-      const assets = await database()`
-        select id::text as id, object_key
-        from public.stored_assets
-        where id = any(${distinctIds}::uuid[])
+      if (!state.design) throw new NonRetriableError("The saved campaign has no visual yet.");
+      const [savedDesign] = await database()`
+        select document from public.design_versions
+        where design_id = ${state.design.id}::uuid
           and workspace_id = ${workspaceId}::uuid
-          and owner_user_id = ${request.requestedBy}
-          and project_id = ${request.projectId}::uuid
-          and (campaign_id is null or campaign_id = ${request.campaignId}::uuid)
+          and revision = ${state.design.revision}
+        limit 1
       `;
-      if (assets.length !== distinctIds.length) throw new Error("One or more saved campaign images are unavailable.");
-
-      const privateUrls = new Map<string, string>();
-      for (const asset of assets) {
-        if (typeof asset.id === "string" && typeof asset.object_key === "string") {
-          privateUrls.set(asset.id.toLowerCase(), createPrivateObjectReadUrl(asset.object_key, 900));
-        }
-      }
-      if (privateUrls.size !== distinctIds.length) throw new Error("One or more saved campaign images are unavailable.");
-      const composition = withStoredAssetUrls(state.composition, privateUrls);
-      const renderToken = randomBytes(32).toString("base64url");
-      const renderTokenHash = createHash("sha256").update(renderToken).digest("hex");
-      await database()`
-        insert into public.render_requests (
-          token_hash, workspace_id, user_id, project_id, campaign_id,
-          revision, composition, expires_at
-        ) values (
-          ${renderTokenHash}, ${workspaceId}::uuid, ${request.requestedBy},
-          ${request.projectId}::uuid, ${request.campaignId}::uuid, ${request.revision},
-          ${JSON.stringify({ ...composition, watermarked: request.watermarked })}::jsonb, pg_catalog.now() + interval '20 minutes'
-        )
-      `;
-
-      const png = await captureCompositionPng(
-        absoluteUrl(`/render/${renderToken}`),
-        state.composition.output,
+      if (!savedDesign) throw new NonRetriableError("The saved visual revision is no longer available.");
+      const design = designDocumentSchema.parse(
+        typeof savedDesign.document === "string" ? JSON.parse(savedDesign.document) : savedDesign.document,
       );
+      // PNG downloads carry the first slide; the launch kit carries every slide.
+      const slides: { name: string; png: Uint8Array }[] = [];
+      for (const [index, page] of (request.format === "png" ? design.pages.slice(0, 1) : design.pages).entries()) {
+        const rendered = await renderDesignPage(design, page.id, { watermark: request.watermarked });
+        const errors = rendered.issues.filter((issue) => issue.severity === "error");
+        if (errors.length) {
+          throw new NonRetriableError(`Fix the visual before exporting: ${errors.slice(0, 3).map((issue) => issue.message).join(" ")}`);
+        }
+        slides.push({ name: `${String(index + 1).padStart(2, "0")}-${page.id}.png`, png: rendered.png });
+      }
+      const png = slides[0].png;
       let output: Uint8Array = png;
       const mimeType = request.format === "png" ? "image/png" : "application/zip";
       if (request.format === "zip") {
@@ -520,12 +462,12 @@ const exportCampaignAssets = inngest.createFunction(
           brand: state.brand,
           draft: state.draft,
           outputs: state.outputs,
-          composition: state.composition,
+          design,
           scan: state.scan,
         })) {
           zip.file(file.path, file.contents);
         }
-        zip.file("creative-preview.png", png);
+        for (const slide of slides) zip.file(`visual/${slide.name}`, slide.png);
         output = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
       }
       if (output.byteLength > 50_000_000) throw new Error("The export is too large to store.");

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   generateCampaignV2: vi.fn(),
   analyzeBrandIntelligence: vi.fn(),
   inngestSend: vi.fn(),
-  captureCompositionPng: vi.fn(),
+  renderDesignPage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -39,7 +39,7 @@ vi.mock("@/lib/server/object-storage", () => ({
   putPrivateObject: vi.fn(),
 }));
 
-vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: mocks.captureCompositionPng }));
+vi.mock("@/lib/server/design-studio/renderer", () => ({ renderDesignPage: mocks.renderDesignPage }));
 
 vi.mock("@/lib/server/campaign-generator", () => ({
   generateCampaign: mocks.generateCampaign,
@@ -63,6 +63,7 @@ import {
   scanProject,
 } from "@/inngest/functions";
 import { DEMO_ANGLES, DEMO_BRAND, DEMO_COMPOSITION } from "@/lib/demo-data";
+import { emptyDesignDocument } from "@/lib/design-studio/document";
 
 type RegisteredFunction = {
   config: {
@@ -112,7 +113,7 @@ describe("stored campaign generator version", () => {
     ).toEqual({ generatorVersion: "v2", brief });
   });
 
-  it.each(["v1", "v2"])("requests a provider canvas before completing a durable %s campaign", async (version) => {
+  it.each(["v1", "v2"])("runs the stored %s generator for a durable campaign", async (version) => {
     vi.clearAllMocks();
     const { database } = recordingDatabase([
       [{ generation_input: version === "v2" ? { generatorVersion: "v2", brief } : brief }],
@@ -131,7 +132,7 @@ describe("stored campaign generator version", () => {
         return callback();
       } },
     })).rejects.toThrow("persistence reached");
-    expect(generate).toHaveBeenCalledWith(brief, expect.objectContaining({ includeCreativeDesign: true }));
+    expect(generate).toHaveBeenCalledWith(brief, ...(version === "v2" ? [expect.objectContaining({ onDesignStart: expect.any(Function) })] : []));
   });
 });
 
@@ -139,36 +140,47 @@ type DispatchFunction = {
   handler: (input: { step: { run: (name: string, callback: () => Promise<unknown>) => Promise<unknown> } }) => Promise<unknown>;
 };
 
-describe("queued export image validation", () => {
-  it.each([false, true])("validates only rendered images (active external image: %s)", async (activeImage) => {
-    const { database } = recordingDatabase();
+describe("queued export visual rendering", () => {
+  const request = {
+    format: "png", projectId: "project", campaignId: "campaign", revision: 1,
+    requestedBy: "user", watermarked: true,
+    state: {
+      projectId: "project", campaignId: "campaign", brand: DEMO_BRAND,
+      scan: {}, generation: {}, outputs: [{}],
+      composition: DEMO_COMPOSITION,
+      design: { id: "11111111-1111-4111-8111-111111111111", revision: 3 },
+    },
+  };
+  beforeEach(() => mocks.renderDesignPage.mockReset());
+
+  function runExport(database: unknown) {
     mocks.requireDatabase.mockReturnValue(database);
-    mocks.captureCompositionPng.mockRejectedValueOnce(new Error("render reached"));
-    const request = {
-      format: "png", projectId: "project", campaignId: "campaign", revision: 1,
-      requestedBy: "user", watermarked: false,
-      state: {
-        projectId: "project", campaignId: "campaign", brand: DEMO_BRAND,
-        scan: {}, generation: {}, outputs: [{}],
-        composition: {
-          ...DEMO_COMPOSITION, designSource: "ai",
-          screenshotUrl: "https://example.com/unused.png",
-          elements: activeImage ? [{ kind: "image", src: "https://example.com/active.png" }] : [],
-        },
-      },
-    };
     const worker = inngestFunctions.find((entry) =>
       (entry as unknown as { config: { id: string } }).config.id === "export-campaign-assets",
     ) as unknown as {
       handler: (input: { event: unknown; step: unknown }) => Promise<unknown>;
     };
-    await expect(worker.handler({
+    return worker.handler({
       event: { data: { jobId: "job", workspaceId: "workspace" } },
       step: { run: (name: string, callback: () => Promise<unknown>) =>
         name === "load-saved-export-revision" ? Promise.resolve(request) : callback() },
-    })).rejects.toThrow(activeImage
-      ? "Replace embedded or external screenshots"
-      : "render reached");
+    });
+  }
+
+  it("renders the exact saved design revision with the plan's watermark", async () => {
+    const document = emptyDesignDocument();
+    const { database, queries } = recordingDatabase([[], [{ document }]]);
+    mocks.renderDesignPage.mockRejectedValueOnce(new Error("render reached"));
+    await expect(runExport(database)).rejects.toThrow("render reached");
+    const lookup = queries.find((query) => query.sql.includes("design_versions"));
+    expect(lookup?.values).toEqual([request.state.design.id, "workspace", 3]);
+    expect(mocks.renderDesignPage).toHaveBeenCalledWith(document, document.pages[0].id, { watermark: true });
+  });
+
+  it("stops without retrying when the saved revision no longer exists", async () => {
+    const { database } = recordingDatabase([[], []]);
+    await expect(runExport(database)).rejects.toThrow("The saved visual revision is no longer available.");
+    expect(mocks.renderDesignPage).not.toHaveBeenCalled();
   });
 });
 

@@ -9,7 +9,7 @@ vi.mock("@/inngest/client", () => ({ inngest: { createFunction: (config: unknown
 vi.mock("@/lib/server/database", () => ({ createDatabase: () => mocks.database, requireDatabase: () => mocks.database }));
 vi.mock("@/lib/server/scanner", () => ({ scanWebsite: vi.fn() }));
 vi.mock("@/lib/server/object-storage", () => ({ createPrivateObjectReadUrl: vi.fn(), deletePrivateObject: vi.fn(), putPrivateObject: vi.fn() }));
-vi.mock("@/lib/server/browserless", () => ({ captureCompositionPng: vi.fn() }));
+vi.mock("@/lib/server/design-studio/renderer", () => ({ renderDesignPage: vi.fn() }));
 vi.mock("@/lib/server/campaign-generator", () => ({ generateCampaign: vi.fn(), publicProviderError: vi.fn() }));
 vi.mock("@/lib/server/generation-v2", () => ({ generateCampaignV2: vi.fn() }));
 vi.mock("@/lib/server/brand-intelligence", () => ({ enrichScannedWebsite: vi.fn() }));

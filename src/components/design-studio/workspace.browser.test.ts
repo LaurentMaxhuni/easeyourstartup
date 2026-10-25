@@ -8,12 +8,16 @@ import { emptyDesignDocument, type DesignDocument } from "@/lib/design-studio/do
 
 // Real browser and real React editor; HTTP is the external persistence/AI boundary.
 // Auth and workspace scoping are exercised separately by the API tests.
+const DESIGN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
 describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("design workspace in Chromium", () => {
   let server: Server;
   let browser: Browser;
   let page: Page;
   let origin: string;
   let saved: DesignDocument | null = null;
+  // The campaign's design as the persistence boundary stores it.
+  let stored = { document: emptyDesignDocument(), revision: 1 };
   let generateRequest: Record<string, unknown> = {};
   let jobDocument: DesignDocument;
   let feedback: unknown[] = [];
@@ -27,7 +31,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("design workspa
   beforeAll(async () => {
     await mkdir(directory, { recursive: true });
     const source = path.resolve("src/components/design-studio/design-studio.tsx").replaceAll("\\", "/");
-    await writeFile(path.join(directory, "main.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{DesignStudio}from ${JSON.stringify(source)};createRoot(document.getElementById('root')!).render(<DesignStudio storageKey="design-browser-test"/>);`);
+    await writeFile(path.join(directory, "main.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{DesignStudio}from ${JSON.stringify(source)};createRoot(document.getElementById('root')!).render(<DesignStudio storageKey="design-browser-test" campaign={{designId:${JSON.stringify(DESIGN_ID)},projectName:"Test product",briefPrompt:"",onSaved:()=>{},onBack:()=>{}}}/>);`);
     await writeFile(path.join(directory, "link.tsx"), "import React from 'react';export default function Link(props:React.AnchorHTMLAttributes<HTMLAnchorElement>){return <a {...props}/>}");
     const require = createRequire(import.meta.url);
     const vitestRequire = createRequire(require.resolve("vitest/package.json"));
@@ -41,13 +45,22 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("design workspa
       try {
         const url = new URL(request.url || "/", "http://localhost");
         const json = (value: unknown) => { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(value)); };
+        const record = () => ({ id: DESIGN_ID, revision: stored.revision, title: stored.document.title, document: stored.document, updatedAt: new Date().toISOString() });
+        if (url.pathname === "/api/design-studio" && request.method === "GET" && url.searchParams.get("designId") === DESIGN_ID) {
+          return json({ design: record(), versions: [] });
+        }
         if (url.pathname === "/api/design-studio" && request.method === "GET") {
           return json({ designs: [], brands: [], providers: [{ id: "groq", configured: true, status: "ready", models: [{ id: "test-coding-model", tasks: ["composition"], vision: false, streaming: true, structuredOutput: true }] }], usage: [], providerSettings: { enabled: true } });
         }
         if (url.pathname === "/api/design-studio" && request.method === "POST") {
           let body = ""; for await (const chunk of request) body += chunk;
           const data = JSON.parse(body);
-          if (data.action === "save") { saved = data.document; return json({ design: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revision: 1, title: saved!.title, document: saved, updatedAt: new Date().toISOString() } }); }
+          if (data.action === "save") {
+            if (data.id !== DESIGN_ID || data.revision !== stored.revision) { response.statusCode = 409; return json({ error: "conflict" }); }
+            saved = data.document;
+            stored = { document: data.document, revision: stored.revision + 1 };
+            return json({ design: record() });
+          }
           if (data.action === "generate" || data.action === "edit") {
             activeJobId = `bbbbbbbb-bbbb-4bbb-8bbb-${String(++jobSequence).padStart(12, "0")}`;
             generateRequest = data;
@@ -84,7 +97,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("design workspa
     await page.locator('[data-node-id="headline"]').click();
     await page.getByLabel("Text", { exact: true }).fill("A launch worth sharing.");
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.waitForFunction(() => document.body.textContent?.includes("Saved revision 1."));
+    await page.waitForFunction(() => document.body.textContent?.includes("Saved revision 2."));
     expect(saved!.pages[0].nodes[0].text).toBe("A launch worth sharing.");
     await page.getByRole("button", { name: "Undo (Ctrl Z)", exact: true }).click();
     expect(await page.locator('[data-node-id="headline"]').innerText()).toBe("Your next\nbig idea.");

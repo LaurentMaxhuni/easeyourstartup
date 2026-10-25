@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, ArrowCounterClockwise, ArrowClockwise, ArrowUp, ArrowsOut, Copy, DownloadSimple, Eye, EyeSlash, FloppyDisk, Hand, ClockCounterClockwise, LockKey, LockKeyOpen, Minus, MouseSimple, Plus, Sparkle, Square, Stack, TextT, Trash, UploadSimple, X, Gear, WarningCircle } from "@phosphor-icons/react";
-import { cloneElement, isValidElement, useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useEffectEvent, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { BLEND_MODES, CANVAS_PRESETS, DESIGN_FONTS, PATTERN_KINDS, designDocumentSchema, designNodeSchema, emptyDesignDocument, type BrandKit, type DesignAsset, type DesignDocument, type DesignNode } from "@/lib/design-studio/document";
 import { DESIGN_FONT_PAIRINGS } from "@/lib/design-studio/fonts";
 import { DesignCanvas } from "./design-canvas";
@@ -47,7 +47,20 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className={styles.field}><span>{label}</span>{isValidElement(children) ? cloneElement(children as ReactElement<{ "aria-label"?: string }>, { "aria-label": label }) : children}</label>;
 }
 
-export function DesignStudio({ storageKey }: { storageKey: string }) {
+// Saved designs autosave after a pause in editing; the save route allows 120 an hour.
+const AUTOSAVE_DELAY_MS = 5_000;
+
+export type CampaignDesignLink = {
+  designId: string;
+  projectName: string;
+  briefPrompt: string;
+  onSaved: (design: { id: string; revision: number }) => void;
+  onBack: () => void;
+};
+
+// The campaign's visual editor. Each campaign owns one saved design document;
+// every saved revision is reported back so exports use exactly what was saved.
+export function DesignStudio({ storageKey, campaign }: { storageKey: string; campaign: CampaignDesignLink }) {
   const [history, setHistory] = useState(() => createHistory(emptyDesignDocument()));
   const doc = history.present;
   const current = useRef(doc);
@@ -59,7 +72,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
   const [leftTab, setLeftTab] = useState("brief");
   const [rightTab, setRightTab] = useState("properties");
   const [mobilePanel, setMobilePanel] = useState("canvas");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(campaign.briefPrompt);
   const [editPrompt, setEditPrompt] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [formats, setFormats] = useState("portrait");
@@ -74,7 +87,6 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providerSettings, setProviderSettings] = useState<{ enabled?: boolean; configurationError?: boolean; telemetryScope?: string }>({});
   const [usage, setUsage] = useState<unknown[]>([]);
-  const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
   const [brands, setBrands] = useState<SavedBrand[]>([]);
   const [brandId, setBrandId] = useState<string>();
   const [savedId, setSavedId] = useState<string>();
@@ -106,7 +118,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
   const generationSnapshot = useRef("");
   const autoAppliedJob = useRef("");
   const autoAppliedDocument = useRef("");
-  const loadSequence = useRef(0);
+  const [savedJson, setSavedJson] = useState("");
   const busyJob = !!job && ["queued", "running"].includes(job.status);
   const reviewVariant = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
   const latestReview = reviewVariant?.feedback.at(-1);
@@ -149,24 +161,35 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
     const controller = new AbortController();
     async function initialize() {
       try {
-        const local = localStorage.getItem(storageKey);
-        if (local) {
-          const draft = JSON.parse(local);
-          const parsed = designDocumentSchema.safeParse(draft.document);
-          if (parsed.success && !cancelled) {
-            setHistory(createHistory(parsed.data)); setPageId(parsed.data.pages[0].id);
-            setSavedId(draft.id); setRevision(draft.revision);
-            savedIdRef.current = draft.id;
+        const data = await readResponse<{ design: SavedDesign; versions: Version[] }>(await fetch(`/api/design-studio?designId=${encodeURIComponent(campaign.designId)}`, { signal: controller.signal }));
+        if (cancelled) return;
+        let document = data.design.document;
+        const loadedJson = JSON.stringify(document);
+        try {
+          const local = localStorage.getItem(storageKey);
+          const draft = local ? JSON.parse(local) : null;
+          const parsed = designDocumentSchema.safeParse(draft?.document);
+          // Only unsaved edits made on top of this exact revision are recovered.
+          if (parsed.success && draft.id === data.design.id && draft.revision === data.design.revision && JSON.stringify(parsed.data) !== loadedJson) {
+            document = parsed.data;
             if (typeof draft.brandId === "string") setBrandId(draft.brandId);
             if (draft.jobId) setJob({ id: draft.jobId, status: "running", stage: "Recovering generation" });
-            setNotice("Recovered your local draft.");
+            setNotice("Recovered unsaved changes from this browser.");
           }
-        }
-      } catch { if (!cancelled) setNotice("Local draft recovery is unavailable in this browser."); }
+        } catch { setNotice("Local draft recovery is unavailable in this browser."); }
+        setSavedJson(loadedJson);
+        // New directions default to the size of the campaign's current visual.
+        const { width: pageWidth, height: pageHeight } = document.pages[0];
+        const preset = Object.entries(CANVAS_PRESETS).find(([, [w, h]]) => w === pageWidth && h === pageHeight)?.[0];
+        setFormats(preset ?? "custom"); setWidth(pageWidth); setHeight(pageHeight);
+        setHistory(createHistory(document)); setPageId(document.pages[0].id);
+        setSavedId(data.design.id); setRevision(data.design.revision); setVersions(data.versions ?? []);
+        savedIdRef.current = data.design.id;
+      } catch (failure) { if (!cancelled) setError(errorText(failure)); return; }
       try {
-        const data = await readResponse<{ designs: SavedDesign[]; brands: SavedBrand[]; providers: Provider[]; providerSettings?: typeof providerSettings; usage?: unknown[]; activeJobs?: Job[]; exportEntitlements?: typeof exportEntitlements }>(await fetch("/api/design-studio", { signal: controller.signal }));
+        const data = await readResponse<{ brands: SavedBrand[]; providers: Provider[]; providerSettings?: typeof providerSettings; usage?: unknown[]; activeJobs?: Job[]; exportEntitlements?: typeof exportEntitlements }>(await fetch("/api/design-studio", { signal: controller.signal }));
         if (!cancelled) {
-          setSavedDesigns(data.designs ?? []); setBrands(data.brands ?? []); setProviders(data.providers ?? []); setProviderSettings(data.providerSettings ?? {}); setUsage(data.usage ?? []);
+          setBrands(data.brands ?? []); setProviders(data.providers ?? []); setProviderSettings(data.providerSettings ?? {}); setUsage(data.usage ?? []);
           if (data.exportEntitlements) setExportEntitlements(data.exportEntitlements);
           if (data.activeJobs?.length) setJob((current) => current ?? data.activeJobs![0]);
         }
@@ -175,7 +198,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
     }
     void initialize();
     return () => { cancelled = true; controller.abort(); };
-  }, [storageKey]);
+  }, [storageKey, campaign.designId]);
   useEffect(() => {
     if (!ready) return;
     const persist = () => {
@@ -195,6 +218,13 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, []);
+  const dirty = JSON.stringify(doc) !== savedJson;
+  const autosave = useEffectEvent(() => { void save(true); });
+  useEffect(() => {
+    if (!ready || saving || !savedId || !dirty) return;
+    const timeout = setTimeout(autosave, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timeout);
+  }, [doc, ready, saving, savedId, dirty]);
   const jobId = job?.id;
   useEffect(() => {
     if (!jobId || !busyJob) return;
@@ -240,39 +270,30 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
     return () => { stopped = true; controller.abort(); clearTimeout(timer); };
   }, [jobId, busyJob, change]);
 
-  async function save(copy = false) {
-    setSaving(true); setError("");
+  async function save(quiet = false) {
+    if (!savedId || revision === undefined) return false;
     const snapshot = doc;
+    const snapshotJson = JSON.stringify(snapshot);
+    if (snapshotJson === savedJson) return true;
+    setSaving(true); if (!quiet) setError("");
     try {
-      const data = await api<{ design: SavedDesign }>({ action: "save", ...(copy ? {} : { id: savedId, revision }), document: copy ? { ...snapshot, title: `${snapshot.title.slice(0, 172)} copy` } : snapshot });
-      setSavedId(data.design.id); setRevision(data.design.revision);
-      savedIdRef.current = data.design.id;
-      setSavedDesigns((items) => [data.design, ...items.filter((item) => item.id !== data.design.id)]);
-      void refreshVersions(data.design.id);
-      if (copy && current.current === snapshot) change(data.design.document);
-      setNotice(`Saved revision ${data.design.revision}.`);
-    } catch (failure) { setError(errorText(failure)); } finally { setSaving(false); }
+      const data = await api<{ design: SavedDesign }>({ action: "save", id: savedId, revision, document: snapshot });
+      setSavedJson(snapshotJson);
+      setRevision(data.design.revision);
+      campaign.onSaved({ id: data.design.id, revision: data.design.revision });
+      if (rightTab === "history") void refreshVersions(data.design.id);
+      if (!quiet) setNotice(`Saved revision ${data.design.revision}.`);
+      return true;
+    } catch (failure) { setError(errorText(failure)); return false; } finally { setSaving(false); }
+  }
+  async function back() {
+    if (await save(true)) campaign.onBack();
   }
   async function refreshVersions(id: string) {
     try {
       const data = await readResponse<{ versions: Version[] }>(await fetch(`/api/design-studio?designId=${encodeURIComponent(id)}`));
       if (savedIdRef.current !== id) return;
       setVersions(data.versions ?? []);
-    } catch (failure) { setError(errorText(failure)); }
-  }
-  async function openDesign(id: string) {
-    if (saving) return;
-    const request = ++loadSequence.current;
-    const snapshot = current.current;
-    setError("");
-    try {
-      const data = await readResponse<{ design: SavedDesign; versions: Version[] }>(await fetch(`/api/design-studio?designId=${encodeURIComponent(id)}`));
-      if (request !== loadSequence.current || current.current !== snapshot) { setNotice("Your design changed while loading. Select the saved design again to open it."); return; }
-      change(data.design.document); setPageId(data.design.document.pages[0].id); setSelectedId(null);
-      setSavedId(data.design.id); setRevision(data.design.revision); setVersions(data.versions ?? []);
-      savedIdRef.current = data.design.id; setBrandId(undefined);
-      setSelectedVariantId(null); setVariants([]);
-      setNotice("Saved design opened. Undo returns to your previous composition.");
     } catch (failure) { setError(errorText(failure)); }
   }
   async function generate(edit = false) {
@@ -363,13 +384,12 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
 
   return <main className={styles.studio}>
     <header className={styles.topbar}>
-      <Link href="/studio" className={styles.back} aria-label="Back to launch studio"><ArrowLeft size={18} /></Link>
-      <div className={styles.wordmark}>ease<span>your</span>startup<span className={styles.brandDot}>.</span></div>
-      <div className={styles.productName}>Design studio <span>AI</span></div>
+      <button type="button" className={styles.backButton} onClick={() => void back()} disabled={saving}><ArrowLeft size={16} />Back to my posts</button>
+      <div className={styles.productName}>{campaign.projectName} <span>Visual</span></div>
       <div className={styles.topSpacer} />
       <Tool label="Undo (Ctrl Z)" onClick={undo} disabled={!history.past.length}><ArrowCounterClockwise size={19} /></Tool>
       <Tool label="Redo (Ctrl Shift Z)" onClick={redo} disabled={!history.future.length}><ArrowClockwise size={19} /></Tool>
-      <button className={styles.secondaryButton} onClick={() => void save()} disabled={saving || !ready}><FloppyDisk size={16} /><span>{saving ? "Saving…" : "Save"}</span></button>
+      <button className={styles.secondaryButton} onClick={() => void save()} disabled={saving || !ready}><FloppyDisk size={16} /><span>{saving ? "Saving…" : !dirty ? "Saved" : "Save"}</span></button>
       <button className={styles.primaryButton} onClick={() => { setRightTab("export"); setMobilePanel("details"); }}><DownloadSimple size={17} /><span>Export</span></button>
     </header>
     <nav className={styles.mobileNav} aria-label="Workspace panels">{["brief", "canvas", "details"].map((panel) => <button key={panel} aria-pressed={mobilePanel === panel} onClick={() => setMobilePanel(panel)}>{panel === "brief" ? "Create & refine" : panel === "details" ? "Layers & properties" : "Canvas"}</button>)}</nav>
@@ -387,9 +407,6 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
             <label className={styles.checkbox}><input type="checkbox" checked={templateDirection} onChange={(event) => { setTemplateDirection(event.target.checked); if (!event.target.checked && variantCount === 0) setVariantCount(1); }} />Add a template direction (hand-designed layout, fastest)</label>
             <button className={`${styles.primaryButton} ${styles.generateButton}`} onClick={() => void generate()} disabled={!prompt.trim() || busyJob || busy || !ready}><Sparkle size={18} weight="fill" />{busy ? "Starting…" : busyJob ? "Creating your design…" : "Create design"}<ArrowUp size={17} /></button>
             <p className={styles.smallNote}>Built from editable typography, shapes, and your assets.</p>
-            <div className={styles.sectionHeader}><span>YOUR DESIGNS</span><button disabled={saving} onClick={() => { change(emptyDesignDocument()); setSavedId(undefined); savedIdRef.current = undefined; setRevision(undefined); setBrandId(undefined); setVersions([]); setSelectedId(null); setSelectedVariantId(null); setVariants([]); setNotice("New canvas opened. Undo returns to your previous work."); }}>New</button></div>
-            {!savedDesigns.length && <p className={styles.emptyNote}>Saved designs will live here.</p>}
-            {savedDesigns.map((design) => <button key={design.id} className={styles.savedDesign} onClick={() => void openDesign(design.id)}><Square size={17} /><span>{design.title}<small>Revision {design.revision}</small></span><ArrowUp size={14} /></button>)}
           </>}
           {leftTab === "brand" && <>
             <Field label="Saved brand"><select value={brandId ?? ""} onChange={(event) => { const brand = brands.find((item) => item.id === event.target.value); setBrandId(brand?.id); if (brand) change({ ...doc, brand: brand.kit, assets: [...doc.assets, ...brand.assets.filter((asset) => !doc.assets.some((item) => item.id === asset.id))].slice(0, 12) }); }}><option value="">New brand profile</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></Field>
@@ -426,7 +443,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
       </aside>
 
       <section className={`${styles.centerPanel} ${mobilePanel === "canvas" ? styles.mobileVisible : ""}`}>
-        <div className={styles.documentBar}><input aria-label="Design title" value={doc.title} maxLength={180} onChange={(event) => { if (event.target.value.trim()) change({ ...doc, title: event.target.value }); }} /><span>{savedId ? `Revision ${revision ?? 1}` : "Unsaved design"}</span><Tool label="Duplicate design and save a copy" disabled={saving || !ready} onClick={() => void save(true)}><Copy size={17} /></Tool></div>
+        <div className={styles.documentBar}><input aria-label="Design title" value={doc.title} maxLength={180} onChange={(event) => { if (event.target.value.trim()) change({ ...doc, title: event.target.value }); }} /><span>{savedId ? `Revision ${revision ?? 1}` : "Opening design…"}</span></div>
         {(error || notice) && <div className={error ? styles.errorBanner : styles.noticeBanner} role={error ? "alert" : "status"}>{error && <WarningCircle size={17} />}<span>{error || notice}</span><button aria-label="Dismiss message" onClick={() => { setError(""); setNotice(""); }}><X size={15} /></button></div>}
         {job && <div className={styles.jobStatus} role="status"><span className={busyJob ? styles.pulse : reviewAttention ? styles.issueDot : styles.statusDot} /><div><strong>{busyJob ? job.stage.replace(/[_-]/g, " ") : job.status === "completed" ? reviewAttention ? "Review issues before export" : "Composition rendered" : job.status === "cancelled" ? "Generation cancelled" : "Generation needs attention"}</strong><span>{busyJob ? "Your canvas stays editable while we work." : job.result?.variants.length ? `${job.result.variants.length} creative direction(s) rendered` : "Your existing design is safe."}</span></div>{busyJob ? <button disabled={busy} onClick={() => void jobAction("cancel")}>Cancel</button> : ["failed", "cancelled"].includes(job.status) ? <button disabled={busy} onClick={() => void jobAction("retry")}>Retry</button> : null}</div>}
         {!busyJob && reviewAttention && <div className={styles.reviewBanner} role="status"><WarningCircle size={17} /><span>Review issues before export. The latest rendered direction needs attention.</span><button onClick={() => { setRightTab("review"); setMobilePanel("details"); }}>View review</button></div>}
@@ -530,7 +547,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
             {job?.result?.usage && <details className={styles.usage}><summary>Latest generation usage</summary><pre>{JSON.stringify(job.result.usage, null, 2)}</pre></details>}
           </>}
         </div>
-        <div className={styles.inspectorFooter}><span className={styles.statusDot} />{ready ? "Local draft recovery enabled" : "Opening your workspace…"}</div>
+        <div className={styles.inspectorFooter}><span className={styles.statusDot} />{ready ? "Changes save automatically" : "Opening your design…"}</div>
       </aside>
     </div>
   </main>;

@@ -4,7 +4,6 @@ import { z } from "zod";
 vi.mock("server-only", () => ({}));
 
 import {
-  createDeterministicCreativeDesign,
   autoCurateClaims,
   generateDeterministicCampaign,
   getOpenAIProviderConfig,
@@ -13,8 +12,6 @@ import {
   isAiGenerationEnabled,
   parseAiCampaignResult,
   normalizeGenerationPayload,
-  normalizeCreativeDesignPayload,
-  parseProviderCreativeDesign,
   parseStructuredJson,
   publicProviderError,
 } from "@/lib/server/campaign-generator";
@@ -249,184 +246,6 @@ describe("source-backed campaign generation", () => {
     expect(result.creativeDirections[0].body.length).toBeGreaterThan(20);
     expect(result.creativeDirections[0].subheadline.length).toBeGreaterThan(20);
     expect(result.creativeDirections[1].imageMode).toBe("devices");
-  });
-
-  it("maps provider layers to verified assets and keeps the design bounded", () => {
-    const result = normalizeCreativeDesignPayload(
-      validCreativeDesignPlan(),
-      DEMO_COMPOSITION,
-    );
-    const image = result.elements.find((element) => element.kind === "image");
-    const textLayers = result.elements.filter((element) => element.kind === "text");
-
-    expect(result.theme.headingFontFamily).toBe("Outfit");
-    expect(image).toMatchObject({
-      kind: "image",
-      x: 54,
-      y: 12,
-      width: 38,
-      height: 64,
-      src: DEMO_COMPOSITION.screenshotUrl,
-    });
-    expect(image).not.toHaveProperty("asset");
-    expect(textLayers.map((element) => element.textRole)).toEqual([
-      "headline",
-      "cta",
-    ]);
-    expect(textLayers.every((element) => element.fontFamily === "Outfit")).toBe(true);
-    for (const element of result.elements) {
-      expect(element.x + element.width).toBeLessThanOrEqual(100);
-      expect(element.y + element.height).toBeLessThanOrEqual(100);
-    }
-  });
-
-  it("preserves supported rich layers using only supplied brand colors", () => {
-    const plan = validCreativeDesignPlan();
-    const { tokens } = DEMO_COMPOSITION;
-    const result = normalizeCreativeDesignPayload(
-      {
-        ...plan,
-        elements: [
-          ...plan.elements,
-          {
-            id: "background-gradient",
-            kind: "gradient",
-            x: 0,
-            y: 0,
-            width: 100,
-            height: 100,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-            gradientFrom: tokens.background,
-            gradientTo: tokens.foreground,
-          },
-          {
-            id: "accent-shape",
-            kind: "shape",
-            shape: "circle",
-            x: 76,
-            y: 65,
-            width: 15,
-            height: 15,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-            fill: tokens.accent,
-          },
-        ],
-      },
-      DEMO_COMPOSITION,
-    );
-
-    expect(result.elements.map((element) => element.kind)).toContain("gradient");
-    expect(result.elements.map((element) => element.kind)).toContain("shape");
-    expect(() =>
-      parseProviderCreativeDesign(
-        {
-          ...plan,
-          theme: { ...plan.theme, accent: "#000000" },
-        },
-        DEMO_COMPOSITION,
-      ),
-    ).toThrow("AI selected a accent color outside the supplied brand system.");
-  });
-
-  it("rejects text placed outside the canvas safe area", () => {
-    const plan = validCreativeDesignPlan();
-    const headline = plan.elements.find(
-      (element) => element.id === "launch-headline",
-    );
-    if (!headline) throw new Error("The valid design plan needs a headline.");
-    headline.x = 80;
-    headline.width = 20;
-
-    expect(() =>
-      parseProviderCreativeDesign(plan, DEMO_COMPOSITION),
-    ).toThrow("AI design placed readable text outside the canvas safe area.");
-  });
-
-  it("requires the AI to create both the headline and requested CTA", () => {
-    const plan = validCreativeDesignPlan();
-    plan.elements = plan.elements.filter(
-      (element) => element.id !== "launch-cta",
-    );
-
-    expect(() =>
-      normalizeCreativeDesignPayload(plan, DEMO_COMPOSITION),
-    ).toThrow("AI design omitted the requested call to action.");
-    expect(() =>
-      createDeterministicCreativeDesign(DEMO_COMPOSITION),
-    ).toThrow("AI must create the canvas; a template-based design is not available.");
-  });
-});
-
-describe("provider creative design validation", () => {
-  function validPlan() {
-    return validCreativeDesignPlan();
-  }
-
-  it("maps the model's editable layers to verified assets", () => {
-    const parsed = parseProviderCreativeDesign(
-      {
-        ...validPlan(),
-        providerMetadata: "discarded",
-      },
-      DEMO_COMPOSITION,
-    );
-    const headline = parsed.elements.find(
-      (element) => element.kind === "text" && element.textRole === "headline",
-    );
-    const image = parsed.elements.find((element) => element.kind === "image");
-    const icon = parsed.elements.find((element) => element.kind === "icon");
-
-    expect(headline).toMatchObject({
-      kind: "text",
-      text: "A launch visual made for your next big release",
-      fontFamily: "Outfit",
-    });
-    expect(image).toMatchObject({
-      kind: "image",
-      x: 54,
-      y: 12,
-      width: 38,
-      height: 64,
-      src: DEMO_COMPOSITION.screenshotUrl,
-    });
-    expect(icon).toMatchObject({ kind: "icon", icon: "rocket-launch" });
-    expect(image).not.toHaveProperty("asset");
-    expect(parsed.elements).toHaveLength(4);
-    expect(parsed).not.toHaveProperty("tokens");
-    expect(parsed).not.toHaveProperty("text");
-    expect(parsed).not.toHaveProperty("providerMetadata");
-  });
-
-  it("rejects an omitted requested CTA", () => {
-    const plan = validPlan();
-    plan.elements = plan.elements.filter((element) => element.id !== "launch-cta");
-    expect(() => parseProviderCreativeDesign(plan, DEMO_COMPOSITION)).toThrow(
-      "AI design omitted the requested call to action.",
-    );
-  });
-
-  it("does not repurpose other approved wording as the reviewed headline", () => {
-    const plan = validPlan();
-    const composition = { ...DEMO_COMPOSITION, text: { ...DEMO_COMPOSITION.text, headline: "Reviewed announcement" } };
-    expect(() => parseProviderCreativeDesign(plan, composition, {
-      copyCandidates: [composition.text.headline, "A launch visual made for your next big release", composition.text.cta],
-    })).toThrow(/reviewed headline/i);
-  });
-
-  it("accepts omitted optional provider styles expressed as null without changing geometry", () => {
-    const plan = validPlan();
-    const value = { ...plan, elements: plan.elements.map((element) => ({ ...element, effectTrigger: null, shadow: null, blur: null })) };
-    const result = parseProviderCreativeDesign(value, DEMO_COMPOSITION);
-    expect(result.elements.map(({ x, y, width, height }) => ({ x, y, width, height })))
-      .toEqual(plan.elements.map(({ x, y, width, height }) => ({ x, y, width, height })));
-    expect(result.elements[0]).not.toHaveProperty("effectTrigger");
-    expect(() => parseProviderCreativeDesign({ ...value, elements: [{ ...value.elements[0], x: null }] }, DEMO_COMPOSITION)).toThrow();
   });
 });
 

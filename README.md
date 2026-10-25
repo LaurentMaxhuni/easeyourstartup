@@ -7,9 +7,9 @@ editable visual templates, and exports a source-backed launch kit.
 
 The working promise is: **Turn every ship into a campaign.**
 
-The authenticated [AI Design Studio](docs/design-studio.md) at `/studio/design`
-adds a separate brief-to-design workflow with editable HTML/CSS/SVG compositions,
-provider routing, real browser review, brand profiles and high-resolution exports.
+Campaign visuals are edited in the [AI Design Studio](docs/design-studio.md), the
+launch studio's visual step: editable HTML/CSS/SVG compositions, provider routing,
+real browser review, brand profiles and high-resolution exports.
 Its database migration, model registry, isolated browser service and Inngest worker
 must be configured as described in the setup guide.
 

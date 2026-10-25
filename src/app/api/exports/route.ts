@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { compositionImageUrls } from "@/lib/studio-export";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
 import { canExportLaunchKit } from "@/lib/entitlements";
@@ -17,16 +16,6 @@ const requestSchema = z.object({
   campaignId: z.uuid(),
   expectedRevision: z.number().int().positive(),
 }).strict();
-
-function storedAssetId(value: string) {
-  try {
-    const path = new URL(value, "https://easeyourstartup.invalid").pathname;
-    const match = path.match(/^\/api\/assets\/([0-9a-f-]{36})$/i);
-    return match?.[1]?.toLowerCase() ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function safeFilename(name: string, extension: "png" | "zip") {
   const slug = name
@@ -143,22 +132,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The saved campaign is incomplete. Reopen it, save, and retry." }, { status: 409 });
     }
 
-    const assetIds = compositionImageUrls(parsed.data.composition).map(storedAssetId);
-    if (assetIds.some((id) => id === null)) {
-      return NextResponse.json({ error: "Replace embedded or external screenshots with a saved project image before exporting." }, { status: 409 });
+    const design = parsed.data.design;
+    if (!design) {
+      return NextResponse.json({ error: "Your visual is still being prepared. Open the posts step, then retry." }, { status: 409 });
     }
-    const distinctIds = Array.from(new Set(assetIds as string[]));
-    const assets = await context.database`
-      select id::text as id
-      from public.stored_assets
-      where id = any(${distinctIds}::uuid[])
+    const [savedDesign] = await context.database`
+      select 1 from public.design_versions
+      where design_id = ${design.id}::uuid
         and workspace_id = ${context.workspaceId}::uuid
-        and owner_user_id = ${context.user.id}
-        and project_id = ${input.projectId}::uuid
-        and (campaign_id is null or campaign_id = ${input.campaignId}::uuid)
+        and revision = ${design.revision}
+      limit 1
     `;
-    if (assets.length !== distinctIds.length) {
-      return NextResponse.json({ error: "One or more campaign images are no longer available. Upload them again and retry." }, { status: 409 });
+    if (!savedDesign) {
+      return NextResponse.json({ error: "This visual revision is no longer available. Reopen Edit visual, save, and retry." }, { status: 409 });
     }
 
     const projectName = parsed.data.brand.projectName;
