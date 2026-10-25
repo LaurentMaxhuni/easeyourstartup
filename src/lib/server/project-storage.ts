@@ -22,11 +22,56 @@ export type ProjectSummary = {
   lastScannedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  brand?: ProjectBrandSummary | null;
+};
+
+// The scanned look of a project, for recognisable dashboard cards.
+export type ProjectBrandSummary = {
+  tagline: string;
+  faviconUrl: string | null;
+  coverImageUrl: string | null;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  accentColor: string | null;
 };
 
 function asTimestamp(value: unknown) {
   if (value instanceof Date) return value.toISOString();
   return typeof value === "string" ? value : null;
+}
+
+function asHttpsUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    return new URL(value).protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function asHexColor(value: unknown) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : null;
+}
+
+// logoUrl is left out on purpose: scans sometimes pick a customer logo from
+// the page, while the favicon is always the site's own mark.
+export function projectBrandSummary(profile: unknown): ProjectBrandSummary | null {
+  const parsed = typeof profile === "string" ? JSON.parse(profile) as unknown : profile;
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const visual = record.visualSystem && typeof record.visualSystem === "object"
+    ? record.visualSystem as Record<string, unknown>
+    : {};
+  const colors = Array.isArray(record.colors) ? record.colors : [];
+  const brand = {
+    tagline: typeof record.tagline === "string" ? record.tagline.replace(/\s+/g, " ").trim().slice(0, 160) : "",
+    faviconUrl: asHttpsUrl(record.faviconUrl),
+    coverImageUrl: asHttpsUrl(record.imageUrl),
+    backgroundColor: asHexColor(visual.backgroundColor) ?? asHexColor(colors[0]),
+    foregroundColor: asHexColor(visual.foregroundColor),
+    accentColor: asHexColor(visual.accentColor) ?? asHexColor(colors[1]),
+  };
+  return Object.entries(brand).some(([, value]) => value) ? brand : null;
 }
 
 function asCount(value: unknown) {
@@ -54,6 +99,7 @@ export function groupProjectsByUrl(projects: ProjectSummary[]): ProjectSummary[]
     groups.set(key, {
       ...primary,
       projectIds: [...previous.projectIds!, project.id],
+      brand: primary.brand ?? (primary === project ? previous.brand : project.brand) ?? null,
       sourcePageCount: Math.max(previous.sourcePageCount, project.sourcePageCount),
       campaignCount: previous.campaignCount + project.campaignCount,
       campaigns: [...previous.campaigns, ...campaigns]
@@ -78,6 +124,7 @@ export async function listProjectsForUser(
       p.last_scanned_at,
       p.created_at,
       p.updated_at,
+      bp.profile as brand_profile,
       count(distinct sp.id)::int as source_page_count,
       count(distinct c.id) filter (where c.status <> 'archived')::int as campaign_count,
       coalesce((
@@ -97,6 +144,9 @@ export async function listProjectsForUser(
         ) recent
       ), '[]'::json) as campaigns
     from public.projects as p
+    left join public.brand_profiles as bp
+      on bp.project_id = p.id
+      and bp.workspace_id = p.workspace_id
     left join public.source_pages as sp
       on sp.project_id = p.id
       and sp.workspace_id = p.workspace_id
@@ -104,7 +154,7 @@ export async function listProjectsForUser(
       on c.project_id = p.id
       and c.workspace_id = p.workspace_id
     where p.workspace_id = ${workspaceId}
-    group by p.id
+    group by p.id, bp.id
     order by coalesce(p.last_scanned_at, p.updated_at, p.created_at) desc
     limit 50
   `;
@@ -120,6 +170,7 @@ export async function listProjectsForUser(
     lastScannedAt: asTimestamp(row.last_scanned_at),
     createdAt: asTimestamp(row.created_at),
     updatedAt: asTimestamp(row.updated_at),
+    brand: projectBrandSummary(row.brand_profile),
   })) as ProjectSummary[]);
 }
 

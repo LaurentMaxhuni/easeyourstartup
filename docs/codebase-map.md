@@ -62,6 +62,12 @@ asset project with its own instructions, not the SaaS runtime.
   to end every job. After 2 minutes it slows to one check per 15s, because each
   check also verifies the session with hosted auth, which rate-limits. Pass an
   `AbortSignal` to stop it early.
+- The dashboard shows projects as a gallery: `listProjectsForUser` joins
+  `brand_profiles` and returns `projectBrandSummary` (favicon, Open Graph cover,
+  brand colors, tagline). Scanned `logoUrl` is deliberately unused because scans
+  can pick up customer logos. Campaign titles come from `campaign-title.ts`: a
+  short first sentence at creation, replaced by the generated headline when the
+  job completes unless the person renamed it.
 - `CampaignBuilder` calls `/api/studio/suggest` (`announcement-suggestions.ts`):
   it auto-drafts an empty "What should people know?" from the scanned brand
   facts and re-suggests platforms as the announcement changes, until the person

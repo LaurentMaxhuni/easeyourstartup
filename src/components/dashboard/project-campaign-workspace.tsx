@@ -40,6 +40,16 @@ export type DashboardProject = {
   lastScannedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  brand?: ProjectBrand | null;
+};
+
+type ProjectBrand = {
+  tagline: string;
+  faviconUrl: string | null;
+  coverImageUrl: string | null;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  accentColor: string | null;
 };
 
 type Campaign = {
@@ -250,7 +260,7 @@ function ProjectsList({
       </p>
 
       {visibleProjects.length > 0 ? (
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           <AnimatePresence initial={false}>
             {visibleProjects.map((project) => (
               <ProjectCard
@@ -305,8 +315,7 @@ function ProjectCard({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
   const sourceHost = hostFromUrl(project.publicUrl);
-  const recentCampaigns = project.campaigns.filter((campaign) => campaign.status !== "archived").slice(0, 3);
-  const hasArchivedCampaigns = project.campaigns.some((campaign) => campaign.status === "archived");
+  const latestCampaign = project.campaigns.find((campaign) => campaign.status !== "archived");
 
   async function updateProject(input: { name?: string; status?: "active" | "archived" }) {
     setBusy(true);
@@ -360,39 +369,59 @@ function ProjectCard({
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      whileHover={reduceMotion ? undefined : { y: -2 }}
       transition={{ duration: reduceMotion ? 0 : 0.18 }}
       aria-label={name}
       aria-busy={busy}
-      className="group flex h-full min-w-0 flex-col overflow-hidden rounded-container border border-line bg-surface-raised transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_8px_30px_-16px_var(--accent-halo)] motion-reduce:transition-none"
+      className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-container border border-line bg-surface-raised transition-[border-color,box-shadow,transform] duration-200 focus-within:border-accent/60 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_10px_30px_-18px_var(--accent-halo)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <div className="p-5">
+      <ProjectCover name={name} brand={project.brand ?? null} archived={status === "archived"} />
+
+      <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-3">
-          <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-control border border-accent/15 bg-accent/10 text-lg font-semibold text-accent">
-            {name.trim().slice(0, 1).toLocaleUpperCase() || <GlobeSimple size={21} />}
-          </span>
+          <ProjectMark name={name} brand={project.brand ?? null} />
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-base font-semibold leading-6" title={name}>{name}</h3>
-            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted" title={project.publicUrl ?? undefined}>
-              <GlobeSimple size={13} className="shrink-0" aria-hidden="true" />
-              <span className="truncate">{sourceHost}</span>
+            <h3 className="truncate text-sm font-semibold leading-5" title={name}>
+              {/* The link covers the whole card; the menu and rename form sit above it. */}
+              <Link
+                href={`/studio?projectId=${encodeURIComponent(project.id)}`}
+                className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+              >
+                {name}
+              </Link>
+            </h3>
+            <p className="truncate text-xs leading-5 text-muted" title={project.brand?.tagline || project.publicUrl || undefined}>
+              {project.brand?.tagline || sourceHost}
             </p>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button ref={settingsTriggerRef} type="button" disabled={busy} aria-label={`Settings for ${name}`} className="-mr-1 -mt-1 flex size-9 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 motion-safe:active:scale-95">
-                <DotsThree size={22} weight="bold" aria-hidden="true" />
+              <button ref={settingsTriggerRef} type="button" disabled={busy} aria-label={`Settings for ${name}`} className="relative z-10 -mr-1.5 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 motion-safe:active:scale-95">
+                <DotsThree size={20} weight="bold" aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {
               if (editingName) { event.preventDefault(); nameInputRef.current?.focus(); }
             }}>
-              <DropdownMenuItem onSelect={() => { setDraftName(name); setEditingName(true); }}>
-                <PencilSimple size={16} aria-hidden="true" /> Rename project
-              </DropdownMenuItem>
+              {status === "active" && (
+                <DropdownMenuItem asChild>
+                  <Link href={`/studio?projectId=${encodeURIComponent(project.id)}&newCampaign=1`}>
+                    <Plus size={16} aria-hidden="true" /> New campaign
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => onViewCampaigns(project.id, "all")}>
                 <ArrowRight size={16} aria-hidden="true" /> View all campaigns
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => { setDraftName(name); setEditingName(true); }}>
+                <PencilSimple size={16} aria-hidden="true" /> Rename project
+              </DropdownMenuItem>
+              {project.publicUrl && (
+                <DropdownMenuItem asChild>
+                  <a href={project.publicUrl} target="_blank" rel="noreferrer">
+                    <GlobeSimple size={16} aria-hidden="true" /> Visit {sourceHost}
+                  </a>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => {
                 if (status === "archived") void updateProject({ status: "active" });
@@ -406,56 +435,22 @@ function ProjectCard({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-          <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", status === "active" ? "text-ink" : "text-muted")}>
-            <span aria-hidden="true" className={cn("size-1.5 rounded-full", status === "active" ? "bg-accent" : "bg-muted")} />
-            {status === "active" ? "Active project" : "Archived project"}
-          </span>
-          <p className="text-[11px] text-muted">Updated {formatDate(project.updatedAt ?? project.lastScannedAt, "Not yet")}</p>
-        </div>
-        <div className="mt-4 grid grid-cols-2 divide-x divide-line rounded-control border border-line bg-canvas/50 py-3">
-          <button type="button" onClick={() => onViewCampaigns(project.id, "active")} className="group/count px-4 text-left transition-colors hover:text-accent">
-            <span className="block text-xl font-semibold tabular-nums leading-7">{project.campaignCount}</span>
-            <span className="mt-0.5 block text-[11px] text-muted group-hover/count:text-ink">Active {project.campaignCount === 1 ? "campaign" : "campaigns"}</span>
-          </button>
-          <div className="px-4">
-            <span className="block text-xl font-semibold tabular-nums leading-7">{project.sourcePageCount}</span>
-            <span className="mt-0.5 block text-[11px] text-muted">Source {project.sourcePageCount === 1 ? "page" : "pages"}</span>
-          </div>
-        </div>
-        <div className="mt-5">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Recent campaigns</p>
-            {(project.campaignCount > 0 || hasArchivedCampaigns) && (
-              <button type="button" onClick={() => onViewCampaigns(project.id, "all")} className="inline-flex min-h-7 items-center gap-1 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
-                View all <ArrowRight size={12} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          {recentCampaigns.length > 0 ? (
-            <ul className="divide-y divide-line/60">
-              {recentCampaigns.map((campaign) => (
-                <li key={campaign.id}>
-                  <Link
-                    href={`/studio?projectId=${encodeURIComponent(campaign.projectId ?? project.id)}&campaignId=${encodeURIComponent(campaign.id)}`}
-                    className="-mx-2 flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-control px-2 py-2 transition-colors hover:bg-surface"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">{campaign.title || "Untitled campaign"}</span>
-                    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-[10px] capitalize", campaign.status === "failed" ? "text-danger" : "text-muted")}>
-                      <span aria-hidden="true" className={cn("size-1 rounded-full", campaign.status === "failed" ? "bg-danger" : campaign.status === "completed" ? "bg-accent" : "bg-muted")} />
-                      {campaign.status}
-                    </span>
-                    <ArrowRight size={13} className="shrink-0 text-muted" aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="flex min-h-11 items-center text-xs leading-5 text-muted">
-              {project.campaignCount > 0 ? "No recent active campaigns" : hasArchivedCampaigns ? "Archived campaigns available in View all." : "Your first campaign starts here."}
+
+        <div className="mt-auto pt-4">
+          {latestCampaign ? (
+            <p className="flex min-w-0 items-center gap-1.5 text-xs text-ink" title={latestCampaign.title || "Untitled campaign"}>
+              <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", campaignDotTone(latestCampaign.status))} />
+              <span className="sr-only">Latest campaign, {latestCampaign.status}:</span>
+              <span className="truncate">{latestCampaign.title || "Untitled campaign"}</span>
             </p>
+          ) : (
+            <p className="text-xs text-muted">{status === "active" ? "No campaigns yet" : "No active campaigns"}</p>
           )}
+          <p className="mt-1 text-[11px] text-muted">
+            {project.campaignCount} {project.campaignCount === 1 ? "campaign" : "campaigns"} · Updated {formatDate(project.updatedAt ?? project.lastScannedAt, "not yet")}
+          </p>
         </div>
+
         <AnimatePresence initial={false}>
           {editingName && (
             <motion.form
@@ -464,7 +459,7 @@ function ProjectCard({
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.16 }}
-              className="overflow-hidden"
+              className="relative z-10 overflow-hidden"
               onSubmit={(event) => { event.preventDefault(); if (draftName.trim()) void updateProject({ name: draftName.trim() }); }}
             >
               <div className="mt-4 border-t border-line pt-4">
@@ -489,23 +484,91 @@ function ProjectCard({
           )}
         </AnimatePresence>
         {busy && !editingName && <LoadingIndicator size="sm" label="Updating project" className="mt-3 text-xs text-muted" />}
-        {message && <p role="alert" className="mt-3 text-xs text-danger">{message}</p>}
-      </div>
-      <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line bg-canvas/30 px-5 py-4">
-        <Button asChild size="sm" className="flex-1">
-          <Link href={`/studio?projectId=${encodeURIComponent(project.id)}`}>
-            Open project <ArrowRight size={15} aria-hidden="true" />
-          </Link>
-        </Button>
-        {status === "active" && (
-          <Button asChild size="sm" variant="secondary" className="flex-1">
-            <Link href={`/studio?projectId=${encodeURIComponent(project.id)}&newCampaign=1`}>
-              <Plus size={15} weight="bold" aria-hidden="true" /> New campaign
-            </Link>
-          </Button>
-        )}
+        {message && <p role="alert" className="relative z-10 mt-3 text-xs text-danger">{message}</p>}
       </div>
     </motion.article>
+  );
+}
+
+function campaignDotTone(status: string) {
+  if (status === "failed") return "bg-danger";
+  if (status === "completed") return "bg-accent";
+  if (status === "generating" || status === "queued") return "bg-amber-500";
+  return "bg-muted";
+}
+
+// Readable text on an arbitrary brand color.
+function inkFor(hex: string) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#0b0b0b" : "#ffffff";
+}
+
+function ProjectCover({ name, brand, archived }: { name: string; brand: ProjectBrand | null; archived: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  // Some sites point their share image at a logo; fit those whole instead of cropping.
+  const [fitWhole, setFitWhole] = useState(false);
+  const background = brand?.backgroundColor ?? null;
+  const accent = brand?.accentColor ?? null;
+  const coverImageUrl = imageFailed ? null : brand?.coverImageUrl ?? null;
+
+  return (
+    <div
+      className={cn("relative aspect-[1.91/1] w-full overflow-hidden border-b border-line bg-surface", archived && "grayscale")}
+      style={(!coverImageUrl || fitWhole) && background ? { backgroundColor: background } : undefined}
+    >
+      {coverImageUrl ? (
+        // Open Graph images are remote and arbitrary in size, so a plain img is used.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={coverImageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+          onLoad={(event) => {
+            const { naturalWidth, naturalHeight } = event.currentTarget;
+            const ratio = naturalHeight > 0 ? naturalWidth / naturalHeight : 0;
+            const logoLike = /logo|\.svg(?:$|\?)/i.test(coverImageUrl);
+            // Photos crop well; wordmarks and off-shape vector art do not.
+            setFitWhole(ratio > 2.4 || (logoLike && Math.abs(ratio - 1.91) > 0.3));
+          }}
+          className={cn(
+            "size-full transition-transform duration-300 group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100",
+            fitWhole ? "object-contain p-8" : "object-cover",
+          )}
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center p-6">
+          {accent && accent !== background && <span aria-hidden="true" className="absolute -bottom-10 -right-10 size-32 rounded-full opacity-80" style={{ backgroundColor: accent }} />}
+          <span
+            className="relative line-clamp-2 text-balance text-center text-lg font-semibold leading-tight"
+            style={background ? { color: brand?.foregroundColor ?? inkFor(background) } : undefined}
+          >
+            {name}
+          </span>
+        </div>
+      )}
+      {archived && (
+        <Badge className="absolute left-3 top-3 border-line bg-surface-raised/90 text-muted backdrop-blur">Archived</Badge>
+      )}
+    </div>
+  );
+}
+
+function ProjectMark({ name, brand }: { name: string; brand: ProjectBrand | null }) {
+  const [iconFailed, setIconFailed] = useState(false);
+  const initial = name.trim().slice(0, 1).toLocaleUpperCase();
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-control border border-line bg-canvas text-sm font-semibold text-accent"
+    >
+      {brand?.faviconUrl && !iconFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brand.faviconUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setIconFailed(true)} className="size-6 object-contain" />
+      ) : initial || <GlobeSimple size={18} />}
+    </span>
   );
 }
 
