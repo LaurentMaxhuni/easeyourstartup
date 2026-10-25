@@ -50,6 +50,7 @@ describe("suggestAnnouncement", () => {
       source: "ai",
     });
     expect(aiMock.mock.calls[0]?.[0].task).toBe("copyModel");
+    expect(aiMock.mock.calls[0]?.[0].maxCompletionTokens).toBe(4_000);
   });
 
   it("ignores any draft text when only platforms were requested", async () => {
@@ -76,5 +77,14 @@ describe("suggestAnnouncement", () => {
     aiMock.mockRejectedValue(new Error("provider down"));
 
     await expect(suggestAnnouncement(input("draft"))).rejects.toThrow("provider down");
+    expect(aiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries once after an intermittent provider failure", async () => {
+    aiMock
+      .mockRejectedValueOnce(new Error("404 No endpoints found"))
+      .mockResolvedValueOnce({ value: { updateDetails: "Shipkit is live today.", channels: ["x"] }, metadata });
+
+    await expect(suggestAnnouncement(input("draft"))).resolves.toMatchObject({ updateDetails: "Shipkit is live today." });
   });
 });

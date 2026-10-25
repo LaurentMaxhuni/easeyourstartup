@@ -49,6 +49,7 @@ export function CampaignBuilder({ draft, brand, angles, status, error, resumePen
   const [draftError, setDraftError] = useState("");
   const [aiWroteDetails, setAiWroteDetails] = useState(false);
   const [suggestedChannels, setSuggestedChannels] = useState<Channel[]>([]);
+  const [suggestingChannels, setSuggestingChannels] = useState(false);
   // A returning announcement keeps the platforms already chosen for it.
   const [channelsChosenByUser, setChannelsChosenByUser] = useState(() => draft.updateDetails.trim().length > 0);
   const lastChannelSuggestionKey = useRef("");
@@ -109,6 +110,7 @@ export function CampaignBuilder({ draft, brand, angles, status, error, resumePen
     if (key === lastChannelSuggestionKey.current) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      setSuggestingChannels(true);
       void requestSuggestion("channels", controller.signal)
         .then((suggestion) => {
           if (!suggestion || controller.signal.aborted) return;
@@ -117,11 +119,15 @@ export function CampaignBuilder({ draft, brand, angles, status, error, resumePen
           setSuggestedChannels(suggestion.channels);
           onChange({ ...latestDraft.current, channels: suggestion.channels });
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          if (!controller.signal.aborted) setSuggestingChannels(false);
+        });
     }, CHANNEL_SUGGESTION_DELAY_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
+      setSuggestingChannels(false);
     };
   }, [canSuggest, channelsChosenByUser, draft.kind, draft.updateDetails, drafting, onChange, requestSuggestion]);
 
@@ -180,7 +186,12 @@ export function CampaignBuilder({ draft, brand, angles, status, error, resumePen
 
         <section aria-labelledby="channels-title">
           <h2 id="channels-title" className="text-sm font-semibold">Where will you share it?</h2>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-xs text-muted" aria-live="polite">
+            {suggestingChannels && (
+              <span className="mr-1 inline-flex items-center gap-1 font-semibold text-accent">
+                <SpinnerGap size={12} className="animate-spin" aria-hidden />Picking platforms for this announcement…
+              </span>
+            )}
             {showingSuggestions
               ? "We picked these for this announcement. Change them anytime. You’ll get a separate post for each."
               : "Choose the places you use. You’ll get a separate post for each."}

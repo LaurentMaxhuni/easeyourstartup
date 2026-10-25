@@ -68,7 +68,7 @@ export async function suggestAnnouncement(
     platforms: CHANNELS.map((channel) => ({ id: channel.id, name: channel.name, style: channel.note })),
   };
   const task = draft
-    ? "Write updateDetails: 2-4 plain sentences in the founder's voice saying what is new, who it helps, and why it matters. If currentAnnouncementText is not empty, keep its facts and meaning and only make it clearer. Otherwise base it on the product facts and the announcement type. Use only facts present in REQUEST_DATA; never invent dates, numbers, prices, customers, or features. No hashtags, emojis, or marketing hype."
+    ? "Write updateDetails: 2-4 plain sentences in the founder's voice saying what is new, who it helps, and why it matters. If currentAnnouncementText is not empty, keep its facts and meaning and only make it clearer. Otherwise base it on the product facts and the announcement type. Use only facts present in REQUEST_DATA; never invent dates, numbers, prices, customers, or features. Do not mention social platforms, where to find the product, or how to get in touch; posts for each platform are written later. No hashtags, emojis, or marketing hype."
     : "Set updateDetails to null.";
   const messages = [
     {
@@ -82,14 +82,18 @@ export async function suggestAnnouncement(
   ];
 
   try {
-    const { value } = await requestStructuredAiJson({
-      task: draft ? "copyModel" : "brandTextModel",
+    // Not brandTextModel: its 8s cap is too short for reasoning models, and the
+    // output budget leaves them room to think before writing the JSON.
+    const request = () => requestStructuredAiJson({
+      task: "copyModel",
       messages,
       schema: modelResultSchema,
       schemaName: "announcement_suggestion",
       promptVersion: PROMPT_VERSION,
-      maxCompletionTokens: draft ? 900 : 300,
+      maxCompletionTokens: 4_000,
     });
+    // Free routers fail intermittently, so one retry saves most requests.
+    const { value } = await request().catch(request);
     const channels = uniqueChannels(value.channels);
     const updateDetails = draft ? value.updateDetails?.replace(/\s+/g, " ").trim() || null : null;
     if (draft && (!updateDetails || updateDetails.length < 8)) {
