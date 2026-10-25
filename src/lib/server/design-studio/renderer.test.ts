@@ -44,6 +44,25 @@ describe("design renderer input boundaries", () => {
 });
 
 describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("real isolated Chromium render", () => {
+  it("checks solid backgrounds, suggests an approved brand color, and accounts for text outlines", async () => {
+    const doc = designDocumentSchema.parse({ version: 1, title: "Contrast", brand: {}, pages: [{
+      id: "page-1", name: "Contrast", width: 640, height: 640, background: "#f5f3ef", nodes: [
+        { id: "low", type: "text", x: 40, y: 40, width: 560, height: 80, text: "Invisible headline", fontSize: 40, fill: "#ffffff" },
+        { id: "panel", type: "rect", x: 0, y: 150, width: 640, height: 120, fill: "#181818" },
+        { id: "reversed", type: "text", x: 40, y: 170, width: 560, height: 80, text: "Reversed headline", fontSize: 40, fill: "#ffffff" },
+        { id: "outlined", type: "text", x: 40, y: 320, width: 560, height: 80, text: "Outlined headline", fontSize: 40, fill: "#ffffff", stroke: "#181818", strokeWidth: 2 },
+      ],
+    }] });
+    const before = structuredClone(doc);
+    const result = await renderDesignPage(doc, "page-1");
+    expect(result.issues.filter((issue) => issue.code === "low_contrast")).toEqual([
+      expect.objectContaining({ nodeId: "low", severity: "error", suggestedFill: "#181818" }),
+    ]);
+    expect(doc).toEqual(before);
+    const repaired = await renderDesignPage(applyDesignPatch(doc, { explanation: "Use approved readable ink", patches: [{ pageId: "page-1", nodeId: "low", changes: { fill: "#181818" } }] }), "page-1");
+    expect(repaired.issues.filter((issue) => issue.code === "low_contrast")).toEqual([]);
+  }, 30000);
+
   it("suggests a measured CTA font size without changing the original document or screenshot", async () => {
     const doc = designDocumentSchema.parse({ version: 1, title: "Measured font fitting", brand: {}, assets: [], pages: [{
       id: "page-1", name: "CTA", width: 640, height: 640, background: "#f5f3ef", nodes: [

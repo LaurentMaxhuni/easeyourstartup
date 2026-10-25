@@ -137,6 +137,59 @@ asset project with its own instructions, not the SaaS runtime.
   Environment file presence does not prove services are working. Never put
   credentials, environment values, or customer data in this map.
 
+## AI Design Studio (2026-10-25)
+
+- `/studio/design` is an authenticated workspace alongside the existing launch
+  studio. Its entry link is in `StudioHeader`; campaign generation stays intact.
+- `src/lib/design-studio/document.ts` is the editable, validated source of truth
+  for brand kits, raster asset references, slides, text/shape/SVG layers and
+  incremental property patches. `renderDesignHtml` emits escaped HTML/CSS/SVG;
+  model-authored scripts, raw markup and external asset URLs are not accepted.
+- `src/lib/server/design-studio/providers.ts` supplies capability-aware adapters
+  for Hetzner, Z.AI, Gemini, Groq, Workers AI, OpenRouter and compatible hosts.
+  Explicit `DESIGN_AI_PROVIDERS_JSON` or per-provider model capability arrays are
+  required. Campaign aliases alone do not configure this registry. Credentials
+  stay server-only; provider cooldowns/rolling request limits are process-local.
+- `pipeline.ts` orchestrates brief, copy, art direction, coordinate planning,
+  composition, actual screenshot review and targeted repairs. Vision critique
+  can be unavailable/failed and never receives a fabricated score. Partial
+  results publish only after successful rendering; successful decisions survive
+  provider failures. Input, token and revision budgets bound work.
+- `renderer.ts` uses Playwright Core with local Chromium or a dedicated CDP /
+  Browserless service. Fresh contexts disable JavaScript, network, service
+  workers and downloads. Trusted measurement code checks actual layout/fonts/
+  asset decoding and unambiguous solid-background text contrast. Generated
+  layouts can apply measured font fits and approved brand colors, then rerender;
+  manual edits preserve unrelated styles. Fonts are embedded and traced into
+  Next.js output. Rotated generated layer bounds are contained within the canvas.
+- Migration `0028_ai_design_studio.sql` adds workspace-scoped documents, immutable
+  versions, brand kits, jobs and AI usage events. Revision-checked saves and their
+  snapshots are atomic. Enqueue/retry functions serialize workspace admission;
+  existing account-deletion guards also cover design work. No direct browser
+  grants are added to these RLS-enabled tables.
+- `/api/design-studio` and its `jobs/[id]`, `assets`, and `export` routes handle
+  workspace ownership, cancellation/retry, sanitized assets and PNG/HTML/JSON/ZIP
+  exports. Revisions return 409 on conflict. Forged assets are decoded/validated
+  before persistence; upload bytes are re-encoded with metadata removed.
+  Rendered/HTML exports reuse existing paid export and watermark entitlements;
+  JSON backups are available to all plans. Deterministic render errors block
+  PNG/ZIP export with 422 until corrected.
+- `jobs.ts` registers Inngest generation and one-minute queued-event recovery.
+  Durable stage replay preserves completed work, attempt guards prevent stale
+  completion writes, and persisted usage bounds automatic retries. Manual
+  retries start a new attempt. Inngest global concurrency is four; per-workspace
+  concurrency defaults to two and is configurable from one to eight.
+- `src/components/design-studio/` provides the real DOM editor, properties,
+  layers, pan/zoom, history, variants, brand kits and conversational refinements.
+  Browser drafts are user-scoped. Background results update an untouched canvas;
+  manual edits and dragging stop automatic replacement.
+- Setup: `docs/design-studio.md`; full provider configuration:
+  `docs/design-studio-providers.md`. Real browser tests opt in with
+  `RUN_DESIGN_BROWSER_TESTS=true`; PostgreSQL WASM storage tests use
+  `RUN_DESIGN_SQL_TESTS=true` and the ignored runtime described in the guide.
+  Five real-provider examples opt in with `RUN_LIVE_AI_TESTS=true`. Screenshots,
+  feedback and resumable test checkpoints go to ignored `output/design-studio/`.
+
 ## Local code index
 
 `graphify-out/graph.json` is an ignored, machine-local navigation index. Query

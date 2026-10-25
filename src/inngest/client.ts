@@ -3,6 +3,9 @@ import { EventSchemas, Inngest } from "inngest";
 export const inngest = new Inngest({
   id: "ease-your-startup",
   schemas: new EventSchemas().fromRecord<{
+    "design-studio/generation.requested": {
+      data: { jobId: string; workspaceId: string; attempt: number };
+    };
     "campaign/scan.requested": {
       data: {
         jobId: string;

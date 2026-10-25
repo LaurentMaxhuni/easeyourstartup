@@ -6,7 +6,7 @@ import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import sharp from "sharp";
 import { designDocumentSchema, renderDesignHtml, type DesignDocument } from "@/lib/design-studio/document";
 
-export type RenderIssue = { pageId: string; nodeId?: string; code: string; severity: "error" | "warning"; message: string; suggestedFontSize?: number };
+export type RenderIssue = { pageId: string; nodeId?: string; code: string; severity: "error" | "warning"; message: string; suggestedFontSize?: number; suggestedFill?: string };
 type RenderOptions = { scale?: 1 | 2; signal?: AbortSignal; watermark?: boolean };
 type RenderResult = { png: Uint8Array; width: number; height: number; issues: RenderIssue[] };
 const MAX_PIXELS = 20_000_000;
@@ -142,7 +142,7 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
     });
     checkCancellation(signal);
     stage = "layout measurement";
-    const measured = await page.evaluate(({ pageId, expectedIds, lockedIds, width, height }) => {
+    const measured = await page.evaluate(({ pageId, expectedIds, lockedIds, brandColors, width, height }) => {
       const issues: RenderIssue[] = [];
       const add = (code: string, message: string, nodeId?: string, severity: "error" | "warning" = "error", suggestedFontSize?: number) => { if (issues.length < 450) issues.push({ pageId, nodeId, code, severity, message, ...(suggestedFontSize === undefined ? {} : { suggestedFontSize }) }); };
       const canvas = document.getElementById("design-canvas");
@@ -157,6 +157,33 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
       const text: Array<{ id: string; boxes: DOMRect[]; bounds: DOMRect }> = [];
       const measure = document.createElement("canvas").getContext("2d");
       const locked = new Set(lockedIds);
+      const rgb = (value: string): number[] | null => {
+        if (/^#[\da-f]{6}$/i.test(value)) return [1, 3, 5].map((offset) => parseInt(value.slice(offset, offset + 2), 16));
+        const match = /^rgba?\(([^)]+)\)$/.exec(value);
+        if (!match) return null;
+        const parts = match[1].split(",").map(Number);
+        return parts.length === 3 || parts[3] === 1 ? parts.slice(0, 3) : null;
+      };
+      const luminance = (color: number[]) => color.map((value) => { const c = value / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+      const contrast = (a: number[], b: number[]) => { const left = luminance(a), right = luminance(b); return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05); };
+      // Infer a background only when every intersecting earlier layer is
+      // unambiguous. Photos, paths, partial coverage and translucent layers
+      // are left to screenshot vision rather than assigned a guessed color.
+      const solidBackground = (element: HTMLElement, bounds: DOMRect) => {
+        let background = rgb(getComputedStyle(canvas).backgroundColor);
+        for (const layer of Array.from(canvas.children) as HTMLElement[]) {
+          if (layer === element) break;
+          const css = getComputedStyle(layer);
+          if (css.display === "none" || Number(css.opacity) === 0) continue;
+          const box = layer.getBoundingClientRect();
+          if (box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) continue;
+          const fill = rgb(css.backgroundColor);
+          const border = parseFloat(css.borderWidth) || 0;
+          if (layer.dataset.nodeType === "rect" && Number(css.opacity) === 1 && fill && css.transform === "matrix(1, 0, 0, 1, 0, 0)" && parseFloat(css.borderRadius) === 0 && box.left + border <= bounds.left && box.top + border <= bounds.top && box.right - border >= bounds.right && box.bottom - border >= bounds.bottom) background = fill;
+          else if (layer.dataset.nodeType !== "rect" || fill || border > 0) background = null;
+        }
+        return background;
+      };
       const measureInk = (element: HTMLElement, range: Range) => {
         const allBoxes = Array.from(range.getClientRects());
         if (measure) measure.font = getComputedStyle(element).font;
@@ -185,6 +212,16 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
         const range = document.createRange();
         range.selectNodeContents(element);
         const { boxes, overflow } = measureInk(element, range);
+        if (boxes.length && Number(style.opacity) === 1) {
+          const background = solidBackground(element, range.getBoundingClientRect());
+          const foreground = rgb(style.color);
+          const outline = rgb(style.webkitTextStrokeColor);
+          const threshold = parseFloat(style.fontSize) >= 24 || (parseFloat(style.fontSize) >= 18.67 && Number(style.fontWeight) >= 700) ? 3 : 4.5;
+          if (background && foreground && contrast(foreground, background) < threshold && !(outline && parseFloat(style.webkitTextStrokeWidth) >= 1.5 && contrast(outline, background) >= threshold)) {
+            const suggestedFill = !locked.has(nodeId) ? brandColors.filter((color) => { const parsed = rgb(color); return parsed && contrast(parsed, background) >= threshold; }).sort((a, b) => contrast(rgb(b)!, background) - contrast(rgb(a)!, background))[0] : undefined;
+            issues.push({ pageId, nodeId, code: "low_contrast", severity: "error", message: "Text has insufficient contrast against its solid background.", ...(suggestedFill ? { suggestedFill } : {}) });
+          }
+        }
         if (overflow) {
           let suggestedFontSize: number | undefined;
           const originalFontSize = parseFloat(style.fontSize);
@@ -233,7 +270,7 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
         if (intersects(text[a].bounds, text[b].bounds) && text[a].boxes.some((left) => text[b].boxes.some((right) => intersects(left, right)))) add("text_overlap", `Text overlaps layer ${text[b].id}. Review the intentionality of this overlap.`, text[a].id, "warning");
       }
       return issues;
-    }, { pageId, expectedIds: designPage.nodes.map((node) => node.id), lockedIds: designPage.nodes.filter((node) => node.locked).map((node) => node.id), width: designPage.width, height: designPage.height });
+    }, { pageId, expectedIds: designPage.nodes.map((node) => node.id), lockedIds: designPage.nodes.filter((node) => node.locked).map((node) => node.id), brandColors: [design.brand.primary, design.brand.secondary, design.brand.background], width: designPage.width, height: designPage.height });
     issues.push(...measured);
     // Chromium's actual glyph fonts catch missing glyphs and silent system
     // substitution; computed font-family alone cannot establish this.

@@ -79,6 +79,7 @@ class ProviderFailure extends Error {
 }
 
 function enabled() { return process.env.AI_GENERATION_ENABLED?.trim().toLowerCase() !== "false"; }
+function preferFree() { return process.env.DESIGN_AI_PREFER_FREE?.trim().toLowerCase() !== "false"; }
 function assertEnabled() {
   if (!enabled()) throw new Error("AI generation is temporarily disabled. Your saved work is preserved.");
 }
@@ -165,7 +166,7 @@ export function getDesignProviderSettings(): DesignProviderSettings {
   const config = registry();
   return {
     enabled: enabled(), configurationError: config.configurationError,
-    preferFree: process.env.DESIGN_AI_PREFER_FREE === "true", telemetryScope: "process",
+    preferFree: preferFree(), telemetryScope: "process",
     providers: config.providers.map((provider) => {
       const current = state(provider);
       const cooldown = current.cooldownUntil > Date.now();
@@ -201,7 +202,7 @@ function candidates(task: DesignTask, prompt: string, options: DesignAiOptions, 
   );
   ranked.sort((a, b) => Number(b.provider.id === options.preferredProvider) - Number(a.provider.id === options.preferredProvider) ||
     (!options.imageDataUrl ? Number(a.model.vision) - Number(b.model.vision) : 0) ||
-    (process.env.DESIGN_AI_PREFER_FREE === "true" ? Number(b.model.freeTier) - Number(a.model.freeTier) : 0));
+    (preferFree() ? Number(b.model.freeTier) - Number(a.model.freeTier) : 0));
   if (!ranked.length) throw new Error(options.imageDataUrl ? "No configured vision-capable design AI model is available." : "No configured design AI model capable of this task is available.");
   return ranked;
 }

@@ -149,7 +149,7 @@ model exists; replacing the ID still requires checking its capabilities and quot
 Routing filters by task, structured-output permission, context capacity, and
 required vision or streaming support. `preferredProvider` ranks that provider's
 compatible models first. For tasks without an image, text-only models rank ahead
-of vision models. `DESIGN_AI_PREFER_FREE=true` explicitly prioritizes models marked
+of vision models. `DESIGN_AI_PREFER_FREE` defaults to true and prioritizes explicitly configured models marked
 `freeTier:true` within those groups; otherwise order is retained. Free quota is
 never inferred. `AI_GENERATION_ENABLED=false` pauses all generation and retries.
 

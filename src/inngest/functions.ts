@@ -26,6 +26,7 @@ import {
   serializeScanJobResult,
 } from "@/lib/job-results";
 import { failStaleGenerationJobs } from "@/lib/server/stale-generation-jobs";
+import { generateStudioDesign, dispatchQueuedStudioDesigns } from "@/lib/server/design-studio/jobs";
 
 function database() {
   return requireDatabase();
@@ -729,6 +730,8 @@ export const dispatchJobOutbox = inngest.createFunction(
 );
 
 export const inngestFunctions = [
+  generateStudioDesign,
+  dispatchQueuedStudioDesigns,
   scanProject,
   generateCampaignAssets,
   regenerateCampaignChannel,

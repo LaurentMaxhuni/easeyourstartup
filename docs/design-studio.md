@@ -1,0 +1,103 @@
+# AI Design Studio
+
+Open `/studio/design` after signing in and completing onboarding. The launch studio header links to it. The existing campaign studio and its generation/export routes keep their current behavior.
+
+## Setup
+
+1. Run `pnpm install` with Node 22 or newer.
+2. Review and apply migration `0028_ai_design_studio.sql` with `pnpm db:migrate` against the intended database. Test migrations on an isolated database first. This feature's migration is not applied automatically by a page request.
+3. Configure the server model registry using [the provider guide](design-studio-providers.md). Each model explicitly declares its tasks, image-input capability, output mode, context/output limits, optional sampling parameters and rate limits. No default model or free quota is assumed. Existing campaign-provider settings remain independent.
+4. Configure an isolated Chromium service using `DESIGN_BROWSER_CDP_URL`, or a local browser executable using `DESIGN_CHROMIUM_EXECUTABLE_PATH`. The renderer can also derive the Browserless CDP endpoint from the existing `BROWSERLESS_API_URL` and `BROWSERLESS_API_KEY`. For local Windows development, a typical executable is `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`.
+5. Configure Inngest and serve `/api/inngest`, including `generate-studio-design` and `dispatch-queued-studio-designs`. Production requires a working Inngest connection and signing configuration. For local work, start the existing application and Inngest dev service. The design API queues durable work; it does not run long model chains in a request handler.
+
+Credentials stay in server environment variables. The Models & generation settings panel shows the configured model capabilities, current process health/usage, and the workspace's persisted usage over the past 30 days. Shared account quotas still need provider-side enforcement; process-local provider cooldowns do not coordinate multiple application replicas.
+
+## Workflow and source of truth
+
+`src/lib/design-studio/document.ts` defines the validated editable document, brand kit, assets, slides and layer property patches. The source of truth is this document, compiled to actual HTML/CSS/SVG for browser capture. Text remains text; shapes and SVG paths remain individual layers. The system does not invoke image-generation models, execute model-generated scripts, or flatten a design into an image for editing.
+
+The creative pipeline interprets the brief, writes concise copy, develops separate art directions, plans coordinate-based layouts, and authors each slide in a bounded composition call. Shared direction, layout and typography context keep carousels consistent. It renders every slide, measures actual text/layout/font/image behavior, optionally sends the real screenshot to a configured vision model, and applies targeted property patches for up to three revision rounds. A selected brand and its written design memory are supplied to every generation. Uploaded reference images are analyzed with vision when available; otherwise only the supplied reference descriptions are used.
+
+Generated layers are fitted within the canvas using their rotated bounds. Browser-measured text overflow can suggest a smaller fitting size; unambiguous solid-background contrast checks can suggest a readable color from the selected brand palette. Generated compositions adopt these suggestions only after a new render confirms fewer errors. Manual conversational edits preserve unrelated typography and colors. Photos, translucent backgrounds and ambiguous overlapping artwork need screenshot review; the renderer does not guess their contrast. Editable text outlines use the same CSS in the editor and exported document.
+
+The first successfully rendered variant is published while further review continues. The editor updates an automatically displayed variant while it remains untouched. Manual changes or an active drag prevent background results from replacing that document; completed variants remain available for explicit selection. Vision status and deterministic issues are stored with each round; provider failure never fabricates a visual score.
+
+Supported layer primitives are editable text, rectangles, ellipses, lines, numeric SVG paths, and approved raster assets. Fixed pixel coordinates are used throughout. Fonts are the approved local Outfit font plus Arial, Georgia, Verdana and Courier New. The initial size presets are 1080×1350, 1080×1080, 1080×1920 and 1920×1080. Custom sides range from 320 to 4096 pixels. Export supports 1× and 2× subject to a 20-million-pixel render limit.
+
+## Editor, persistence and jobs
+
+- Live DOM canvas with zoom, pan, dragging, text/typography/color/geometry controls, alignment, layers, visibility and locks.
+- Full document undo/redo, duplicate designs/slides, saved immutable revision history and browser-local draft recovery scoped to the signed-in user.
+- Persistent workspace brand profiles, raster assets, reference notes and explicit brand preferences.
+- Conversational refinements use incremental property patches. They preserve unrelated layers and reject patches to locked or missing layers. Alternative layouts are generated through the creative brief's Directions control.
+- PNG for the selected slide, standalone HTML with embedded fonts/assets, editable JSON, and ZIP containing all slide PNGs/HTML plus layout checks.
+
+Published PNG/HTML/ZIP exports follow the existing `PLAN_LIMITS`: Pro Lite and
+Pro can export; Pro Lite exports include the EaseYourStartup watermark. Editable
+JSON backups remain available on every plan. This is a service entitlement, not
+DRM over the editable source. PNG/ZIP capture rejects deterministic clipping,
+missing assets or other layout errors with HTTP 422, preserving the document
+for correction. Review findings, real model scores and unavailable/failed vision
+states are visible in the Review inspector; manual edits mark prior feedback stale.
+
+`design_documents` and `design_versions` update in one SQL statement using an expected revision. A stale save returns HTTP 409 and retains local work. Brand kits and jobs are workspace-scoped. The new tables have RLS enabled and receive no direct browser database grants. Existing server workspace checks remain the authority.
+
+`design_jobs` stores the input, attempt number, status, progress, partial results, preview and error. Enqueue/retry functions serialize workspace admission with a transaction advisory lock. Default workspace concurrency is two, configurable by `DESIGN_WORKSPACE_CONCURRENCY` (1–8). The Inngest worker additionally has a global concurrency of four. Durable step replay recovers completed stages after a worker interruption. A once-per-minute dispatcher recovers queued events if the immediate delivery fails. The API supports explicit cancellation and retry; old attempts cannot overwrite a new attempt.
+
+`design_ai_events` stores provider, model, input/output tokens, latency and fallbacks for completed upstream responses. The worker checks persisted usage before another model operation, so automatic recovery does not reset the attempt's budget. `DESIGN_JOB_TOKEN_BUDGET` can cap the requested budget; the UI defaults to 60,000 tokens and three revision rounds. Upstream responses without usage use conservative accounting. Transport failures may have unknown provider billing.
+
+## Rendering boundaries
+
+The renderer creates a fresh browser context with JavaScript, network access, service workers and downloads disabled. It uses validated data and a trusted HTML compiler; untrusted HTML/CSS/JavaScript is not accepted. SVG is limited to numeric path data and trusted primitives. Fonts and user assets are embedded data URLs. No app cookies, authenticated pages, server secrets, internal endpoints, or file URLs are supplied to the document.
+
+Uploads accept PNG/JPEG/WebP, decode and re-encode through Sharp, strip metadata, and cap dimensions/bytes. Persistence separately verifies raster decoding, matching MIME type, pixel limits and absent private metadata to reject forged asset payloads. Rendering has cancellation, a 25-second deadline, bounded concurrency, an output pixel limit, and output byte limits. Export uses the same document and fonts as the editor; system-font availability on the rendering host should match any selected system fonts.
+
+For a serverless host that cannot launch Chromium, run a dedicated Browserless-compatible browser service. Keep it patched, isolated from private services, and subject to OS/container memory and CPU limits. The application enforces request/time/pixel/network limits; hosting-level CPU/memory isolation belongs to the browser service. Local font files are included in Next.js output tracing for export and Inngest routes.
+
+## Verification
+
+Verified on 2026-10-25 with Node 22+ and local Microsoft Edge:
+
+- Production build and TypeScript checks pass. ESLint has zero errors and three pre-existing navigation warnings in checkout/account components.
+- Expanded suite: 478 tests pass, 24 are skipped (65 passing files, five skipped). This enables real Chromium/editor interactions and the isolated PostgreSQL WASM suite. Native PostgreSQL migration tests require the separate disposable server configuration.
+- All five requested live-provider briefs pass final browser rendering checks, including the three carousel slides, on the supported vision-unavailable path. Successful genuine provider responses were resumed from test checkpoints; browser measurements and final PNGs were regenerated. Each exported example is 1080×1350 with no deterministic render errors.
+- Separate vision-enabled attempts received genuine critiques from Groq/OpenRouter, including low scores and actionable findings, but encountered provider HTTP 429/502 responses. These runs do **not** establish a visual-quality sign-off. Model quality remains variable and the editor exposes the findings for review.
+- No production database migration or deployment was performed. Provider credentials, explicit model capabilities, the renderer and Inngest must be configured before enabling generation in the deployed application.
+
+Routine checks:
+
+```powershell
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Real Chromium diagnostics and editor interactions (using synthetic local HTTP test boundaries for the editor's external services):
+
+```powershell
+$env:RUN_DESIGN_BROWSER_TESTS='true'
+$env:DESIGN_CHROMIUM_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+pnpm exec vitest run src/lib/server/design-studio/renderer.test.ts src/components/design-studio/workspace.browser.test.ts
+```
+
+An optional PostgreSQL WASM suite applies the exact new migration, executes the real storage queries, and verifies optimistic revisions, isolation, active-job limits, account deletion guards and cascading cleanup. It uses a disposable ignored runtime, and never reads the configured database. It does not replace concurrent multi-connection PostgreSQL tests:
+
+```powershell
+pnpm --dir output/design-studio/postgres-check add @electric-sql/pglite
+$env:RUN_DESIGN_SQL_TESTS='true'
+pnpm exec vitest run src/lib/server/design-studio/storage.sql.test.ts
+```
+
+The repository's full native PostgreSQL migration tests continue to require `TEST_POSTGRES_BIN` and a disposable localhost server.
+
+Five opt-in live examples exercise the requested Groq poster, minimalist launch, experimental typography advertisement, feature announcement, and three-slide carousel:
+
+```powershell
+$env:RUN_LIVE_AI_TESTS='true'
+$env:DESIGN_CHROMIUM_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+$env:DESIGN_LIVE_WAIT_FOR_QUOTA='true'
+pnpm exec vitest run src/lib/server/design-studio/pipeline.live.test.ts
+```
+
+Use your explicit model registry for these calls. `DESIGN_LIVE_EXAMPLE` filters one case; `DESIGN_LIVE_RESUME=true` reuses successful test-only step checkpoints after a quota interruption. `DESIGN_LIVE_DISABLE_VISION=true` separately exercises the supported deployment without a vision model, retaining actual text-provider output and browser measurements. These tests make real provider calls on synthetic/public briefs and save screenshots, documents, review feedback and HTML under ignored `output/design-studio/examples/`. Quota failures and unresolved layout errors fail the checks. Passing unit tests alone does not establish visual quality or access to every provider. Real model output needs editorial review: a valid, unclipped composition can still have weak art direction, inaccurate copy or a low visual score.

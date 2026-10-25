@@ -23,6 +23,7 @@ export function StudioHeader({ profile, plan }: { profile: AccountProfile; plan:
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/studio/design" className="rounded-control px-3 py-2 text-xs font-semibold text-muted hover:bg-surface hover:text-ink">Design studio</Link>
           <Badge className="hidden sm:inline-flex">
             <Lightning size={12} weight="fill" className="mr-1 text-accent" />
             {plan === "pro" ? "Pro" : plan === "pro_lite" ? "Pro Lite" : "Free preview"}
