@@ -66,6 +66,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
   const [width, setWidth] = useState(1080);
   const [height, setHeight] = useState(1350);
   const [variantCount, setVariantCount] = useState(1);
+  const [templateDirection, setTemplateDirection] = useState(true);
   const [slideCount, setSlideCount] = useState(1);
   const [revisionLimit, setRevisionLimit] = useState(3);
   const [tokenBudget, setTokenBudget] = useState(60000);
@@ -280,7 +281,7 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
     setBusy(true); setError(""); setVariants([]); setSelectedVariantId(null);
     generationSnapshot.current = JSON.stringify(doc);
     try {
-      const data = await api<{ job: Job }>(edit ? { action: "edit", prompt: instruction, document: doc, history: messages.slice(-12).map((message) => `${message.role}: ${message.text}`), preferredProvider: provider || undefined } : { action: "generate", prompt: instruction, brand: doc.brand, assets: doc.assets, width, height, variants: variantCount, slides: slideCount, preferredProvider: provider || undefined, tokenBudget, revisionLimit });
+      const data = await api<{ job: Job }>(edit ? { action: "edit", prompt: instruction, document: doc, history: messages.slice(-12).map((message) => `${message.role}: ${message.text}`), preferredProvider: provider || undefined } : { action: "generate", prompt: instruction, brand: doc.brand, assets: doc.assets, width, height, variants: variantCount, templateDirection, slides: slideCount, preferredProvider: provider || undefined, tokenBudget, revisionLimit });
       setJob(data.job);
       setMessages((items) => [...items, { role: "user", text: instruction }]);
       if (edit) setEditPrompt("");
@@ -382,7 +383,8 @@ export function DesignStudio({ storageKey }: { storageKey: string }) {
             <div className={styles.promptHint}><Sparkle size={15} /><span>A clear message. An audience. A feeling. Start there.</span></div>
             <Field label="Format"><select value={formats} onChange={(event) => { const value = event.target.value; setFormats(value); const preset = CANVAS_PRESETS[value as keyof typeof CANVAS_PRESETS]; if (preset) { setWidth(preset[0]); setHeight(preset[1]); } }}><option value="portrait">Instagram portrait · 4:5</option><option value="square">Instagram square · 1:1</option><option value="story">Instagram story · 9:16</option><option value="landscape">Landscape · 16:9</option><option value="custom">Custom size</option></select></Field>
             {formats === "custom" && <div className={styles.fieldGrid}><Field label="Width"><input type="number" min={320} max={4096} value={width} onChange={(event) => setWidth(Math.max(320, Math.min(4096, +event.target.value)))} /></Field><Field label="Height"><input type="number" min={320} max={4096} value={height} onChange={(event) => setHeight(Math.max(320, Math.min(4096, +event.target.value)))} /></Field></div>}
-            <div className={styles.fieldGrid}><Field label="Directions"><select value={variantCount} onChange={(event) => setVariantCount(+event.target.value)}>{[1, 2, 3].map((n) => <option key={n} value={n}>{n} {n === 1 ? "direction" : "directions"}</option>)}</select></Field><Field label="Slides"><select value={slideCount} onChange={(event) => setSlideCount(+event.target.value)}>{Array.from({ length: 9 }, (_, i) => <option key={i} value={i + 1}>{i + 1} {i === 0 ? "slide" : "slides"}</option>)}</select></Field></div>
+            <div className={styles.fieldGrid}><Field label="AI directions"><select value={variantCount} onChange={(event) => setVariantCount(+event.target.value)}>{(templateDirection ? [0, 1, 2, 3] : [1, 2, 3]).map((n) => <option key={n} value={n}>{n === 0 ? "None · template only" : `${n} custom ${n === 1 ? "direction" : "directions"}`}</option>)}</select></Field><Field label="Slides"><select value={slideCount} onChange={(event) => setSlideCount(+event.target.value)}>{Array.from({ length: 9 }, (_, i) => <option key={i} value={i + 1}>{i + 1} {i === 0 ? "slide" : "slides"}</option>)}</select></Field></div>
+            <label className={styles.checkbox}><input type="checkbox" checked={templateDirection} onChange={(event) => { setTemplateDirection(event.target.checked); if (!event.target.checked && variantCount === 0) setVariantCount(1); }} />Add a template direction (hand-designed layout, fastest)</label>
             <button className={`${styles.primaryButton} ${styles.generateButton}`} onClick={() => void generate()} disabled={!prompt.trim() || busyJob || busy || !ready}><Sparkle size={18} weight="fill" />{busy ? "Starting…" : busyJob ? "Creating your design…" : "Create design"}<ArrowUp size={17} /></button>
             <p className={styles.smallNote}>Built from editable typography, shapes, and your assets.</p>
             <div className={styles.sectionHeader}><span>YOUR DESIGNS</span><button disabled={saving} onClick={() => { change(emptyDesignDocument()); setSavedId(undefined); savedIdRef.current = undefined; setRevision(undefined); setBrandId(undefined); setVersions([]); setSelectedId(null); setSelectedVariantId(null); setVariants([]); setNotice("New canvas opened. Undo returns to your previous work."); }}>New</button></div>

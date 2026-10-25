@@ -76,6 +76,37 @@ describe("creative production pipeline", () => {
     expect(result.variants.every((variant) => variant.feedback[0].vision === null && !variant.visionAvailable)).toBe(true);
     expect(events).not.toContain("critique");
   });
+  it("builds a template direction from model-chosen slots without custom directions", async () => {
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0, templateDirection: true, slides: 2, revisionLimit: 0 });
+    const prompts: string[] = [];
+    const result = await runDesignPipeline(input, {
+      visionAvailable: false, checkpoint: async () => {},
+      render: async () => ({ png, width: 1080, height: 1350, issues: [] }),
+      generate: async (task, prompt, schema) => {
+        prompts.push(task);
+        const slide = { kicker: "Launching today", headline: "Integration is here", body: "Connect it in minutes.", cta: "Try it" };
+        const data: Record<string, unknown> = {
+          brief: { purpose: "Announce", audience: "Founders", message: "Integration is here", mood: "Confident", inspiration: "Editorial", requiredInformation: [], cta: "Try it", constraints: [] },
+          copy: prompt.startsWith("Choose the hand-designed")
+            ? { templateId: "big-type", reason: "Short punchy headline", slides: [slide, { ...slide, headline: "Set up in one click" }] }
+            : { headline: "Integration is here", supportingCopy: "", cta: "Try it", slides: [{ headline: "Integration is here", body: "", cta: "Try it" }, { headline: "Set up in one click", body: "", cta: "Try it" }] },
+        };
+        return { data: schema.parse(data[task]), usage: { provider: "test", model: "test", inputTokens: 40, outputTokens: 40, latencyMs: 1, fallbacks: 0 } };
+      },
+    });
+    expect(prompts).toEqual(["brief", "copy", "copy"]);
+    expect(result.variants).toHaveLength(1);
+    expect(result.variants[0].id).toBe("template-big-type");
+    expect(result.variants[0].document.pages).toHaveLength(2);
+    const headline = result.variants[0].document.pages[1].nodes.find((node) => node.role === "headline")!;
+    expect(headline.text).toBe("Set up in one click");
+    expect(headline.fontFamily).toBe("Anton");
+    expect(result.variants[0].document.pages[1].nodes.some((node) => node.id === "slide-counter" && node.text === "02 / 02")).toBe(true);
+  });
+  it("requires at least one direction", () => {
+    expect(generationInputSchema.safeParse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0 }).success).toBe(false);
+  });
   it("renders and checks targeted repairs, preserving the last working document if a later model request fails", async () => {
     const original = emptyDesignDocument();
     let calls = 0;

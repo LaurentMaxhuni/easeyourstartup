@@ -1,8 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import sharp from "sharp";
-import { applyDesignPatch, designDocumentSchema, designNodeSchema, designPageSchema, designPatchSchema, type DesignDocument } from "@/lib/design-studio/document";
+import { applyDesignPatch, designDocumentSchema, designNodeSchema, designPageSchema, designPatchSchema, type DesignDocument, type DesignPage } from "@/lib/design-studio/document";
 import { DESIGN_FONT_CATALOG, DESIGN_FONT_PAIRINGS, DESIGN_FONTS } from "@/lib/design-studio/fonts";
+import { availableTemplates, buildTemplatePage, LAYOUT_TEMPLATES, type LayoutTemplate, type TemplateCopy } from "@/lib/design-studio/templates";
 import { alternativeLayoutCount, designJobInputSchema, generationInputSchema, type DesignJobInput, type DesignStage } from "@/lib/design-studio/workflow";
 import { generateDesignObject, hasDesignVisionModel, type AiUsage, type DesignTask } from "./providers";
 import { renderDesignPage, type RenderIssue } from "./renderer";
@@ -23,7 +24,15 @@ const directionSchema = z.object({
   brandIntegration: z.string().max(500), spacing: z.string().max(500),
   // Optional so a model that skips fonts falls back to the brand kit.
   headingFont: z.enum(DESIGN_FONTS).optional(), bodyFont: z.enum(DESIGN_FONTS).optional(),
+  referenceTemplates: z.array(z.enum(LAYOUT_TEMPLATES.map((template) => template.id) as [string, ...string[]])).max(2).optional(),
 });
+const TEMPLATE_CATALOG = (templates: LayoutTemplate[]) => templates.map((template) => `${template.id}: ${template.name}; ${template.mood}; best for ${template.bestFor}; headline up to ${template.headlineMaxChars} characters`).join("\n");
+const nodeBaseline = designNodeSchema.parse({ id: "baseline", type: "rect", x: 0, y: 0, width: 1, height: 1 });
+// Template examples sent to the model omit default-valued properties.
+function compactPage(page: DesignPage) {
+  const core = new Set(["id", "type", "x", "y", "width", "height"]);
+  return { background: page.background, nodes: page.nodes.map((node) => Object.fromEntries(Object.entries(node).filter(([key, value]) => core.has(key) || JSON.stringify(value) !== JSON.stringify(nodeBaseline[key as keyof typeof nodeBaseline])))) };
+}
 const FONT_GUIDE = DESIGN_FONT_CATALOG.map((font) => `${font.family} (${font.category}, ${font.weights[0]}-${font.weights[1]}${font.italic ? ", italic" : ""})`).join("; ");
 const PAIRING_GUIDE = DESIGN_FONT_PAIRINGS.map((pairing) => `${pairing.name}: ${pairing.heading} + ${pairing.body} (${pairing.mood})`).join("; ");
 const STYLE_GUIDE = "Optional paint, omitted when unused: gradient {kind linear|radial|conic, angle, centerX/centerY percent, 2-6 stops {color hex, position 0-100, opacity}} on rect/ellipse/text; pattern {kind grain|dots|grid|lines|diagonal, color, opacity, size px} on rect/ellipse; up to 3 shadows {x, y, blur, spread, color, opacity}; blur px; blendMode; text fontStyle italic, textTransform uppercase and textWrap balance. Use effects with restraint and a reason: a full-bleed gradient background or a few large soft color fields (big ellipses with blur 80-200) give depth; subtle grain (opacity 0.06-0.15) over the background adds print texture; dots/grid suit technical or Swiss looks; a hard offset shadow suits brutalist styles. Never shadow every layer, avoid rainbow gradients, and keep text over calm, high-contrast areas.";
@@ -254,11 +263,39 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
     const brief = await ask("brief", `Interpret the creative request. Extract purpose, audience, message, mood, inspiration, required information, CTA and constraints. Supply sensible defaults. Never invent product facts, metrics, customer quotes or capabilities. User request: ${JSON.stringify(input.prompt)}. Selected brand: ${brandContext}. Reference principles: ${references}. Canvas ${input.width}x${input.height}; ${input.slides} slides.`, briefSchema);
     const copy = await ask("copy", `Write concise, credible advertising copy for a professional poster. Aim for a punchy 4-9 word headline; required information can be in the supporting copy. Avoid repeating the headline in the supporting copy. A stated factual message is not necessarily an exact headline. Preserve exact headline/CTA wording ONLY when the user explicitly requests it. Never invent claims, metrics, testimonials or capabilities. Return exactly ${input.slides} slide messages. Brief: ${JSON.stringify(brief)}. Original request: ${JSON.stringify(input.prompt)}. Brand: ${brandContext}.`, copySchema);
     if (copy.slides.length !== input.slides) throw new Error("The copy did not match the requested slide count.");
-    await checkpoint("Developing art direction");
-    const directionSet = await ask("direction", `Develop exactly ${input.variants} professional poster art directions with truly distinct hierarchies, focal points and spatial silhouettes. Define a memorable typographic or vector concept that communicates the message. At 1080px width, a display headline often needs roughly 96-220px type; specify pixels, never points. Choose the size intentionally for the actual copy. Include the brand name as a clear wordmark. Avoid a centered headline-body-button webpage stack. Consider editorial, Swiss/modernist typography, experimental tech and premium product advertising as appropriate to the message. Avoid glow, generic cards, random decorative circles and repeated rounded rectangles. Work within the selected brand. Choose headingFont and bodyFont for the direction. ${fontRule(input.brand)} Available fonts: ${FONT_GUIDE}. Describe in decoration any gradient, texture or shadow treatment the direction needs. ${STYLE_GUIDE} Brief: ${JSON.stringify(brief)}. Brand: ${brandContext}. References: ${references}`, directionsSchema);
+    // One direction from the hand-designed library: the model only chooses a
+    // template and fits approved copy into its slots; geometry is code.
+    async function runTemplateDirection(brief: z.infer<typeof briefSchema>, approved: z.infer<typeof copySchema>) {
+      if (input.action !== "generate") return undefined;
+      const templates = availableTemplates(input.assets);
+      const fillSchema = z.object({
+        templateId: z.enum(templates.map((template) => template.id) as [string, ...string[]]), reason: z.string().max(400),
+        slides: z.array(z.object({ kicker: z.string().trim().min(1).max(32), headline: z.string().trim().min(1).max(90), body: z.string().max(220), cta: z.string().trim().min(1).max(28) })).length(input.slides),
+      }).superRefine((fill, context) => {
+        const limit = templates.find((template) => template.id === fill.templateId)?.headlineMaxChars ?? 90;
+        fill.slides.forEach((slide, index) => { if (slide.headline.length > limit) context.addIssue({ code: "custom", path: ["slides", index, "headline"], message: `This template fits headlines up to ${limit} characters.` }); });
+      });
+      await checkpoint("Planning layout");
+      const fill = await ask("copy", `Choose the hand-designed poster template that best fits this brief, brand and message, then fit the approved copy into its slots for exactly ${input.slides} slides. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Brand: ${brandContext}.`, fillSchema);
+      const template = templates.find((item) => item.id === fill.templateId)!;
+      await checkpoint("Building composition");
+      const pages = fill.slides.map((slide: TemplateCopy, index) => buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: slide, slideIndex: index, slideCount: input.slides }, `page-${index + 1}`, input.slides > 1 ? `Slide ${index + 1}` : "Poster"));
+      const document = designDocumentSchema.parse({ version: 1, title: fill.slides[0].headline.slice(0, 180), brand: input.brand, assets: input.assets, pages });
+      const variant: DesignVariant = { id: `template-${template.id}`, name: `Template · ${template.name}`, document, feedback: [], visionAvailable: false };
+      const firstRender = await renderAndFit(variant, `${variant.id}-validation`);
+      result.variants.push(variant);
+      await checkpoint("Evaluating design", { result: structuredClone(result), preview: { pageId: firstRender[0].pageId, dataUrl: firstRender[0].dataUrl } });
+      await evaluateAndRefine(variant, input.revisionLimit, firstRender);
+      return fingerprint(variant.document);
+    }
+    let templateSignature: string | undefined;
+    if (input.templateDirection) templateSignature = await runTemplateDirection(brief, copy);
+    if (input.variants > 0) await checkpoint("Developing art direction");
+    const directionSet = input.variants === 0 ? { directions: [] as z.infer<typeof directionSchema>[] } : await ask("direction", `Develop exactly ${input.variants} professional poster art directions with truly distinct hierarchies, focal points and spatial silhouettes. Define a memorable typographic or vector concept that communicates the message. At 1080px width, a display headline often needs roughly 96-220px type; specify pixels, never points. Choose the size intentionally for the actual copy. Include the brand name as a clear wordmark. Avoid a centered headline-body-button webpage stack. Consider editorial, Swiss/modernist typography, experimental tech and premium product advertising as appropriate to the message. Avoid glow, generic cards, random decorative circles and repeated rounded rectangles. Work within the selected brand. Choose headingFont and bodyFont for the direction. ${fontRule(input.brand)} Available fonts: ${FONT_GUIDE}. Describe in decoration any gradient, texture or shadow treatment the direction needs. ${STYLE_GUIDE} Optionally name up to two referenceTemplates whose structure the direction builds on, from these hand-designed layouts:
+${TEMPLATE_CATALOG(availableTemplates(input.assets))} Brief: ${JSON.stringify(brief)}. Brand: ${brandContext}. References: ${references}`, directionsSchema);
     if (directionSet.directions.length !== input.variants) throw new Error("The model did not return the requested number of distinct directions.");
     if (new Set(directionSet.directions.map((direction) => direction.id)).size !== input.variants) throw new Error("Each art direction must have a unique ID.");
-    const seen = new Set<string>();
+    const seen = new Set<string>(templateSignature ? [templateSignature] : []);
     for (const direction of directionSet.directions) {
       await checkpoint("Planning layout");
       const boundedPlanSchema = planSchema.superRefine((plan, context) => {
@@ -279,7 +316,12 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
       for (const [pageIndex, plannedPage] of plan.pages.entries()) {
         const pageSchema = compositionSchema.extend({ pages: compositionSchema.shape.pages.length(1) });
         const continuity = pages.map((page) => ({ background: page.background, typography: page.nodes.filter((node) => node.role === "headline" || node.role === "body").slice(0, 3).map((node) => ({ role: node.role, fontFamily: node.fontFamily, fontSize: node.fontSize, fill: node.fill })) }));
-        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use approved raster asset IDs only. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. Page copy: ${JSON.stringify(copy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}. Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
+        const examples = (direction.referenceTemplates ?? []).flatMap((id) => {
+          const template = availableTemplates(input.assets).find((item) => item.id === id);
+          const slide = copy.slides[pageIndex];
+          return template ? [{ template: template.name, page: compactPage(buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: { kicker: "Label", headline: slide.headline, body: slide.body, cta: slide.cta || copy.cta }, slideIndex: pageIndex, slideCount: input.slides }, plannedPage.id, plannedPage.name)) }] : [];
+        });
+        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use approved raster asset IDs only. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. Page copy: ${JSON.stringify(copy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}.${examples.length ? ` Hand-designed reference layouts at this canvas size: learn their margins, hierarchy, spacing and restraint, and adapt rather than copy them: ${JSON.stringify(examples)}.` : ""} Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
         if (!title) title = composition.title;
         pages.push({ ...composition.pages[0], id: plannedPage.id });
       }

@@ -149,6 +149,10 @@ asset project with its own instructions, not the SaaS runtime.
   Fontsource families in `public/design-fonts`, four system fonts) and pairings.
   Layers support declarative gradients, textures, shadows, blur and blend modes;
   `designNodeStyle` is the only CSS compiler, shared by editor and renderer.
+- `src/lib/design-studio/templates.ts` holds hand-designed, size-adaptive poster
+  layouts with copy slots. They drive an optional "Template" direction and
+  serve as composition examples. Text fitting uses generated per-character
+  metrics (`font-metrics.ts` via `scripts/measure-design-fonts.mjs`).
 - `src/lib/server/design-studio/providers.ts` supplies capability-aware adapters
   for Hetzner, Z.AI, Gemini, Groq, Workers AI, OpenRouter and compatible hosts.
   Explicit `DESIGN_AI_PROVIDERS_JSON` or per-provider model capability arrays are

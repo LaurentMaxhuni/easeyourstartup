@@ -5,10 +5,13 @@ export const generationInputSchema = z.object({
   action: z.literal("generate"), prompt: z.string().trim().min(8).max(6000),
   brand: brandKitSchema, assets: z.array(designAssetSchema).max(12).default([]),
   width: z.number().int().min(320).max(4096).default(1080), height: z.number().int().min(320).max(4096).default(1350),
-  variants: z.number().int().min(1).max(3).default(1), slides: z.number().int().min(1).max(9).default(1),
+  // Custom AI directions; zero is allowed when a template direction runs.
+  variants: z.number().int().min(0).max(3).default(1), slides: z.number().int().min(1).max(9).default(1),
+  // Adds one direction built from a hand-designed layout template.
+  templateDirection: z.boolean().default(false),
   revisionLimit: z.number().int().min(0).max(3).default(3), tokenBudget: z.number().int().min(1000).max(200000).default(60000),
   preferredProvider: z.string().max(100).optional(),
-});
+}).refine((input) => input.variants > 0 || input.templateDirection, { message: "Request at least one direction.", path: ["variants"] });
 export const editInputSchema = z.object({
   action: z.literal("edit"), prompt: z.string().trim().min(3).max(4000), document: designDocumentSchema,
   history: z.array(z.string().max(1000)).max(12).default([]), preferredProvider: z.string().max(100).optional(),
