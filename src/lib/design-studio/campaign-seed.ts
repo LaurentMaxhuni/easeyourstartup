@@ -21,13 +21,19 @@ function luminance(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+// Page titles often carry a tagline ("Name — What it does"); the brand slot
+// and kicker need just the name.
+export function shortBrandName(projectName: string) {
+  return projectName.split(/\s+[—–|:·-]\s+|\s*\|\s*/)[0].trim().slice(0, 40) || projectName.slice(0, 40);
+}
+
 // The scanned site becomes the design's brand kit. Fonts outside the editor's
 // self-hosted catalog fall back to Outfit, which lets templates pick a pairing.
 export function campaignBrandKit(brand: BrandProfile): BrandKit {
   const visual = brand.visualSystem;
   const byLightness = [...brand.colors].sort((a, b) => luminance(b) - luminance(a));
   return brandKitSchema.parse({
-    name: brand.projectName.slice(0, 120),
+    name: shortBrandName(brand.projectName),
     primary: visual?.accentColor ?? brand.colors[1] ?? brand.colors[0],
     secondary: visual?.foregroundColor ?? byLightness.at(-1),
     background: visual?.backgroundColor ?? byLightness[0],
@@ -41,7 +47,8 @@ export function campaignBrandKit(brand: BrandProfile): BrandKit {
 
 export function campaignDesignCopy(brand: BrandProfile, direction?: CreativeDirection, cta = ""): TemplateCopy {
   return {
-    kicker: (direction?.eyebrow || brand.projectName).slice(0, 80),
+    // The template already shows the brand name; never repeat it as the kicker.
+    kicker: (direction?.eyebrow || "New").slice(0, 80),
     headline: (direction?.headline || brand.tagline || brand.projectName).slice(0, 140),
     body: (direction?.subheadline || direction?.body || "").slice(0, 280),
     cta: (direction?.cta || cta || brand.cta).slice(0, 60),
@@ -72,7 +79,7 @@ export function campaignDesignDocument(input: {
   const page = buildTemplatePage(template, { ...CAMPAIGN_DESIGN_SIZE, brand: kit, assets, copy, slideIndex: 0, slideCount: 1 }, "page-1", "Launch post");
   return designDocumentSchema.parse({
     version: 1,
-    title: `${input.brand.projectName} launch visual`.slice(0, 180),
+    title: `${shortBrandName(input.brand.projectName)} launch visual`.slice(0, 180),
     brand: kit,
     assets,
     pages: [page],

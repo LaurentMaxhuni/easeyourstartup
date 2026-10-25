@@ -8,6 +8,7 @@ import { rateLimit } from "@/lib/server/rate-limit";
 import { getDesignProviderSettings, hasDesignProviders } from "@/lib/server/design-studio/providers";
 import { listDesigns, getDesign, saveDesign, listBrandKits, saveBrandKit, createDesignJob, changeDesignJob, getDesignJob } from "@/lib/server/design-studio/storage";
 import { dispatchDesignJob } from "@/lib/server/design-studio/jobs";
+import { fitDesignToRender } from "@/lib/server/design-studio/fit";
 import { designHttpError, DesignHttpError } from "@/lib/server/design-studio/http";
 
 export const runtime = "nodejs";
@@ -45,9 +46,13 @@ export async function POST(request: Request) {
       if (!limit.allowed) throw new DesignHttpError("Design saving limit reached. Your local draft is preserved; try again later.", 429);
     }
     if (action === "save") {
-      const input = z.object({ id: z.uuid().optional(), revision: z.number().int().positive().optional(), document: designDocumentSchema })
-        .refine((value) => !value.id || value.revision !== undefined, { path: ["revision"], message: "An existing design requires its saved revision." }).parse(raw);
-      return NextResponse.json({ design: await saveDesign(database, workspaceId, input) });
+      const input = z.object({ id: z.uuid().optional(), revision: z.number().int().positive().optional(), document: designDocumentSchema, fit: z.boolean().optional() })
+        .refine((value) => !value.id || value.revision !== undefined, { path: ["revision"], message: "An existing design requires its saved revision." })
+        .refine((value) => !value.fit || !value.id, { path: ["fit"], message: "Only new designs are fitted on save." }).parse(raw);
+      // New campaign visuals are measured in the browser before their first save,
+      // so they open and export without text overflow.
+      const document = input.fit ? (await fitDesignToRender(input.document, { signal: request.signal })).document : input.document;
+      return NextResponse.json({ design: await saveDesign(database, workspaceId, { id: input.id, revision: input.revision, document }) });
     }
     if (action === "brand") {
       const input = z.object({ id: z.uuid().optional(), kit: brandKitSchema, assets: z.array(designAssetSchema).max(12) }).parse(raw);

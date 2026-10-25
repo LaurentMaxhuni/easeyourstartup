@@ -1268,7 +1268,7 @@ export function StudioShell({
       const response = await fetch("/api/design-studio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", document }),
+        body: JSON.stringify({ action: "save", document, fit: true }),
       });
       const data = await response.json() as { design?: { id: string; revision: number }; error?: string };
       if (!response.ok || !data.design) throw new Error(data.error || "Your visual could not be created.");

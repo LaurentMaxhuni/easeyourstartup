@@ -254,20 +254,16 @@ export async function renderDesignPage(input: DesignDocument, pageId: string, op
             try {
               element.style.fontSize = "8px";
               if (!measureInk(element, range).overflow) {
-                let best = 8;
-                let low = 9;
-                let high = Math.ceil(originalFontSize) - 1;
-                // The schema caps fonts at 600px: ten binary-search steps
-                // cover all smaller integer sizes, with at most 128 line boxes
-                // per trial. No guessed proportional scaling is returned.
-                for (let iteration = 0; iteration < 10 && low <= high; iteration++) {
-                  const candidate = Math.floor((low + high) / 2);
+                // Wrapping makes fit non-monotonic: a larger size can fit
+                // because a word moves to the next line while a smaller one
+                // overflows, so a binary search can settle far below the
+                // largest fit. Scan down from the authored size instead; the
+                // schema caps fonts at 600px and each trial is one layout.
+                // No guessed proportional scaling is returned.
+                for (let candidate = Math.ceil(originalFontSize) - 1; candidate >= 8; candidate--) {
                   element.style.fontSize = `${candidate}px`;
-                  if (measureInk(element, range).overflow) high = candidate - 1;
-                  else { best = candidate; low = candidate + 1; }
+                  if (!measureInk(element, range).overflow) { suggestedFontSize = candidate; break; }
                 }
-                element.style.fontSize = `${best}px`;
-                if (!measureInk(element, range).overflow) suggestedFontSize = best;
               }
             } finally {
               // Trials only supply diagnostics. The screenshot, overlap checks
