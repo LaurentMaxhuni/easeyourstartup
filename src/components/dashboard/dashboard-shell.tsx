@@ -214,7 +214,7 @@ export function DashboardShell({ storageKey, profile }: { storageKey: string; pr
   );
 }
 
-function DashboardHeader({ profile }: { profile: AccountProfile }) {
+export function DashboardHeader({ profile }: { profile: AccountProfile }) {
   return (
     <header className="border-b border-line bg-canvas/95 backdrop-blur-xl">
       <a

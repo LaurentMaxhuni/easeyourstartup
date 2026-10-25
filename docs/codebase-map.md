@@ -63,8 +63,11 @@ asset project with its own instructions, not the SaaS runtime.
   check also verifies the session with hosted auth, which rate-limits. Pass an
   `AbortSignal` to stop it early.
 - The dashboard shows projects as a gallery: `listProjectsForUser` joins
-  `brand_profiles` and returns `projectBrandSummary` (favicon, Open Graph cover,
-  brand colors, tagline). Scanned `logoUrl` is deliberately unused because scans
+  `brand_profiles` and returns `projectBrandSummary` (`src/lib/project-brand.ts`:
+  favicon, Open Graph cover, brand colors, tagline). A card opens
+  `/dashboard/projects/[projectId]` (`ProjectDetail`), which lists that
+  project's campaigns via `CampaignsList` with `fixedProject` and links to a
+  new campaign (`/studio?projectId=…&newCampaign=1`). Scanned `logoUrl` is deliberately unused because scans
   can pick up customer logos. Campaign titles come from `campaign-title.ts`: a
   short first sentence at creation, replaced by the generated headline when the
   job completes unless the person renamed it.

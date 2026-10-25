@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { ProjectBrandSummary as ProjectBrand } from "@/lib/project-brand";
 import { cn } from "@/lib/utils";
 
 export type DashboardProject = {
@@ -41,15 +42,6 @@ export type DashboardProject = {
   createdAt: string | null;
   updatedAt: string | null;
   brand?: ProjectBrand | null;
-};
-
-type ProjectBrand = {
-  tagline: string;
-  faviconUrl: string | null;
-  coverImageUrl: string | null;
-  backgroundColor: string | null;
-  foregroundColor: string | null;
-  accentColor: string | null;
 };
 
 type Campaign = {
@@ -176,11 +168,6 @@ export function ProjectCampaignWorkspace({
           projects={projects}
           onProjectUpdate={onCampaignChange}
           onProjectDelete={onCampaignChange}
-          onViewCampaigns={(projectId, status = "active") => {
-            setCampaignProjectId(projectId);
-            setCampaignStatus(status);
-            setView("campaigns");
-          }}
         />
       </div>
       <div hidden={view !== "campaigns"}>
@@ -202,12 +189,10 @@ function ProjectsList({
   projects,
   onProjectUpdate,
   onProjectDelete,
-  onViewCampaigns,
 }: {
   projects: DashboardProject[];
   onProjectUpdate: (projectId: string, update: Partial<DashboardProject>) => void;
   onProjectDelete: (projectId: string) => void;
-  onViewCampaigns: (projectId: string, status?: CampaignFilter) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ProjectFilter>("active");
@@ -268,7 +253,6 @@ function ProjectsList({
                 project={project}
                 onProjectUpdate={onProjectUpdate}
                 onProjectDelete={onProjectDelete}
-                onViewCampaigns={onViewCampaigns}
               />
             ))}
           </AnimatePresence>
@@ -298,12 +282,10 @@ function ProjectCard({
   project,
   onProjectUpdate,
   onProjectDelete,
-  onViewCampaigns,
 }: {
   project: DashboardProject;
   onProjectUpdate: (projectId: string, update: Partial<DashboardProject>) => void;
   onProjectDelete: (projectId: string) => void;
-  onViewCampaigns: (projectId: string, status?: CampaignFilter) => void;
 }) {
   const [name, setName] = useState(project.name);
   const [status, setStatus] = useState(project.status);
@@ -383,7 +365,7 @@ function ProjectCard({
             <h3 className="truncate text-sm font-semibold leading-5" title={name}>
               {/* The link covers the whole card; the menu and rename form sit above it. */}
               <Link
-                href={`/studio?projectId=${encodeURIComponent(project.id)}`}
+                href={`/dashboard/projects/${encodeURIComponent(project.id)}`}
                 className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
               >
                 {name}
@@ -409,8 +391,10 @@ function ProjectCard({
                   </Link>
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => onViewCampaigns(project.id, "all")}>
-                <ArrowRight size={16} aria-hidden="true" /> View all campaigns
+              <DropdownMenuItem asChild>
+                <Link href={`/studio?projectId=${encodeURIComponent(project.id)}`}>
+                  <ArrowRight size={16} aria-hidden="true" /> Open in studio
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => { setDraftName(name); setEditingName(true); }}>
                 <PencilSimple size={16} aria-hidden="true" /> Rename project
@@ -504,7 +488,7 @@ function inkFor(hex: string) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#0b0b0b" : "#ffffff";
 }
 
-function ProjectCover({ name, brand, archived }: { name: string; brand: ProjectBrand | null; archived: boolean }) {
+export function ProjectCover({ name, brand, archived }: { name: string; brand: ProjectBrand | null; archived: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
   // Some sites point their share image at a logo; fit those whole instead of cropping.
   const [fitWhole, setFitWhole] = useState(false);
@@ -556,7 +540,7 @@ function ProjectCover({ name, brand, archived }: { name: string; brand: ProjectB
   );
 }
 
-function ProjectMark({ name, brand }: { name: string; brand: ProjectBrand | null }) {
+export function ProjectMark({ name, brand }: { name: string; brand: ProjectBrand | null }) {
   const [iconFailed, setIconFailed] = useState(false);
   const initial = name.trim().slice(0, 1).toLocaleUpperCase();
   return (
@@ -572,7 +556,9 @@ function ProjectMark({ name, brand }: { name: string; brand: ProjectBrand | null
   );
 }
 
-function CampaignsList({
+// With fixedProject, the list shows one project's campaigns and offers a new
+// campaign for it instead of the project filter and column.
+export function CampaignsList({
   projects,
   enabled,
   projectId,
@@ -580,6 +566,7 @@ function CampaignsList({
   status,
   onStatusChange,
   onCampaignChange,
+  fixedProject,
 }: {
   projects: DashboardProject[];
   enabled: boolean;
@@ -588,7 +575,11 @@ function CampaignsList({
   status: CampaignFilter;
   onStatusChange: (status: CampaignFilter) => void;
   onCampaignChange: () => void;
+  fixedProject?: { id: string; active: boolean };
 }) {
+  const columns = fixedProject
+    ? "md:grid-cols-[minmax(0,1.6fr)_120px_130px_100px]"
+    : "md:grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)_120px_130px_100px]";
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -673,21 +664,22 @@ function CampaignsList({
     if (title?.trim()) void updateCampaign(campaign, { title: title.trim() });
   }
 
+  const filtered = Boolean(search || status !== "active" || (!fixedProject && projectId));
   const start = data?.total ? (data.page - 1) * data.pageSize + 1 : 0;
   const end = data ? Math.min(data.page * data.pageSize, data.total) : 0;
 
   return (
     <div className="pt-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <label className="relative col-span-2 block sm:col-span-1">
-          <span className="sr-only">Search campaigns and projects</span>
+      <div className={cn("grid grid-cols-2 gap-3", fixedProject ? "sm:grid-cols-[minmax(0,1fr)_auto]" : "sm:grid-cols-[minmax(0,1fr)_auto_auto]")}>
+        <label className={cn("relative block", fixedProject ? "col-span-2 sm:col-span-1" : "col-span-2 sm:col-span-1")}>
+          <span className="sr-only">{fixedProject ? "Search campaigns" : "Search campaigns and projects"}</span>
           <MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             maxLength={120}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search campaigns or projects"
+            placeholder={fixedProject ? "Search campaigns" : "Search campaigns or projects"}
             className="min-h-10 w-full rounded-control border border-line bg-surface-raised py-2 pl-9 pr-3 text-sm placeholder:text-muted"
           />
         </label>
@@ -697,16 +689,20 @@ function CampaignsList({
           value={status}
           onValueChange={(value) => { onStatusChange(value); setPage(1); }}
           options={[{ value: "active", label: "Active campaigns" }, { value: "archived", label: "Archived campaigns" }, { value: "all", label: "All campaigns" }]}
-          className="w-full sm:w-44"
+          className={cn("w-full sm:w-44", fixedProject && "col-span-2 sm:col-span-1")}
         />
-        <label className="sr-only" htmlFor="campaign-project">Project</label>
-        <Select
-          id="campaign-project"
-          value={projectId}
-          onValueChange={(value) => { onProjectIdChange(value); setPage(1); }}
-          options={[{ value: "", label: "Every project" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]}
-          className="w-full sm:w-44"
-        />
+        {!fixedProject && (
+          <>
+            <label className="sr-only" htmlFor="campaign-project">Project</label>
+            <Select
+              id="campaign-project"
+              value={projectId}
+              onValueChange={(value) => { onProjectIdChange(value); setPage(1); }}
+              options={[{ value: "", label: "Every project" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]}
+              className="w-full sm:w-44"
+            />
+          </>
+        )}
       </div>
 
       {message && <p role="alert" className="mt-3 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{message}</p>}
@@ -722,12 +718,12 @@ function CampaignsList({
       ) : data && data.campaigns.length > 0 ? (
         <>
           <div className="mt-4 overflow-hidden rounded-container border border-line bg-surface-raised">
-            <div className="hidden grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)_120px_130px_100px] gap-4 border-b border-line bg-surface px-4 py-3 text-[10px] font-semibold uppercase text-muted md:grid md:px-5">
-              <span>Campaign</span><span>Project</span><span>Status</span><span>Last updated</span><span className="sr-only">Actions</span>
+            <div className={cn("hidden gap-4 border-b border-line bg-surface px-4 py-3 text-[10px] font-semibold uppercase text-muted md:grid md:px-5", columns)}>
+              <span>Campaign</span>{!fixedProject && <span>Project</span>}<span>Status</span><span>Last updated</span><span className="sr-only">Actions</span>
             </div>
             <ul className="divide-y divide-line">
               {data.campaigns.map((campaign) => (
-                <li key={campaign.id} className="grid gap-3 px-4 py-4 transition-colors hover:bg-canvas/60 md:grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)_120px_130px_100px] md:items-center md:gap-4 md:px-5">
+                <li key={campaign.id} className={cn("grid gap-3 px-4 py-4 transition-colors hover:bg-canvas/60 md:items-center md:gap-4 md:px-5", columns)}>
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent">
                       <GlobeSimple size={17} aria-hidden="true" />
@@ -743,11 +739,13 @@ function CampaignsList({
                       <p className="mt-1 truncate text-xs text-muted">{kindLabel(campaign.kind)}</p>
                     </div>
                   </div>
-                  <div className="min-w-0 md:block">
-                    <span className="text-[10px] uppercase text-muted md:hidden">Project · </span>
-                    <span className="truncate text-xs font-medium">{campaign.projectName}</span>
-                    {campaign.projectStatus === "archived" && <span className="ml-2 text-[10px] text-muted">Archived project</span>}
-                  </div>
+                  {!fixedProject && (
+                    <div className="min-w-0 md:block">
+                      <span className="text-[10px] uppercase text-muted md:hidden">Project · </span>
+                      <span className="truncate text-xs font-medium">{campaign.projectName}</span>
+                      {campaign.projectStatus === "archived" && <span className="ml-2 text-[10px] text-muted">Archived project</span>}
+                    </div>
+                  )}
                   <div>
                     <span className="text-[10px] uppercase text-muted md:hidden">Status · </span>
                     <Badge className={statusTone(campaign.status)}>{campaign.status}</Badge>
@@ -805,16 +803,22 @@ function CampaignsList({
       ) : (
         <div className="mt-4 rounded-container border border-dashed border-line bg-surface-raised p-6">
           <p className="text-sm font-semibold">
-            {search || projectId || status !== "active" ? "No campaigns match these filters" : "No campaigns yet"}
+            {filtered ? "No campaigns match these filters" : fixedProject ? "Start this project's first campaign" : "No campaigns yet"}
           </p>
           <p className="mt-1 text-sm leading-6 text-muted">
-            {search || projectId || status !== "active"
+            {filtered
               ? "Adjust the search or filters to find campaigns."
-              : "Start a project launch to create its first campaign."}
+              : fixedProject
+                ? "Tell us what's new and we'll write the posts and a matching visual."
+                : "Start a project launch to create its first campaign."}
           </p>
-          {!search && !projectId && status === "active" && (
+          {!filtered && (!fixedProject || fixedProject.active) && (
             <Button asChild size="sm" className="mt-4">
-              <Link href="/studio?new=1"><Plus size={16} weight="bold" /> Start a launch</Link>
+              {fixedProject ? (
+                <Link href={`/studio?projectId=${encodeURIComponent(fixedProject.id)}&newCampaign=1`}><Plus size={16} weight="bold" /> New campaign</Link>
+              ) : (
+                <Link href="/studio?new=1"><Plus size={16} weight="bold" /> Start a launch</Link>
+              )}
             </Button>
           )}
         </div>
