@@ -17,7 +17,7 @@ describe("waitForCompletedJob", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ job: { id: "job-1", status: "completed", progress: 100, result: { ok: true } } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = waitForCompletedJob("job-1", undefined, 60_000);
+    const result = waitForCompletedJob("job-1");
     await vi.advanceTimersByTimeAsync(7_000);
 
     await expect(result).resolves.toEqual({ ok: true });
@@ -33,7 +33,7 @@ describe("waitForCompletedJob", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ job: { id: "job-1", status: "completed", progress: 100, result: { ok: true } } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = waitForCompletedJob("job-1", undefined, 90_000);
+    const result = waitForCompletedJob("job-1");
     await vi.advanceTimersByTimeAsync(5_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -54,7 +54,7 @@ describe("waitForCompletedJob", () => {
       job: { id: "job-1", status: completed ? "completed" : "generating", progress: completed ? 100 : 35, result: { ok: true } },
     })));
     vi.stubGlobal("fetch", fetchMock);
-    const result = waitForCompletedJob("job-1", undefined, 90_000);
+    const result = waitForCompletedJob("job-1");
     const onComplete = vi.fn();
     void result.then(onComplete);
     await vi.advanceTimersByTimeAsync(32_000);
@@ -64,20 +64,41 @@ describe("waitForCompletedJob", () => {
     await expect(result).resolves.toEqual({ ok: true });
   });
 
-  it("stops after the configured duration with an accurate resumable error", async () => {
+  it("keeps polling a long-running job instead of giving up", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      job: { id: "job-1", status: "generating", progress: 35 },
-    }), { status: 200 }));
+    let completed = false;
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      job: { id: "job-1", status: completed ? "completed" : "rendering", progress: completed ? 100 : 15, result: { ok: true } },
+    })));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = waitForCompletedJob("job-1", undefined, 20_000);
-    const assertion = expect(result).rejects.toMatchObject({
-      retryable: true,
-      message: "Status checks stopped after 20 seconds. The job may still be running. Check its status again to resume without starting it over.",
-    });
-    await vi.advanceTimersByTimeAsync(20_000);
+    const result = waitForCompletedJob("job-1");
+    const onSettled = vi.fn();
+    void result.then(onSettled, onSettled);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(onSettled).not.toHaveBeenCalled();
+
+    completed = true;
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(result).resolves.toEqual({ ok: true });
+  });
+
+  it("stops polling when its signal is aborted", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      job: { id: "job-1", status: "queued", progress: 0 },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    const result = waitForCompletedJob("job-1", undefined, { signal: controller.signal });
+    const assertion = expect(result).rejects.toBeDefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    const calls = fetchMock.mock.calls.length;
+    controller.abort();
     await assertion;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
   });
 
   it("stops polling on an expired session but leaves the job resumable", async () => {
@@ -85,7 +106,7 @@ describe("waitForCompletedJob", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Sign in required." }), { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(waitForCompletedJob("job-1", undefined, 60_000)).rejects.toMatchObject({
+    await expect(waitForCompletedJob("job-1")).rejects.toMatchObject({
       retryable: true,
       message: "Sign in required.",
     });

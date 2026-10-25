@@ -6,7 +6,6 @@ export type DurableJob = {
   error_message?: string | null;
 };
 
-export const CAMPAIGN_JOB_MAX_POLL_DURATION_MS = 60 * 60 * 1_000;
 const JOB_STATUS_REQUEST_TIMEOUT_MS = 15_000;
 const JOB_STATUS_POLL_INTERVAL_MS = 5_000;
 const JOB_STATUS_MAX_POLL_INTERVAL_MS = 10_000;
@@ -33,8 +32,19 @@ export function jobError(value: unknown, fallback: string) {
   return typeof error === "string" && error.length > 0 ? error : fallback;
 }
 
-function pause(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+function pause(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function retryAfterMs(response: Response) {
@@ -48,29 +58,19 @@ function retryAfterMs(response: Response) {
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
 }
 
-function durationLabel(durationMs: number) {
-  if (durationMs < 60_000) {
-    const seconds = Math.max(1, Math.ceil(durationMs / 1_000));
-    return `${seconds} second${seconds === 1 ? "" : "s"}`;
-  }
-  const minutes = Math.max(1, Math.ceil(durationMs / 60_000));
-  if (minutes >= 60 && minutes % 60 === 0) {
-    const hours = minutes / 60;
-    return `${hours} hour${hours === 1 ? "" : "s"}`;
-  }
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
-}
-
+// Polls until the job completes or fails. There is deliberately no client-side
+// deadline: workers fail jobs after their retries, undeliverable jobs are
+// dead-lettered as failed, and stale generations are failed by the server, so
+// every job reaches a terminal status. Pass a signal to stop polling early.
 export async function waitForCompletedJob(
   jobId: string,
   onUpdate?: (job: DurableJob) => void,
-  maxDurationMs = 3 * 60 * 1_000,
   {
     pollIntervalMs = JOB_STATUS_POLL_INTERVAL_MS,
     maxPollIntervalMs = JOB_STATUS_MAX_POLL_INTERVAL_MS,
-  }: { pollIntervalMs?: number; maxPollIntervalMs?: number } = {},
+    signal,
+  }: { pollIntervalMs?: number; maxPollIntervalMs?: number; signal?: AbortSignal } = {},
 ) {
-  const deadline = Date.now() + maxDurationMs;
   let firstAttempt = true;
   let retryDelayMs = JOB_STATUS_RETRY_DELAY_MS;
   let nextPollDelayMs = pollIntervalMs;
@@ -78,18 +78,14 @@ export async function waitForCompletedJob(
   let lastJobProgress: number | undefined;
   let unchangedPollCount = 0;
 
-  while (Date.now() < deadline) {
-    if (!firstAttempt) {
-      await pause(Math.min(nextPollDelayMs, Math.max(0, deadline - Date.now())));
-    }
+  for (;;) {
+    if (!firstAttempt) await pause(nextPollDelayMs, signal);
     firstAttempt = false;
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) break;
+    signal?.throwIfAborted();
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      Math.min(JOB_STATUS_REQUEST_TIMEOUT_MS, remainingMs),
-    );
+    const timeout = setTimeout(() => controller.abort(), JOB_STATUS_REQUEST_TIMEOUT_MS);
+    const abortRequest = () => controller.abort();
+    signal?.addEventListener("abort", abortRequest, { once: true });
     let response: Response;
     let data: { job?: DurableJob; error?: string };
     try {
@@ -99,13 +95,13 @@ export async function waitForCompletedJob(
       });
       data = (await response.json()) as { job?: DurableJob; error?: string };
     } catch {
-      clearTimeout(timeout);
-      if (Date.now() >= deadline) break;
+      signal?.throwIfAborted();
       nextPollDelayMs = retryDelayMs;
       retryDelayMs = Math.min(retryDelayMs * 2, JOB_STATUS_MAX_RETRY_DELAY_MS);
       continue;
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortRequest);
     }
 
     if (!response.ok) {
@@ -147,9 +143,4 @@ export async function waitForCompletedJob(
       maxPollIntervalMs,
     );
   }
-
-  throw new DurableJobPollingError(
-    `Status checks stopped after ${durationLabel(maxDurationMs)}. The job may still be running. Check its status again to resume without starting it over.`,
-    true,
-  );
 }

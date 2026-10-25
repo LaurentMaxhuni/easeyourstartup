@@ -43,7 +43,6 @@ import type { DesignAsset } from "@/lib/design-studio/document";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 import {
-  CAMPAIGN_JOB_MAX_POLL_DURATION_MS,
   SCAN_JOB_POLLING,
   isRetryableJobPollingError,
   jobError,
@@ -583,6 +582,7 @@ export function StudioShell({
   useEffect(() => {
     if (!hydrated || !jobId || pollingJobId.current === jobId) return;
     let cancelled = false;
+    const polling = new AbortController();
     pollingJobId.current = jobId;
     void waitForCompletedJob(
       jobId,
@@ -597,10 +597,7 @@ export function StudioShell({
             );
           }
         : jobType === "scan" ? (job) => setScanStage(scanStageForJob(job)) : undefined,
-      jobType === "generate" || jobType === "regenerate"
-        ? CAMPAIGN_JOB_MAX_POLL_DURATION_MS
-        : undefined,
-      jobType === "scan" ? SCAN_JOB_POLLING : undefined,
+      { ...(jobType === "scan" ? SCAN_JOB_POLLING : {}), signal: polling.signal },
     )
       .then(async (result) => {
         if (cancelled) return;
@@ -673,9 +670,13 @@ export function StudioShell({
         }
       })
       .finally(() => {
-        if (pollingJobId.current === jobId) pollingJobId.current = null;
+        if (!cancelled && pollingJobId.current === jobId) pollingJobId.current = null;
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      polling.abort();
+      if (pollingJobId.current === jobId) pollingJobId.current = null;
+    };
   }, [hydrated, jobId, jobType, projectId]);
 
   useEffect(() => {
@@ -897,7 +898,6 @@ export function StudioShell({
           const result = await waitForCompletedJob(
             queued.job.id,
             (job) => setScanStage(scanStageForJob(job)),
-            undefined,
             SCAN_JOB_POLLING,
           );
           data = parseDurableJobResult(result, scanJobResultSchema).scan;
@@ -1056,7 +1056,7 @@ export function StudioShell({
                   ? "visuals"
                   : "writing",
             );
-          }, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
+          });
           data = parseDurableJobResult(result, generateJobResultSchema).generation;
         } else {
           const operationId = crypto.randomUUID();
@@ -1091,7 +1091,7 @@ export function StudioShell({
                   ? "visuals"
                   : "writing",
             );
-          }, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
+          });
           data = parseDurableJobResult(result, generateJobResultSchema).generation;
         }
       } else {
@@ -1168,7 +1168,7 @@ export function StudioShell({
       pollingJobId.current = activeJobId;
       setJobId(activeJobId);
       setJobType("regenerate");
-      const result = await waitForCompletedJob(activeJobId, undefined, CAMPAIGN_JOB_MAX_POLL_DURATION_MS);
+      const result = await waitForCompletedJob(activeJobId);
       const generation = parseDurableJobResult(result, generateJobResultSchema).generation;
       const replacement = generation.outputs.find((output) => output.channel === channel);
       if (!replacement) throw new Error("The provider returned no replacement for this channel.");

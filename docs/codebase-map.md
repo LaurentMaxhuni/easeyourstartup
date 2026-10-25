@@ -56,6 +56,9 @@ asset project with its own instructions, not the SaaS runtime.
 - `StudioShell` owns the browser workflow. It queues scans and generation through
   `/api/jobs/scan` and `/api/jobs/generate`, polls `/api/jobs/[id]`, and resumes
   saved project/campaign jobs. Scanning also has a direct `/api/scan` path.
+  Polling has no client-side deadline: it runs until the job completes or fails,
+  relying on the server (worker retries, outbox dead-lettering, stale-generation
+  cleanup) to end every job. Pass an `AbortSignal` to stop it early.
 - Authenticated requests resolve server-side workspace context. Project and
   campaign reads/writes must remain scoped to that workspace.
 - Inngest functions scan/enrich sites, generate campaigns, regenerate individual
