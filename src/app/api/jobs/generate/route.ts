@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthenticationRequiredError } from "@/lib/auth/server";
+import { shortCampaignTitle } from "@/lib/campaign-title";
 import {
   generateCampaignSchema,
   type GenerateCampaignInput,
@@ -163,7 +164,7 @@ export async function POST(request: Request) {
           ${context.workspaceId},
           ${input.projectId},
           ${campaign.kind},
-          ${campaign.updateDetails.slice(0, 180)},
+          ${shortCampaignTitle(campaign.updateDetails)},
           'queued',
           ${JSON.stringify(storedGenerationInput)}::jsonb,
           ${campaign.angle ? JSON.stringify(campaign.angle) : null}::jsonb,

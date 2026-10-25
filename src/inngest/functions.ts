@@ -25,6 +25,7 @@ import {
 } from "@/lib/job-results";
 import { failStaleGenerationJobs } from "@/lib/server/stale-generation-jobs";
 import { failStaleScanAndExportJobs } from "@/lib/server/stale-jobs";
+import { automaticCampaignTitles, shortCampaignTitle } from "@/lib/campaign-title";
 import { generateStudioDesign, dispatchQueuedStudioDesigns } from "@/lib/server/design-studio/jobs";
 
 function database() {
@@ -259,6 +260,19 @@ export const generateCampaignAssets = inngest.createFunction(
         throw new NonRetriableError("Campaign generation is no longer active.");
       }
     });
+
+    // Name the campaign after its generated headline unless the person renamed it.
+    const headline = generated.creativeDirections[0]?.headline;
+    if (headline) {
+      await step.run("name-campaign-from-headline", async () => {
+        await database()`
+          update public.campaigns
+          set title = ${shortCampaignTitle(headline)}
+          where id = ${campaignId} and workspace_id = ${workspaceId}
+            and title = any(${automaticCampaignTitles(campaign.brief.updateDetails)}::text[])
+        `;
+      });
+    }
 
     return { campaignId, channelCount: generated.outputs.length };
   },
