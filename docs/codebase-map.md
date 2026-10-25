@@ -27,6 +27,13 @@ asset project with its own instructions, not the SaaS runtime.
 - `pnpm dev:inngest`: manual worker. `pnpm db:migrate`: applies pending migrations.
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`: CI verification sequence.
 - `pnpm launch:check`: validates deployment configuration before enabling paid usage.
+- `pnpm ai:check`: sends one real request per AI task to every configured
+  provider (no failover) and fails when any task has no working provider; it
+  also flags unlisted model names and free-quota models.
+- AI text requests (`requestStructuredAiJson`) fail over across every
+  configured provider (`getOpenAIProviderConfigs`): `AI_PROVIDER` leads,
+  `AI_PROVIDER_ORDER` ranks the rest, otherwise OpenRouter free models go last.
+  Free tiers cannot carry one full campaign: Groq free (8k TPM) rate-limits it.
 - Use `rtk` for supported Git/search/build/test commands, as required by project guidance.
 - Read relevant installed Next.js guides in `node_modules/next/dist/docs/` before writing Next.js code.
 

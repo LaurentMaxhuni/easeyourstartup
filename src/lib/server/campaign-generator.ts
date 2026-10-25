@@ -253,6 +253,8 @@ export type AiRunMetadata = {
   promptVersion: string;
   latencyMs: number;
   success: boolean;
+  // Set when earlier providers in the chain failed first.
+  failoverAttempt?: number;
 };
 
 const AI_TASK_ENV_SUFFIX: Record<AiTask, string> = {
@@ -269,9 +271,10 @@ export type OpenAIProviderEnvironment = Record<string, string | undefined>;
 export function getStructuredAiTimeoutMs(
   task: AiTask,
   environment: OpenAIProviderEnvironment = process.env,
+  providerConfig?: { baseURL?: string },
 ) {
   if (task === "brandTextModel") return 8_000;
-  const config = getOpenAIProviderConfig(environment, task);
+  const config = providerConfig ?? getOpenAIProviderConfig(environment, task);
   const usesNvidiaNim = Boolean(
     config?.baseURL?.includes("integrate.api.nvidia.com") ||
       (environment.NVIDIA_NIM_BASE_URL?.trim() &&
@@ -397,6 +400,38 @@ export function getOpenAIProviderConfig(
   };
 }
 
+const AI_PROVIDER_IDS = ["nvidia-nim", "openrouter", "groq", "openai"] as const;
+
+function isFreeOpenRouterConfig(config: { baseURL?: string; model: string }) {
+  return (config.baseURL?.includes("openrouter.ai") ?? false) && /^(?:openrouter\/free|.+:free)$/i.test(config.model);
+}
+
+// Every configured provider for a task, in the order requests should try them.
+// AI_PROVIDER leads and AI_PROVIDER_ORDER can rank the rest; otherwise the
+// historical precedence applies, except OpenRouter's free models go last
+// because their small daily quota runs out.
+export function getOpenAIProviderConfigs(
+  environment: OpenAIProviderEnvironment = process.env,
+  task?: AiTask,
+) {
+  const explicit = environment.AI_PROVIDER?.trim().toLowerCase();
+  if (explicit && !(AI_PROVIDER_IDS as readonly string[]).includes(explicit)) return [];
+  const ranked = (environment.AI_PROVIDER_ORDER ?? "")
+    .split(",")
+    .map((id) => id.trim().toLowerCase())
+    .filter((id) => (AI_PROVIDER_IDS as readonly string[]).includes(id));
+  const candidates = [...new Set([explicit, ...ranked, ...AI_PROVIDER_IDS].filter((id): id is string => Boolean(id)))];
+  const configs: Array<NonNullable<ReturnType<typeof getOpenAIProviderConfig>>> = [];
+  for (const provider of candidates) {
+    const config = getOpenAIProviderConfig({ ...environment, AI_PROVIDER: provider }, task);
+    // The same key can be reachable under two names (a Groq key in OPENAI_API_KEY).
+    if (!config || configs.some((known) => known.apiKey === config.apiKey && known.baseURL === config.baseURL)) continue;
+    configs.push(config);
+  }
+  if (explicit || ranked.length > 0) return configs;
+  return [...configs.filter((config) => !isFreeOpenRouterConfig(config)), ...configs.filter(isFreeOpenRouterConfig)];
+}
+
 type OpenAIProvider = "responses" | "chat";
 export type AiProvider =
   | "groq"
@@ -428,12 +463,32 @@ function configuredOpenRouterFallbackModels(
   return [...new Set(models)];
 }
 
+type ProviderRequestOptions = {
+  timeoutMs?: number | ((config: { baseURL?: string }) => number);
+  maxRetries?: number;
+};
+
 export function getOpenAIProviderSetup(
   task?: AiTask,
-  requestOptions?: { timeoutMs?: number; maxRetries?: number },
+  requestOptions?: ProviderRequestOptions,
 ) {
-  const config = getOpenAIProviderConfig(process.env, task);
-  if (!config) return null;
+  return getOpenAIProviderSetups(task, requestOptions)[0] ?? null;
+}
+
+export function getOpenAIProviderSetups(
+  task?: AiTask,
+  requestOptions?: ProviderRequestOptions,
+) {
+  return getOpenAIProviderConfigs(process.env, task).map((config) => providerSetupFor(config, requestOptions));
+}
+
+export function providerSetupFor(
+  config: NonNullable<ReturnType<typeof getOpenAIProviderConfig>>,
+  requestOptions?: ProviderRequestOptions,
+) {
+  const timeoutMs = typeof requestOptions?.timeoutMs === "function"
+    ? requestOptions.timeoutMs(config)
+    : requestOptions?.timeoutMs;
   const isGroq = config.baseURL?.includes("api.groq.com") ?? false;
   const isOpenRouter = config.baseURL?.includes("openrouter.ai") ?? false;
   const isNvidiaNim =
@@ -459,7 +514,7 @@ export function getOpenAIProviderSetup(
     client: new OpenAI({
       apiKey: config.apiKey,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),
-      ...(requestOptions?.timeoutMs ? { timeout: requestOptions.timeoutMs } : {}),
+      ...(timeoutMs ? { timeout: timeoutMs } : {}),
       ...(requestOptions?.maxRetries !== undefined
         ? { maxRetries: requestOptions.maxRetries }
         : {}),
@@ -863,99 +918,114 @@ export async function requestStructuredAiJson<T>({
   promptVersion: string;
   maxCompletionTokens: number;
 }): Promise<{ value: T; metadata: AiRunMetadata }> {
-  const setup = getOpenAIProviderSetup(task, {
-    timeoutMs: getStructuredAiTimeoutMs(task),
+  const setups = getOpenAIProviderSetups(task, {
+    timeoutMs: (config) => getStructuredAiTimeoutMs(task, process.env, config),
     maxRetries: 0,
   });
   const singleAttempt = task === "brandTextModel";
   const startedAt = Date.now();
-  let requestedModel = setup?.model ?? "unconfigured";
-  try {
-    assertAiGenerationEnabled();
-    if (!setup) {
-      throw new Error(
-        "AI generation is not configured. Your existing campaign was preserved.",
-      );
-    }
-
-    let value: T | undefined;
-    let model: string;
-    if (setup.provider === "chat") {
-      const result = await requestChatJsonWithMetadata(
-        singleAttempt ? { ...setup, fallbackModels: [] } : setup,
-        messages,
-        maxCompletionTokens,
-        (raw) => schema.parse(raw),
-        { responseSchema: schema, schemaName,
-          ...(singleAttempt ? { retryMalformedResponse: false, retryTransientProviderError: false } : {}),
-        },
-        (attemptModel) => {
-          requestedModel = attemptModel;
-        },
-        false,
-      );
-      value = result.value;
-      model = result.model;
-    } else {
-      let attemptMessages = messages;
-      let responseModel = setup.model;
-      let parsed = false;
-      for (let attempt = 0; attempt < (singleAttempt ? 1 : 2); attempt += 1) {
-        try {
-          const response = await setup.client.responses.parse({
-            model: setup.model,
-            input: attemptMessages,
-            max_output_tokens: maxCompletionTokens,
-            text: { format: zodTextFormat(schema, schemaName) },
-          });
-          value = schema.parse(response.output_parsed);
-          responseModel =
-            typeof response.model === "string" && response.model.trim()
-              ? response.model
-              : setup.model;
-          parsed = true;
-          break;
-        } catch (error) {
-          if (attempt > 0 || !isStructuredJsonFailure(error)) throw error;
-          attemptMessages = [
-            ...messages,
-            { role: "user", content: JSON_CORRECTION_PROMPT },
-          ];
-        }
-      }
-      if (!parsed || value === undefined) {
-        throw new Error("The provider returned no usable structured output.");
-      }
-      model = responseModel;
-    }
-
-    if (value === undefined) {
-      throw new Error("The provider returned no usable structured output.");
-    }
-
-    const metadata: AiRunMetadata = {
-      task,
-      provider: setup.providerName,
-      model,
-      promptVersion,
-      latencyMs: Date.now() - startedAt,
-      success: true,
-    };
-    console.info(`[ai-run] ${JSON.stringify(metadata)}`);
-    return { value, metadata };
-  } catch (error) {
-    const metadata = {
-      task,
-      provider: setup?.providerName ?? "unconfigured",
-      model: requestedModel,
-      promptVersion,
-      latencyMs: Date.now() - startedAt,
-      success: false,
-      error: publicProviderError(error),
-    };
-    console.error(`[ai-run] ${JSON.stringify(metadata)}`);
+  if (!isAiGenerationEnabled() || setups.length === 0) {
+    const error = new Error(
+      isAiGenerationEnabled()
+        ? "AI generation is not configured. Your existing campaign was preserved."
+        : "AI generation is temporarily disabled. Your saved work is preserved; please retry later.",
+    );
+    console.error(`[ai-run] ${JSON.stringify({
+      task, provider: setups[0]?.providerName ?? "unconfigured", model: setups[0]?.model ?? "unconfigured",
+      promptVersion, latencyMs: 0, success: false, error: publicProviderError(error),
+    })}`);
     throw error;
   }
+
+  // A provider that is down, rate limited, out of quota, or returning unusable
+  // output hands the request to the next configured provider.
+  let lastError: unknown;
+  for (const [attempt, setup] of setups.entries()) {
+    const attemptStartedAt = Date.now();
+    let requestedModel = setup.model;
+    try {
+      const { value, model } = await requestStructuredAiJsonFrom(setup, {
+        messages, schema, schemaName, maxCompletionTokens, singleAttempt,
+        onAttemptModel: (attemptModel) => { requestedModel = attemptModel; },
+      });
+      const metadata: AiRunMetadata = {
+        task,
+        provider: setup.providerName,
+        model,
+        promptVersion,
+        latencyMs: Date.now() - startedAt,
+        success: true,
+        ...(attempt > 0 ? { failoverAttempt: attempt } : {}),
+      };
+      console.info(`[ai-run] ${JSON.stringify(metadata)}`);
+      return { value, metadata };
+    } catch (error) {
+      lastError = error;
+      console.error(`[ai-run] ${JSON.stringify({
+        task,
+        provider: setup.providerName,
+        model: requestedModel,
+        promptVersion,
+        latencyMs: Date.now() - attemptStartedAt,
+        success: false,
+        error: publicProviderError(error),
+        ...(attempt < setups.length - 1 ? { failingOverTo: setups[attempt + 1].providerName } : {}),
+      })}`);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("The provider returned no usable structured output.");
+}
+
+export async function requestStructuredAiJsonFrom<T>(
+  setup: ReturnType<typeof providerSetupFor>,
+  {
+    messages,
+    schema,
+    schemaName,
+    maxCompletionTokens,
+    singleAttempt,
+    onAttemptModel,
+  }: {
+    messages: StructuredAiMessage[];
+    schema: z.ZodType<T>;
+    schemaName: string;
+    maxCompletionTokens: number;
+    singleAttempt: boolean;
+    onAttemptModel: (model: string) => void;
+  },
+): Promise<{ value: T; model: string }> {
+  if (setup.provider === "chat") {
+    return requestChatJsonWithMetadata(
+      singleAttempt ? { ...setup, fallbackModels: [] } : setup,
+      messages,
+      maxCompletionTokens,
+      (raw) => schema.parse(raw),
+      { responseSchema: schema, schemaName,
+        ...(singleAttempt ? { retryMalformedResponse: false, retryTransientProviderError: false } : {}),
+      },
+      onAttemptModel,
+      false,
+    );
+  }
+  let attemptMessages = messages;
+  for (let attempt = 0; attempt < (singleAttempt ? 1 : 2); attempt += 1) {
+    try {
+      const response = await setup.client.responses.parse({
+        model: setup.model,
+        input: attemptMessages,
+        max_output_tokens: maxCompletionTokens,
+        text: { format: zodTextFormat(schema, schemaName) },
+      });
+      return {
+        value: schema.parse(response.output_parsed),
+        model: typeof response.model === "string" && response.model.trim() ? response.model : setup.model,
+      };
+    } catch (error) {
+      if (attempt > 0 || singleAttempt || !isStructuredJsonFailure(error)) throw error;
+      attemptMessages = [...messages, { role: "user", content: JSON_CORRECTION_PROMPT }];
+    }
+  }
+  throw new Error("The provider returned no usable structured output.");
 }
 
 const LOW_SIGNAL_CLAIM_PATTERN =

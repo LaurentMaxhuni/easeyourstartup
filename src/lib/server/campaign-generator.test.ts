@@ -7,6 +7,7 @@ import {
   autoCurateClaims,
   generateDeterministicCampaign,
   getOpenAIProviderConfig,
+  getOpenAIProviderConfigs,
   getOpenAIProviderSetup,
   getStructuredAiTimeoutMs,
   isAiGenerationEnabled,
@@ -1142,5 +1143,97 @@ describe("OpenAI-compatible provider configuration", () => {
       ["x"],
       "openrouter",
     )).toThrow();
+  });
+});
+
+describe("AI provider failover", () => {
+  const groqAndFreeOpenRouter = {
+    OPENROUTER_API_KEY: "sk-or-v1-test",
+    OPENROUTER_MODEL: "openrouter/free",
+    OPENAI_API_KEY: "gsk_test",
+    OPENAI_BASE_URL: "https://api.groq.com/openai/v1",
+    OPENAI_MODEL: "openai/gpt-oss-120b",
+  };
+
+  function chatCompletion(content: string, model: string) {
+    return new Response(JSON.stringify({
+      id: "chatcmpl-test", object: "chat.completion", created: 1, model,
+      choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+
+  it("lists every configured provider once, with free OpenRouter models last", () => {
+    const configs = getOpenAIProviderConfigs(groqAndFreeOpenRouter, "copyModel");
+    expect(configs.map((config) => config.baseURL)).toEqual([
+      "https://api.groq.com/openai/v1",
+      "https://openrouter.ai/api/v1",
+    ]);
+  });
+
+  it("keeps a paid OpenRouter model in its usual first place", () => {
+    const configs = getOpenAIProviderConfigs({ ...groqAndFreeOpenRouter, OPENROUTER_MODEL: "anthropic/claude-sonnet-5.5" }, "copyModel");
+    expect(configs[0]?.baseURL).toBe("https://openrouter.ai/api/v1");
+  });
+
+  it("follows AI_PROVIDER and AI_PROVIDER_ORDER exactly", () => {
+    expect(getOpenAIProviderConfigs({ ...groqAndFreeOpenRouter, AI_PROVIDER: "openrouter" })[0]?.baseURL)
+      .toBe("https://openrouter.ai/api/v1");
+    expect(getOpenAIProviderConfigs({ ...groqAndFreeOpenRouter, AI_PROVIDER_ORDER: "openrouter,groq" }).map((config) => config.baseURL))
+      .toEqual(["https://openrouter.ai/api/v1", "https://api.groq.com/openai/v1"]);
+    expect(getOpenAIProviderConfigs({ ...groqAndFreeOpenRouter, AI_PROVIDER: "unknown" })).toEqual([]);
+  });
+
+  it("hands a failed request to the next provider", async () => {
+    for (const [name, value] of Object.entries({ ...groqAndFreeOpenRouter, AI_PROVIDER_ORDER: "openrouter,groq" })) {
+      vi.stubEnv(name, value);
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).includes("openrouter.ai")
+      ? new Response(JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day" } }), {
+          status: 429, headers: { "content-type": "application/json" },
+        })
+      : chatCompletion('{"answer":"from groq"}', "openai/gpt-oss-120b"));
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await campaignGenerator.requestStructuredAiJson({
+        task: "copyModel",
+        messages: [{ role: "system", content: "Return JSON." }, { role: "user", content: "Hi" }],
+        schema: z.object({ answer: z.string() }),
+        schemaName: "failover_test",
+        promptVersion: "test",
+        maxCompletionTokens: 200,
+      });
+      expect(result.value).toEqual({ answer: "from groq" });
+      expect(result.metadata).toMatchObject({ provider: "groq", success: true, failoverAttempt: 1 });
+      expect(error.mock.calls.flat().join(" ")).toContain('"failingOverTo":"groq"');
+      expect(info).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("reports the last provider's error when every provider fails", async () => {
+    for (const [name, value] of Object.entries(groqAndFreeOpenRouter)) vi.stubEnv(name, value);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "upstream down" } }), {
+      status: 400, headers: { "content-type": "application/json" },
+    })));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(campaignGenerator.requestStructuredAiJson({
+        task: "copyModel",
+        messages: [{ role: "user", content: "Hi" }],
+        schema: z.object({ answer: z.string() }),
+        schemaName: "failover_test",
+        promptVersion: "test",
+        maxCompletionTokens: 200,
+      })).rejects.toThrow("upstream down");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
   });
 });
