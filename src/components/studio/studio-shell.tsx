@@ -59,6 +59,7 @@ import {
 import { OUTFIT_FONT_FAMILY } from "@/lib/typography";
 import { normalizePublicWebsiteUrl } from "@/lib/url-input";
 import { campaignDraftWithDefaults } from "@/lib/studio/campaign-defaults";
+import { capturePreviewUrl } from "@/lib/studio/capture-preview";
 import {
   appendStudioConceptsToHistory,
   areStudioConceptsFromJob,
@@ -1524,9 +1525,9 @@ export function StudioShell({
       setStep("concepts");
 
       const references: DesignAsset[] = [];
-      const capture = scan.desktopCaptureUrl || scanPreviewUrl || composition.screenshotUrl;
+      const capture = capturePreviewUrl(scan.desktopCaptureUrl || scanPreviewUrl || composition.screenshotUrl, projectId);
       let captureUnavailable = !capture || capture === EMPTY_CANVAS_IMAGE;
-      if (!captureUnavailable) {
+      if (capture && !captureUnavailable) {
         try {
           references.push(await importDesignAsset(capture, "Website capture for visual analysis only. Do not place this image in the campaign design.", "reference"));
           try {
@@ -2230,13 +2231,7 @@ export function StudioShell({
         warnings: ["Scan a product before creating a launch kit."],
       };
 
-  let savedScanPreviewUrl = scan?.desktopCaptureUrl ?? null;
-  if (savedScanPreviewUrl?.startsWith("/api/capture?") && projectId) {
-    const captureQuery = new URLSearchParams(savedScanPreviewUrl.slice("/api/capture?".length));
-    captureQuery.set("projectId", projectId);
-    captureQuery.set("preview", "1");
-    savedScanPreviewUrl = `/api/capture?${captureQuery}`;
-  }
+  const savedScanPreviewUrl = capturePreviewUrl(scan?.desktopCaptureUrl ?? null, projectId);
 
   if (
     step === "campaign" &&

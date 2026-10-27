@@ -210,6 +210,8 @@ asset project with its own instructions, not the SaaS runtime.
   with the draft and carried into campaign generation. Earlier concept references
   are retained in bounded history; partial job results stay locked while retryable.
   Switching concepts after generation changes the visual, not existing channel copy.
+  Concept captures use the viewport-only `preview=1` route, with the active
+  project ID, to avoid unnecessary full-page capture work.
 - `reference` assets guide vision analysis only; pipeline output validation
   rejects them from image layers, including on edits.
 - `renderer.ts` uses Playwright Core with local Chromium or a dedicated CDP /
