@@ -142,7 +142,7 @@ export function CampaignConcepts({
                       type="radio"
                       name="campaign-concept"
                       value={concept.id}
-                      aria-label={`Select ${concept.name}`}
+                      aria-label={`${selected ? "Selected" : "Choose"} ${concept.name}`}
                       checked={selected}
                       disabled={!ready}
                       onChange={() => onSelect(concept.id)}
@@ -151,7 +151,7 @@ export function CampaignConcepts({
                     <span className="sr-only">Select {concept.name}</span>
                     {selected ? "Selected" : "Choose"}
                   </label>
-                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit ${concept.name}`} disabled={!ready} onClick={() => onEdit(concept.id)}>
+                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit concept: ${concept.name}`} disabled={!ready} onClick={() => onEdit(concept.id)}>
                     Edit concept
                   </Button>
                 </div>

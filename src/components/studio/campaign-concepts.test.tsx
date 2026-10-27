@@ -32,8 +32,8 @@ describe("CampaignConcepts", () => {
     expect(markup).toContain('aria-label="Preview of Launch story poster"');
     expect(markup).toContain('aria-label="Preview of Customer proof poster"');
     expect(markup).toContain('aria-label="Preview of Feature spotlight poster"');
-    expect(markup).toContain('aria-label="Select Customer proof"');
-    expect(markup).toContain('aria-label="Edit Customer proof"');
+    expect(markup).toContain('aria-label="Selected Customer proof"');
+    expect(markup).toContain('aria-label="Edit concept: Customer proof"');
     expect(markup).toContain('name="campaign-concept"');
     expect(markup).toMatch(/<input id="proof-select"[^>]*checked=""/);
     expect(markup).toContain("Customer proof message");
@@ -70,7 +70,7 @@ describe("CampaignConcepts", () => {
 
     expect(selectedRadio).toContain('checked=""');
     expect(selectedRadio).not.toContain("disabled=");
-    expect(markup).toMatch(/<button[^>]*aria-label="Edit Customer proof"[^>]*>Edit concept<\/button>/);
+    expect(markup).toMatch(/<button[^>]*aria-label="Edit concept: Customer proof"[^>]*>Edit concept<\/button>/);
     expect(markup).toContain("Use this concept in your campaign");
     expect(markup).toContain("saved channel copy stays unchanged");
     expect(markup).not.toContain("Generate posts");
