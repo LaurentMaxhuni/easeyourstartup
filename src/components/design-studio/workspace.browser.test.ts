@@ -93,7 +93,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("design workspa
   });
   it("persists manual text, supports undo/redo, provider choice and incremental AI editing", async () => {
     await page.goto(origin, { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "Save", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Saved", exact: true }).waitFor({ state: "visible" });
     await page.locator('[data-node-id="headline"]').click();
     await page.getByLabel("Text", { exact: true }).fill("A launch worth sharing.");
     await page.getByRole("button", { name: "Save", exact: true }).click();
