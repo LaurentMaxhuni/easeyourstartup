@@ -1,11 +1,25 @@
 import "server-only";
 
 import { createHash, createHmac } from "node:crypto";
-import { requireDatabase } from "@/lib/server/database";
+import { Pool } from "@neondatabase/serverless";
 
 const S3_SETTINGS = ["S3_ENDPOINT", "S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"] as const;
-// Database storage keeps bytes in Postgres; base64 transfer adds a third on top.
 const MAX_DATABASE_OBJECT_BYTES = 20_000_000;
+
+/**
+ * File bytes use a WebSocket connection: the HTTP query driver sends bytea as
+ * hex text, which measured 3-5x slower (about 20 s for a 2 MB file).
+ */
+async function queryObjects<T extends Record<string, unknown>>(text: string, values: unknown[]) {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("Private object storage is not configured: no S3 settings or database.");
+  const pool = new Pool({ connectionString });
+  try {
+    return (await pool.query<T>(text, values)).rows;
+  } finally {
+    await pool.end();
+  }
+}
 
 /** S3 when fully configured; the database when no S3 setting is present. */
 function storageMode(): "s3" | "database" {
@@ -101,11 +115,12 @@ export async function putPrivateObject(key: string, body: Uint8Array, mimeType: 
     if (body.byteLength === 0 || body.byteLength > MAX_DATABASE_OBJECT_BYTES) {
       throw new Error("Files over 20 MB need S3-compatible object storage.");
     }
-    await requireDatabase()`
-      insert into public.private_objects (object_key, mime_type, body)
-      values (${key}, ${mimeType}, pg_catalog.decode(${Buffer.from(body).toString("base64")}, 'base64'))
-      on conflict (object_key) do update set mime_type = excluded.mime_type, body = excluded.body, created_at = now()
-    `;
+    await queryObjects(
+      `insert into public.private_objects (object_key, mime_type, body)
+      values ($1, $2, $3)
+      on conflict (object_key) do update set mime_type = excluded.mime_type, body = excluded.body, created_at = now()`,
+      [key, mimeType, Buffer.from(body)],
+    );
   }
   return { byteSize: body.byteLength, sha256: digest(body) };
 }
@@ -115,11 +130,12 @@ export async function getPrivateObject(key: string) {
     const response = await requestObject("GET", key);
     return new Uint8Array(await response.arrayBuffer());
   }
-  const [row] = await requireDatabase()`
-    select pg_catalog.encode(body, 'base64') as body from public.private_objects where object_key = ${key}
-  `;
-  if (typeof row?.body !== "string") throw new Error("Stored asset was not found.");
-  return new Uint8Array(Buffer.from(row.body, "base64"));
+  const [row] = await queryObjects<{ body: Buffer }>(
+    "select body from public.private_objects where object_key = $1",
+    [key],
+  );
+  if (!Buffer.isBuffer(row?.body)) throw new Error("Stored asset was not found.");
+  return new Uint8Array(row.body);
 }
 
 export async function deletePrivateObject(key: string) {
@@ -127,7 +143,7 @@ export async function deletePrivateObject(key: string) {
     await requestObject("DELETE", key);
     return;
   }
-  await requireDatabase()`delete from public.private_objects where object_key = ${key}`;
+  await queryObjects("delete from public.private_objects where object_key = $1", [key]);
 }
 
 export function createPrivateObjectReadUrl(key: string, expiresInSeconds = 300) {

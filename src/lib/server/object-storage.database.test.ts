@@ -1,27 +1,30 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const objects = vi.hoisted(() => new Map<string, { mimeType: string; body: string }>());
+const objects = vi.hoisted(() => new Map<string, { mimeType: string; body: Buffer }>());
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/server/database", () => ({
-  // Emulates the three private_objects statements; base64 matches PostgreSQL encode/decode.
-  requireDatabase: () => async (strings: TemplateStringsArray, ...values: unknown[]) => {
-    const query = strings.join("?");
-    if (query.includes("insert into public.private_objects")) {
-      objects.set(values[0] as string, { mimeType: values[1] as string, body: values[2] as string });
-      return [];
+vi.mock("@neondatabase/serverless", () => ({
+  // Emulates the three private_objects statements over a pooled connection.
+  Pool: class {
+    async query(text: string, values: unknown[]) {
+      if (text.includes("insert into public.private_objects")) {
+        objects.set(values[0] as string, { mimeType: values[1] as string, body: values[2] as Buffer });
+        return { rows: [] };
+      }
+      if (text.includes("select")) {
+        const stored = objects.get(values[0] as string);
+        return { rows: stored ? [{ body: stored.body }] : [] };
+      }
+      if (text.includes("delete from public.private_objects")) objects.delete(values[0] as string);
+      return { rows: [] };
     }
-    if (query.includes("select")) {
-      const stored = objects.get(values[0] as string);
-      return stored ? [{ body: stored.body }] : [];
-    }
-    if (query.includes("delete from public.private_objects")) objects.delete(values[0] as string);
-    return [];
+    async end() {}
   },
 }));
 import { deletePrivateObject, getPrivateObject, putPrivateObject } from "./object-storage";
 
 beforeEach(() => {
   objects.clear();
+  vi.stubEnv("DATABASE_URL", "postgres://test.invalid/db");
   for (const name of ["S3_ENDPOINT", "S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) vi.stubEnv(name, "");
 });
 afterEach(() => vi.unstubAllEnvs());
