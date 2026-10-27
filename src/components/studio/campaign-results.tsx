@@ -25,6 +25,7 @@ export function CampaignResults({
   exportDownloadUrl,
   onExportPng,
   onExportZip,
+  onReviewConcepts,
 }: {
   outputs: ChannelOutput[];
   claims: BrandClaim[];
@@ -44,13 +45,17 @@ export function CampaignResults({
   exportDownloadUrl: string | null;
   onExportPng: () => Promise<void>;
   onExportZip: () => Promise<void>;
+  onReviewConcepts?: () => void;
 }) {
   const exportDisabled = exportStatus === "loading" || !canExportLaunchKit || !visualReady;
   return (
     <div className="h-full overflow-y-auto bg-canvas">
       <header className="border-b border-line bg-surface-raised px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <Link href="/dashboard" className="text-sm font-semibold text-accent">Back to my projects</Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/dashboard" className="text-sm font-semibold text-accent">Back to my projects</Link>
+            {onReviewConcepts && <button type="button" onClick={onReviewConcepts} className="text-sm font-semibold text-accent underline-offset-2 hover:underline">Review concepts</button>}
+          </div>
           <div className="flex items-center gap-3">
             <p role="status" className="text-xs text-muted">{saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Changes saved" : ""}</p>
             <Button variant="secondary" size="sm" onClick={() => void onSave()} disabled={saveStatus === "saving"}>Save changes</Button>

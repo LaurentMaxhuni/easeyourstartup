@@ -55,6 +55,18 @@ export function campaignDesignCopy(brand: BrandProfile, direction?: CreativeDire
   };
 }
 
+// Carry the founder's latest edited text, rather than the initial AI suggestion,
+// into campaign generation while keeping the original announcement intact.
+export function conceptCampaignDetails(announcement: string, document: DesignDocument, message = ""): string {
+  const text = document.pages[0]?.nodes
+    .filter((node) => node.type === "text" && (node.role === "headline" || node.role === "body" || node.role === "cta"))
+    .map((node) => node.text.trim()).filter(Boolean).join(" | ");
+  const details = [message.trim() && `Concept angle: ${message.trim().slice(0, 300)}`, text && `Edited visual text: ${text.slice(0, 300)}`].filter(Boolean).join("\n");
+  if (!details) return announcement.slice(0, 2000);
+  const suffix = `\n\n${details}`;
+  return announcement.slice(0, 2000 - suffix.length) + suffix;
+}
+
 export function chooseCampaignTemplate(copy: TemplateCopy, kit: BrandKit, assets: DesignAsset[]): LayoutTemplate {
   const byId = (id: string) => LAYOUT_TEMPLATES.find((template) => template.id === id)!;
   if (assets.some((asset) => asset.kind === "image")) return byId("product-hero");

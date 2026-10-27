@@ -1,4 +1,5 @@
-import type { StudioState } from "@/lib/contracts";
+import { MAX_PREVIOUS_STUDIO_CONCEPTS } from "@/lib/contracts";
+import type { StudioConcept, StudioState } from "@/lib/contracts";
 
 type StudioConceptSource = Pick<StudioState, "scan" | "brand" | "draft">;
 
@@ -35,7 +36,23 @@ export function areStudioConceptsStale(
   currentSourceFingerprint: string,
 ) {
   const hasConceptWork = state.concepts.length > 0 || state.designJobId !== null;
-  return hasConceptWork && state.conceptsSourceFingerprint !== currentSourceFingerprint;
+  if (!hasConceptWork) return false;
+  if (state.conceptsSourceFingerprint !== currentSourceFingerprint) return true;
+  if (!state.designJobId || state.concepts.length === 0) return false;
+  return !areStudioConceptsFromJob(state.concepts, state.designJobId);
+}
+
+export function areStudioConceptsFromJob(concepts: StudioConcept[], designJobId: string) {
+  const prefix = `concept-${designJobId.replaceAll("-", "").slice(0, 8)}-`;
+  return concepts.length > 0 && concepts.every((concept) => concept.id.startsWith(prefix));
+}
+
+/** Appends the current set to history, returning null rather than dropping saved references. */
+export function appendStudioConceptsToHistory(
+  state: Pick<StudioState, "concepts" | "previousConcepts">,
+): StudioConcept[] | null {
+  const next = [...state.previousConcepts, ...state.concepts];
+  return next.length <= MAX_PREVIOUS_STUDIO_CONCEPTS ? next : null;
 }
 
 /** Applies a newer autosave revision without letting late callbacks roll it back. */
@@ -48,7 +65,7 @@ export function updateStudioConceptRevision(
   if (!Number.isSafeInteger(revision) || revision < 1) return state;
 
   let changed = false;
-  const concepts = state.concepts.map((concept) => {
+  const update = (concepts: StudioConcept[]) => concepts.map((concept) => {
     if (
       concept.id !== conceptId
       || concept.designId !== designId
@@ -59,6 +76,8 @@ export function updateStudioConceptRevision(
     changed = true;
     return { ...concept, designRevision: revision };
   });
+  const concepts = update(state.concepts);
+  const previousConcepts = update(state.previousConcepts);
 
-  return changed ? { ...state, concepts } : state;
+  return changed ? { ...state, concepts, previousConcepts } : state;
 }

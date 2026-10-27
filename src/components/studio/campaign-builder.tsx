@@ -242,9 +242,9 @@ export function CampaignBuilder({ draft, brand, angles, status, error, resumePen
 
       {error && <div role="alert" className="mt-6 rounded-control border border-danger/30 bg-surface p-4 text-sm text-danger">{error}</div>}
       <StudioActionBar backLabel="Review website details" onBack={onBack}
-        nextLabel={isAuthenticated ? resumePendingJob ? "Check my posts" : status === "error" ? "Try again" : "Create my posts" : "Sign in to create posts"}
+        nextLabel={isAuthenticated ? resumePendingJob ? "Check concepts" : status === "error" ? "Try again" : "Choose a post concept" : "Sign in to choose a concept"}
         nextType="submit" loading={status === "loading"}
-        helper={resumePendingJob ? "Your request is saved. Check its progress without starting again." : "Review, edit, and copy your posts before sharing. Nothing is published automatically."} />
+        helper={resumePendingJob ? "Your request is saved. Check its progress without starting again." : "Review three editable visual directions before creating your channel posts. Nothing is published automatically."} />
     </form>
   );
 }

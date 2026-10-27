@@ -28,6 +28,7 @@ describe("studio state contract", () => {
     expect(state.draft.channels).toEqual([]);
     expect(state.designJobId).toBeNull();
     expect(state.concepts).toEqual([]);
+    expect(state.previousConcepts).toEqual([]);
     expect(state.selectedConceptId).toBeNull();
     expect(state.conceptsSourceFingerprint).toBeNull();
   });
@@ -49,6 +50,13 @@ describe("studio state contract", () => {
         designRevision: 4,
         document: { pages: [{ nodes: [{ text: "Do not persist document content" }] }] },
         previewDataUrl: "data:image/png;base64,preview-data",
+      }],
+      previousConcepts: [{
+        id: "prior-editorial",
+        label: "Earlier founder story",
+        message: "Previously approved launch message.",
+        designId: "44444444-4444-4444-8444-444444444444",
+        designRevision: 7,
       }],
       selectedConceptId: "editorial",
       conceptsSourceFingerprint: "1234567890abcdef",
@@ -74,6 +82,7 @@ describe("studio state contract", () => {
     expect(state).toMatchObject({
       designJobId: jobId,
       concepts: [{ id: "editorial", designId, designRevision: 4 }],
+      previousConcepts: [{ id: "prior-editorial", designRevision: 7 }],
       selectedConceptId: "editorial",
       conceptsSourceFingerprint: "1234567890abcdef",
     });

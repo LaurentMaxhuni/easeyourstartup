@@ -15,6 +15,11 @@ export const STUDIO_STAGES = [
     description: "Tell us what’s new",
   },
   {
+    id: "concepts",
+    label: "Concepts",
+    description: "Choose a post direction",
+  },
+  {
     id: "creative",
     label: "Your posts",
     description: "Review, copy, and download",
@@ -22,6 +27,14 @@ export const STUDIO_STAGES = [
 ] as const;
 
 export type StudioStageId = (typeof STUDIO_STAGES)[number]["id"];
+
+export function hasPendingCampaignJob(jobType: string | null, jobId: string | null) {
+  return jobType === "generate" && jobId !== null;
+}
+
+export function shouldResumeCampaignJob(resumePendingJob: boolean, jobType: string | null, jobId: string | null) {
+  return resumePendingJob && hasPendingCampaignJob(jobType, jobId);
+}
 
 export function getStudioProgress(current: StudioStageId) {
   const currentIndex = STUDIO_STAGES.findIndex(

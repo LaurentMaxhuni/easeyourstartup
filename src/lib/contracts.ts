@@ -542,6 +542,8 @@ export const studioConceptSchema = z.object({
 
 export type StudioConcept = z.infer<typeof studioConceptSchema>;
 
+export const MAX_PREVIOUS_STUDIO_CONCEPTS = 9;
+
 export const studioStateSchema = z.object({
   step: studioStepSchema,
   projectId: z.uuid().nullable().default(null),
@@ -563,6 +565,7 @@ export const studioStateSchema = z.object({
   // are loaded by ID; keep full documents and previews out of the state payload.
   designJobId: z.uuid().nullable().default(null),
   concepts: z.array(studioConceptSchema).max(3).default([]),
+  previousConcepts: z.array(studioConceptSchema).max(MAX_PREVIOUS_STUDIO_CONCEPTS).default([]),
   selectedConceptId: z.string().max(64).nullable().default(null),
   conceptsSourceFingerprint: z.string().max(64).nullable().default(null),
 });

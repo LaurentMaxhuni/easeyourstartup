@@ -5,7 +5,7 @@ import { DesignPagePreview } from "@/components/design-studio/design-page-previe
 import { Button } from "@/components/ui/button";
 import type { DesignDocument } from "@/lib/design-studio/document";
 
-export type CampaignConceptStatus = "queued" | "generating" | "ready" | "error";
+export type CampaignConceptStatus = "queued" | "generating" | "partial" | "ready" | "error";
 export type CampaignConcept = {
   id: string;
   name: string;
@@ -24,6 +24,7 @@ export type CampaignConceptsProps = {
   notice?: string | null;
   stale: boolean;
   campaignGenerated?: boolean;
+  campaignJobPending?: boolean;
   onEdit: (id: string) => void;
   onSelect: (id: string) => void;
   onRetry: () => void;
@@ -39,6 +40,7 @@ export function CampaignConcepts({
   notice,
   stale,
   campaignGenerated = false,
+  campaignJobPending = false,
   onEdit,
   onSelect,
   onRetry,
@@ -47,7 +49,12 @@ export function CampaignConcepts({
 }: CampaignConceptsProps) {
   const headingId = useId();
   const selectedConcept = concepts.find((concept) => concept.id === selectedId);
-  const selectedReady = Boolean(selectedConcept?.document?.pages[0]);
+  const selectedReady = Boolean(
+    selectedConcept?.document?.pages[0]
+      && selectedConcept.status !== "partial"
+      && selectedConcept.status !== "generating"
+      && selectedConcept.status !== "queued",
+  );
   const failedCount = concepts.filter((concept) => concept.status === "error").length;
   const errorMessage = error || (failedCount > 0
     ? `${failedCount} concept ${failedCount === 1 ? "update failed" : "updates failed"}. Completed previews remain available.`
@@ -63,11 +70,16 @@ export function CampaignConcepts({
 
       {loading && (
         <p role="status" className="mt-5 rounded-control border border-line bg-surface-raised px-4 py-3 text-sm text-muted">
-          Creating concepts. Completed previews remain available while the others finish.
+          Creating concepts. Editing and selection pause until the job finishes to protect saved designs.
         </p>
       )}
 
       {notice && <p role="status" className="mt-4 rounded-control border border-line bg-surface-raised px-4 py-3 text-sm text-muted">{notice}</p>}
+      {campaignJobPending && (
+        <p role="status" className="mt-4 rounded-control border border-line bg-surface-raised px-4 py-3 text-sm text-muted">
+          Campaign generation is already running from the saved concept selection. Resume it before switching concepts.
+        </p>
+      )}
 
       {stale && (
         <div role="status" className="mt-4 flex flex-col gap-3 rounded-control border border-accent/30 bg-accent/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -94,8 +106,10 @@ export function CampaignConcepts({
             const page = concept.document?.pages[0];
             const ready = Boolean(page);
             const selected = selectedId === concept.id;
-            const pending = concept.status === "queued" || concept.status === "generating" || (!page && concept.status !== "error");
-            const previewStatus = concept.status === "error"
+            const pending = concept.status === "queued" || concept.status === "generating" || (!page && concept.status !== "error" && concept.status !== "partial");
+            const previewStatus = concept.status === "partial"
+              ? page ? "Partial result saved; retry to complete" : "Partial preview unavailable"
+              : concept.status === "error"
               ? page ? "Last saved preview" : "Preview unavailable"
               : pending && page
                 ? "Saved preview while updating"
@@ -144,14 +158,14 @@ export function CampaignConcepts({
                       value={concept.id}
                       aria-label={`${selected ? "Selected" : "Choose"} ${concept.name}`}
                       checked={selected}
-                      disabled={!ready}
+                      disabled={!ready || loading || campaignJobPending || concept.status === "partial" || concept.status === "generating" || concept.status === "queued"}
                       onChange={() => onSelect(concept.id)}
                       className="size-4 accent-[var(--accent)]"
                     />
                     <span className="sr-only">Select {concept.name}</span>
                     {selected ? "Selected" : "Choose"}
                   </label>
-                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit concept: ${concept.name}`} disabled={!ready} onClick={() => onEdit(concept.id)}>
+                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit concept: ${concept.name}`} disabled={!ready || loading || campaignJobPending || concept.status === "partial" || concept.status === "generating" || concept.status === "queued"} onClick={() => onEdit(concept.id)}>
                     Edit concept
                   </Button>
                 </div>
@@ -165,14 +179,20 @@ export function CampaignConcepts({
         <Button type="button" variant="ghost" size="sm" onClick={onBack} className="shrink-0 whitespace-nowrap">Back to announcement</Button>
         <div className="flex min-w-0 flex-col-reverse gap-3 sm:flex-1 sm:flex-row sm:items-center">
           <p aria-live="polite" className="min-w-0 text-center text-xs leading-5 text-muted sm:flex-1 sm:text-right">
-            {campaignGenerated
+            {campaignJobPending
+              ? "Resume the saved campaign generation before changing concepts."
+              : campaignGenerated
               ? "Changing concepts updates the visual; saved channel copy stays unchanged."
-              : selectedReady
+              : stale && selectedReady
+                ? "This saved concept may reflect an older brief. Continuing pairs its visual with your current announcement; regenerate to match the new brief."
+                : stale
+                  ? "Saved concepts may reflect an older brief. Regenerate before continuing to match the current announcement."
+                  : selectedReady
                 ? `${selectedConcept?.name} selected. You can edit it or choose another.`
                 : "Choose a ready concept to continue."}
           </p>
-          <Button type="button" onClick={onContinue} disabled={!selectedReady || loading} size="lg" className="w-full shrink-0 whitespace-nowrap sm:w-auto">
-            {campaignGenerated ? "Use this concept in your campaign" : "Generate posts"}
+          <Button type="button" onClick={onContinue} disabled={(!selectedReady && !campaignJobPending) || loading} size="lg" className="w-full shrink-0 whitespace-nowrap sm:w-auto">
+            {campaignJobPending ? "Resume campaign generation" : campaignGenerated ? "Use this concept in your campaign" : "Generate posts"}
           </Button>
         </div>
       </div>

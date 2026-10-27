@@ -205,6 +205,13 @@ asset project with its own instructions, not the SaaS runtime.
   provider failures. Input, token and revision budgets bound work.
 - Pre-campaign concepts can opt into `distinctCopyPerDirection`; variants expose
   their approved messages and their compositions use the matching copy.
+- Studio asks for three square concepts after the announcement. Website capture
+  is imported as visual guidance; editable designs and selected message are saved
+  with the draft and carried into campaign generation. Earlier concept references
+  are retained in bounded history; partial job results stay locked while retryable.
+  Switching concepts after generation changes the visual, not existing channel copy.
+- `reference` assets guide vision analysis only; pipeline output validation
+  rejects them from image layers, including on edits.
 - `renderer.ts` uses Playwright Core with local Chromium or a dedicated CDP /
   Browserless service. Fresh contexts disable JavaScript, network, service
   workers and downloads. Trusted measurement code checks actual layout/fonts/
