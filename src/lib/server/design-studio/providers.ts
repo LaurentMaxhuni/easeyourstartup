@@ -207,8 +207,10 @@ function candidates(task: DesignTask, prompt: string, options: DesignAiOptions, 
   return ranked;
 }
 function inputEstimate(prompt: string, options: DesignAiOptions) {
-  // A deliberately conservative upper bound for text tokens; no tokenizer guess of chars/4.
-  return Buffer.byteLength(prompt, "utf8") + (options.imageDataUrl ? 8192 : 0) + 64;
+  // A conservative upper bound without a tokenizer: English, JSON and CJK text all
+  // average more than two UTF-8 bytes per token. Counting one token per byte
+  // overstated prompts ~3x and skipped every model before any request was sent.
+  return Math.ceil(Buffer.byteLength(prompt, "utf8") / 2) + (options.imageDataUrl ? 8192 : 0) + 64;
 }
 function outputLimit(model: Model, options: DesignAiOptions) {
   const requested = options.maxOutputTokens ?? 6000;
@@ -420,7 +422,10 @@ export async function generateDesignObject<T>(task: DesignTask, prompt: string, 
     for (;;) {
       const estimate = inputEstimate(currentPrompt, options);
       const reserve = Math.min(outputLimit(candidate.model, options), budget - used - estimate);
-      if (reserve < 1 || estimate + reserve > candidate.model.contextTokens) break;
+      if (reserve < 1 || estimate + reserve > candidate.model.contextTokens) {
+        if (!diagnostics.has(`${candidate.provider.id}/${candidate.model.id}`)) diagnostics.set(`${candidate.provider.id}/${candidate.model.id}`, reserve < 1 ? "token_budget" : "context_window");
+        break;
+      }
       let response: Awaited<ReturnType<typeof requestObject>>;
       try { response = await requestObject(candidate, currentPrompt, { ...options, maxOutputTokens: reserve }, jsonSchema, attempts); }
       catch (error) {
@@ -460,7 +465,10 @@ export async function generateDesignObject<T>(task: DesignTask, prompt: string, 
     }
     fallbacks++;
   }
-  const details = [...diagnostics].map(([id, reason]) => `${id}: ${reason}`).slice(0, 12).join("; ") || "context_or_token_budget";
+  if ([...diagnostics.values()].every((reason) => reason === "token_budget")) {
+    throw new Error("The design job ran out of its token budget before this step could run. Raise the token budget or simplify the request. Your saved work is preserved.");
+  }
+  const details = [...diagnostics].map(([id, reason]) => `${id}: ${reason}`).slice(0, 12).join("; ");
   throw new Error(`Design AI is unavailable or could not produce a valid result (${details}). Your saved work is preserved.`);
 }
 

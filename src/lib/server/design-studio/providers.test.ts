@@ -209,6 +209,18 @@ describe("design studio provider routing", () => {
     await expect(api.generateDesignObject("brief", "brief", schema)).rejects.toThrow(/configuration/i);
   });
 
+  it("reports an exhausted call budget instead of an unavailable provider", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const api = await setup();
+    await expect(api.generateDesignObject("brief", "x".repeat(4000), schema, { maxTotalTokens: 1000 })).rejects.toThrow(/token budget/i);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("sends a large prompt that fits once bytes are not counted as tokens", async () => {
+    const fetch = vi.fn().mockResolvedValue(ok()); vi.stubGlobal("fetch", fetch);
+    const api = await setup();
+    await api.generateDesignObject("brief", "x".repeat(40000), schema, { maxTotalTokens: 30000 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it("reports schema repair responses individually and uses the same call budget", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }], usage: { prompt_tokens: 4000, completion_tokens: 1000 } }))).mockResolvedValueOnce(ok());
     vi.stubGlobal("fetch", fetch);
