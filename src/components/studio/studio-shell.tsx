@@ -731,6 +731,24 @@ export function StudioShell({
         }
       }
 
+      if (!cancelled && newCampaign && requestedProjectId && !activeJob && !hasProjectBrand) {
+        // A saved draft from before the scan finished has no brand. A new
+        // campaign still starts from the project's scanned brand, not its URL.
+        try {
+          const projectResponse = await fetch(`/api/projects/${requestedProjectId}`, { cache: "no-store" });
+          if (!cancelled && projectResponse.ok) {
+            const project = await projectResponse.json() as { scan?: ScanResult | null };
+            if (project.scan) {
+              hasProjectBrand = true;
+              setScan(project.scan);
+              setBrand(project.scan.profile);
+            }
+          }
+        } catch {
+          // Without project details the customer can rescan from the first step.
+        }
+      }
+
       if (!cancelled && newCampaign && requestedProjectId && !activeJob) {
         setProjectId(requestedProjectId);
         setCampaignId(null);
