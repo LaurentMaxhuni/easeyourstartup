@@ -1,6 +1,19 @@
 import "server-only";
 
 import { createHash, createHmac } from "node:crypto";
+import { requireDatabase } from "@/lib/server/database";
+
+const S3_SETTINGS = ["S3_ENDPOINT", "S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"] as const;
+// Database storage keeps bytes in Postgres; base64 transfer adds a third on top.
+const MAX_DATABASE_OBJECT_BYTES = 20_000_000;
+
+/** S3 when fully configured; the database when no S3 setting is present. */
+function storageMode(): "s3" | "database" {
+  const present = S3_SETTINGS.filter((name) => process.env[name]?.trim());
+  if (present.length === S3_SETTINGS.length) return "s3";
+  if (present.length === 0) return "database";
+  throw new Error("Private object storage is not configured: set every S3 setting or none of them.");
+}
 
 function requiredConfig() {
   const endpointValue = process.env.S3_ENDPOINT?.trim();
@@ -82,17 +95,39 @@ async function requestObject(method: "PUT" | "GET" | "DELETE", key: string, body
 }
 
 export async function putPrivateObject(key: string, body: Uint8Array, mimeType: string) {
-  await requestObject("PUT", key, body, mimeType);
+  if (storageMode() === "s3") {
+    await requestObject("PUT", key, body, mimeType);
+  } else {
+    if (body.byteLength === 0 || body.byteLength > MAX_DATABASE_OBJECT_BYTES) {
+      throw new Error("Files over 20 MB need S3-compatible object storage.");
+    }
+    await requireDatabase()`
+      insert into public.private_objects (object_key, mime_type, body)
+      values (${key}, ${mimeType}, pg_catalog.decode(${Buffer.from(body).toString("base64")}, 'base64'))
+      on conflict (object_key) do update set mime_type = excluded.mime_type, body = excluded.body, created_at = now()
+    `;
+  }
   return { byteSize: body.byteLength, sha256: digest(body) };
 }
 
 export async function getPrivateObject(key: string) {
-  const response = await requestObject("GET", key);
-  return new Uint8Array(await response.arrayBuffer());
+  if (storageMode() === "s3") {
+    const response = await requestObject("GET", key);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+  const [row] = await requireDatabase()`
+    select pg_catalog.encode(body, 'base64') as body from public.private_objects where object_key = ${key}
+  `;
+  if (typeof row?.body !== "string") throw new Error("Stored asset was not found.");
+  return new Uint8Array(Buffer.from(row.body, "base64"));
 }
 
 export async function deletePrivateObject(key: string) {
-  await requestObject("DELETE", key);
+  if (storageMode() === "s3") {
+    await requestObject("DELETE", key);
+    return;
+  }
+  await requireDatabase()`delete from public.private_objects where object_key = ${key}`;
 }
 
 export function createPrivateObjectReadUrl(key: string, expiresInSeconds = 300) {

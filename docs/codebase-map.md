@@ -100,10 +100,14 @@ asset project with its own instructions, not the SaaS runtime.
   `0030_project_brand_capture.sql`, `capture_asset_id`: the stored website
   screenshot. Brand-step edits and the stored screenshot are saved through
   `PUT /api/projects/[id]/brand`; `GET /api/projects/[id]` returns them, falling
-  back to a live `/api/capture` URL when no screenshot is stored (screenshots
-  need S3 object storage). New campaigns load this project brand rather than an
+  back to a live `/api/capture` URL when no screenshot is stored. New campaigns load this project brand rather than an
   older draft's copy. The brand step's "Rescan website" button re-runs the scan
   for the project's URL and replaces the profile, edits included.
+- Private files go through `object-storage.ts`: S3-compatible storage when all
+  five `S3_*` settings are set, otherwise Postgres `private_objects` (migration
+  `0031_database_private_objects.sql`, 20 MB per file). A partial S3 setup is an
+  error, not a silent fallback. Object keys and `stored_assets` are identical in
+  both modes; `createPrivateObjectReadUrl` is S3-only.
 - Project URL identity reuses projects; dashboard groups saved campaigns under
   their product. Migration `0027_project_url_identity.sql` implements this identity.
 - Studio snapshots use database revision checks plus device-local fallback.
