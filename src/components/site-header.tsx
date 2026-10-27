@@ -50,12 +50,14 @@ export async function SiteHeader() {
             </div>
           )}
           <Button asChild size="sm" className="min-h-11 px-3 text-xs">
-            <Link
-              href={user ? "/studio?new=1" : "/login?next=%2Fstudio%3Fnew%3D1"}
-            >
-              <span className="sm:hidden">Scan</span>
-              <span className="hidden sm:inline">Free scan</span>
-            </Link>
+            {user ? (
+              <Link href="/dashboard">Dashboard</Link>
+            ) : (
+              <Link href="/login?next=%2Fstudio%3Fnew%3D1">
+                <span className="sm:hidden">Scan</span>
+                <span className="hidden sm:inline">Free scan</span>
+              </Link>
+            )}
           </Button>
         </div>
       </div>
