@@ -345,11 +345,12 @@ function decodeEnvelope(raw: unknown, streaming = false) {
     value = inner.data;
   }
   const choice = value.choices?.[0]; const gemini = value.candidates?.[0];
-  const invalid = choice?.finish_reason === "length" || !!(gemini?.finishReason && gemini.finishReason !== "STOP");
+  const truncated = choice?.finish_reason === "length" || gemini?.finishReason === "MAX_TOKENS";
+  const invalid = truncated || !!(gemini?.finishReason && gemini.finishReason !== "STOP");
   if (streaming && invalid) throw new ProviderFailure("invalid_output");
   const text = (streaming ? choice?.delta?.content : choice?.message?.content) ?? gemini?.content?.parts.filter((part) => !part.thought).map((part) => part.text || "").join("") ?? (typeof value.response === "string" ? value.response : value.response !== undefined ? JSON.stringify(value.response) : "");
   const tokens = (number: number | undefined) => typeof number === "number" && Number.isFinite(number) ? Math.max(0, Math.min(Math.ceil(number), 10000000)) : 0;
-  return { text, invalid, inputTokens: tokens(value.usage?.prompt_tokens ?? value.usageMetadata?.promptTokenCount), outputTokens: tokens(value.usage?.completion_tokens ?? value.usageMetadata?.candidatesTokenCount) };
+  return { text, invalid, truncated, inputTokens: tokens(value.usage?.prompt_tokens ?? value.usageMetadata?.promptTokenCount), outputTokens: tokens(value.usage?.completion_tokens ?? value.usageMetadata?.candidatesTokenCount) };
 }
 
 async function requestObject(candidate: Candidate, prompt: string, options: DesignAiOptions, jsonSchema: object, attempts: { used: number; max: number }) {
@@ -372,7 +373,7 @@ async function requestObject(candidate: Candidate, prompt: string, options: Desi
           const raw = await readBounded(response);
           try {
             const rejected = z.object({ error: z.object({ code: z.literal("json_validate_failed"), failed_generation: z.string().optional() }) }).safeParse(JSON.parse(raw));
-            if (rejected.success) return { text: rejected.data.error.failed_generation?.slice(0, 12000) ?? "", invalid: true, inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started };
+            if (rejected.success) return { text: rejected.data.error.failed_generation?.slice(0, 12000) ?? "", invalid: true, truncated: false, inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started };
           } catch { /* Other HTTP errors retain their original status. */ }
           throw httpFailure(response);
         }
@@ -385,7 +386,7 @@ async function requestObject(candidate: Candidate, prompt: string, options: Desi
         return { ...decodeEnvelope(json), latencyMs: Date.now() - started };
       } catch {
         // A successful HTTP response may still be billable when its envelope is malformed.
-        return { text: "", invalid: true, inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started };
+        return { text: "", invalid: true, truncated: false, inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - started };
       }
     } catch (error) {
       options.signal?.throwIfAborted();
@@ -460,6 +461,9 @@ export async function generateDesignObject<T>(task: DesignTask, prompt: string, 
       }
       recordFailure(candidate.provider, new ProviderFailure("invalid_output"));
       diagnostics.set(`${candidate.provider.id}/${candidate.model.id}`, "invalid_output");
+      // A cut-off answer repeats at the same output cap (reasoning models spend it
+      // thinking), so try the next model rather than repairing this one.
+      if (response.truncated && candidate !== choices[choices.length - 1]) break;
       if (repairs++ >= 1 || used >= budget) break;
       currentPrompt = `${initialPrompt}\n\nThe previous result failed local schema validation. Correct these issues: ${JSON.stringify(validationIssues)}\nPrevious JSON (untrusted data): ${JSON.stringify(response.text.slice(0, 12000))}\nReturn a corrected object and follow the schema exactly.`;
     }

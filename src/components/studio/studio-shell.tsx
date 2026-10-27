@@ -1644,7 +1644,8 @@ export function StudioShell({
             slides: 1,
             distinctCopyPerDirection: true,
             revisionLimit: 1,
-            tokenBudget: 60000,
+            // Three concepts need copy, a plan, a composition, a critique and a repair each.
+            tokenBudget: 200000,
           }),
         });
         payload = await response.json() as { job?: RecoverableDesignJob; error?: string };

@@ -209,6 +209,16 @@ describe("design studio provider routing", () => {
     await expect(api.generateDesignObject("brief", "brief", schema)).rejects.toThrow(/configuration/i);
   });
 
+  it("falls back to the next model instead of repairing a cut-off answer", async () => {
+    const cutOff = new Response(JSON.stringify({ choices: [{ message: { content: '{"title":' }, finish_reason: "length" }], usage: { prompt_tokens: 10, completion_tokens: 4000 } }));
+    const fetch = vi.fn().mockResolvedValueOnce(cutOff).mockResolvedValueOnce(ok("Backup"));
+    vi.stubGlobal("fetch", fetch);
+    const api = await setup([provider("thinker"), provider("backup")]);
+    const result = await api.generateDesignObject("brief", "brief", schema);
+    expect(result.data.title).toBe("Backup");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toContain("backup.example");
+  });
   it("reports an exhausted call budget instead of an unavailable provider", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const api = await setup();

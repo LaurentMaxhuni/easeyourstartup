@@ -143,7 +143,9 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
     if (spent >= tokenBudget) throw new Error("The design job reached its token budget. The last rendered design is preserved.");
     const remaining = tokenBudget - spent;
     const slides = input.action === "generate" ? input.slides : input.document.pages.length;
-    const outputBudget: Record<DesignTask, number> = { brief: 1400, direction: 2800, plan: Math.min(6500, 2200 * slides), composition: Math.min(14000, 4500 * slides), critique: 2200, edit: 3000, copy: Math.min(4500, 1300 * slides) };
+    // Reasoning models spend much of this on hidden thinking before the JSON
+    // (about three quarters, measured on a free Nemotron model), so leave room.
+    const outputBudget: Record<DesignTask, number> = { brief: 3000, direction: 6000, plan: Math.min(9000, 3500 * slides), composition: Math.min(16000, 7000 * slides), critique: 3500, edit: 5000, copy: Math.min(6000, 2500 * slides) };
     const response = await run(`ai-${callIndex++}-${task}`, async () => {
       const callRemaining = Math.min(remaining, await services.getRemainingTokens?.() ?? remaining);
       if (callRemaining < 128) throw new Error("The design job reached its persistent token budget. The last working design is preserved.");
