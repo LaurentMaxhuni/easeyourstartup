@@ -43,6 +43,44 @@ describe("creative production pipeline", () => {
     })).rejects.toThrow();
     expect(generate).not.toHaveBeenCalled();
   });
+  it("analyzes reference assets but rejects using them in generated image layers", async () => {
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const reference = { id: "website-capture", name: "Website capture", kind: "reference" as const, description: "Product homepage", dataUrl: `data:image/png;base64,${png.toString("base64")}` };
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, assets: [reference], variants: 1, revisionLimit: 0 });
+    const calls: { task: string; prompt: string; imageDataUrl?: string }[] = [];
+    const render = vi.fn(async () => ({ png, width: 1080, height: 1350, issues: [] }));
+    const outputs: Record<string, unknown> = {
+      brief: { purpose: "Announce", audience: "Founders", message: "Integration is here", mood: "Confident", inspiration: "Editorial", requiredInformation: [], cta: "Try it", constraints: [] },
+      copy: { headline: "Integration is here", supportingCopy: "", cta: "Try it", slides: [{ headline: "Integration is here", body: "", cta: "Try it" }] },
+      direction: { directions: [{ id: "editorial", name: "Editorial", concept: "Type-led", typography: "Bold", colorRelationships: "Brand palette", grid: "Asymmetric", focalPoint: "Headline", hierarchy: "Headline first", decoration: "None", brandIntegration: "Name", spacing: "Generous" }] },
+      plan: { pages: [{ id: "page-1", name: "Poster", background: "#f5f3ef", zones: [{ purpose: "Headline", x: 80, y: 120, width: 800, height: 400, typographySize: 88, alignment: "left" }], instructions: "Clear type" }] },
+    };
+    await expect(runDesignPipeline(input, {
+      visionAvailable: true, checkpoint: async () => {}, render,
+      generate: async (task, prompt, schema, options) => {
+        calls.push({ task, prompt, imageDataUrl: options?.imageDataUrl });
+        let data: unknown = outputs[task];
+        if (task === "critique") data = { composition: "Simple centered product page", typography: "Bold sans-serif", grid: "Wide columns", colorRelationships: "Orange accents on pale background", principles: ["Large type"] };
+        if (task === "composition") {
+          const page = emptyDesignDocument().pages[0];
+          page.nodes = [{ ...page.nodes[0], id: "reference-image", type: "image", role: "decoration", assetId: reference.id }];
+          data = { title: "Reference copy", pages: [page] };
+        }
+        return { data: schema.parse(data), usage: { provider: "test", model: "test", inputTokens: 40, outputTokens: 40, latencyMs: 1, fallbacks: 0 } };
+      },
+    })).rejects.toThrow("Reference assets are visual guidance only and cannot be used by image layers.");
+    const analysis = calls.find((call) => call.prompt.startsWith("Analyze this reference poster"));
+    expect(analysis?.imageDataUrl).toBe(reference.dataUrl);
+    expect(render).not.toHaveBeenCalled();
+  });
+  it("rejects editing a document that places a reference asset in an image layer", async () => {
+    const document = emptyDesignDocument();
+    document.assets = [{ id: "website-capture", name: "Website capture", kind: "reference", description: "", dataUrl: "data:image/png;base64,aW1hZ2U=" }];
+    document.pages[0].nodes[0] = { ...document.pages[0].nodes[0], type: "image", assetId: "website-capture" };
+    const generate = vi.fn();
+    await expect(runDesignPipeline({ action: "edit", prompt: "Move the image down", document, history: [], tokenBudget: 10000 }, { checkpoint: async () => {}, generate })).rejects.toThrow("Reference assets are visual guidance only and cannot be used by image layers.");
+    expect(generate).not.toHaveBeenCalled();
+  });
   it("creates distinct variants through separate brief, copy, direction, plan and composition stages and publishes the first render early", async () => {
     const events: string[] = [];
     let compositions = 0;
@@ -122,7 +160,8 @@ describe("creative production pipeline", () => {
   });
   it("builds a template direction from model-chosen slots without custom directions", async () => {
     const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
-    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0, templateDirection: true, slides: 2, revisionLimit: 0 });
+    const reference = { id: "website-capture", name: "Website capture", kind: "reference" as const, description: "Product homepage", dataUrl: `data:image/png;base64,${png.toString("base64")}` };
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, assets: [reference], variants: 0, templateDirection: true, slides: 2, revisionLimit: 0 });
     const prompts: string[] = [];
     const result = await runDesignPipeline(input, {
       visionAvailable: false, checkpoint: async () => {},
@@ -147,6 +186,7 @@ describe("creative production pipeline", () => {
     expect(headline.text).toBe("Set up in one click");
     expect(headline.fontFamily).toBe("Anton");
     expect(result.variants[0].document.pages[1].nodes.some((node) => node.id === "slide-counter" && node.text === "02 / 02")).toBe(true);
+    expect(result.variants[0].document.pages.some((page) => page.nodes.some((node) => node.type === "image" && node.assetId === reference.id))).toBe(false);
     expect(result.variants[0].message).toBeUndefined();
   });
   it("exposes a distinct message for an opted-in template concept", async () => {

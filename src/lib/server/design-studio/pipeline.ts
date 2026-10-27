@@ -84,6 +84,12 @@ function documentContext(document: DesignDocument) {
     pages: document.pages.map((page) => ({ ...page, nodes: page.nodes.map((node) => Object.fromEntries(Object.entries(node).filter(([key, value]) => core.has(key) || value !== baseline[key as keyof typeof baseline]))) })),
   };
 }
+function assertNoReferenceImageLayers(document: DesignDocument) {
+  const referenceIds = new Set(document.assets.filter((asset) => asset.kind === "reference").map((asset) => asset.id));
+  if (document.pages.some((page) => page.nodes.some((node) => node.type === "image" && node.assetId && referenceIds.has(node.assetId)))) {
+    throw new Error("Reference assets are visual guidance only and cannot be used by image layers.");
+  }
+}
 function fingerprint(document: DesignDocument) {
   return JSON.stringify(document.pages.map((page) => page.nodes.filter((node) => node.role === "headline" || node.role === "cta").map((node) => [node.role, Math.round(node.x / page.width * 10), Math.round(node.y / page.height * 10), Math.round(node.width / page.width * 10), Math.round(node.fontSize / page.width * 50), node.align, node.rotation])));
 }
@@ -108,6 +114,7 @@ export function fitGeneratedDesignBounds(document: DesignDocument): DesignDocume
 
 export async function runDesignPipeline(raw: DesignJobInput, services: PipelineServices): Promise<PipelineResult> {
   const input = designJobInputSchema.parse(raw);
+  if (input.action === "edit") assertNoReferenceImageLayers(input.document);
   if (input.action === "edit" && alternativeLayoutCount(input.prompt)) {
     const content = { title: input.document.title, pages: input.document.pages.map((page) => ({ name: page.name, copy: page.nodes.filter((node) => node.type === "text").map((node) => ({ role: node.role, text: node.text })) })) };
     return runDesignPipeline(generationInputSchema.parse({
@@ -154,11 +161,12 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
   }
   function patchSchemaFor(document: DesignDocument) {
     return designPatchSchema.superRefine((patch, context) => {
-      try { applyDesignPatch(document, patch); }
-      catch { context.addIssue({ code: "custom", path: ["patches"], message: "Use existing unlocked page/layer targets for patches and removals, unique IDs for additions, and valid final document bounds." }); }
+      try { assertNoReferenceImageLayers(applyDesignPatch(document, patch)); }
+      catch { context.addIssue({ code: "custom", path: ["patches"], message: "Use existing unlocked page/layer targets for patches and removals, unique IDs for additions, valid final document bounds, and never use reference assets in image layers." }); }
     });
   }
   async function renderPages(document: DesignDocument, label: string) {
+    assertNoReferenceImageLayers(document);
     await checkpoint("Rendering preview");
     // Screenshots are bounded by renderer. Store only the small preview/vision image in durable steps.
     return run(`render-v3-${label}`, async () => {
@@ -248,7 +256,7 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
   }
   if (input.action === "edit") {
     await checkpoint("Refining composition");
-    const patch = await ask("edit", `You are editing an existing design. Apply exactly the requested change using incremental node property patches; set gradient, pattern or shadows to null to remove them. Available fonts: ${FONT_GUIDE}. ${STYLE_GUIDE} Preserve every unrelated property, page, word, brand color, asset, and locked layer. Add/remove individual nodes using additions/removals only when the requested change requires them. Never invent unsupported claims or a replacement document. User request: ${JSON.stringify(input.prompt)}. Recent instructions: ${JSON.stringify(input.history)}. Document: ${JSON.stringify(documentContext(input.document))}`, patchSchemaFor(input.document));
+    const patch = await ask("edit", `You are editing an existing design. Apply exactly the requested change using incremental node property patches; set gradient, pattern or shadows to null to remove them. Available fonts: ${FONT_GUIDE}. ${STYLE_GUIDE} Preserve every unrelated property, page, word, brand color, asset, and locked layer. Reference assets are visual guidance only and must never be used in image layers. Add/remove individual nodes using additions/removals only when the requested change requires them. Never invent unsupported claims or a replacement document. User request: ${JSON.stringify(input.prompt)}. Recent instructions: ${JSON.stringify(input.history)}. Document: ${JSON.stringify(documentContext(input.document))}`, patchSchemaFor(input.document));
     const variant: DesignVariant = { id: "refinement", name: patch.explanation || "Refinement", document: applyDesignPatch(input.document, patch), feedback: [], visionAvailable: false };
     result.variants.push(variant);
     await evaluateAndRefine(variant, 0);
@@ -342,7 +350,7 @@ ${TEMPLATE_CATALOG(availableTemplates(input.assets))} Brief: ${JSON.stringify(br
           return template ? [{ template: template.name, page: compactPage(buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: { kicker: "Label", headline: slide.headline, body: slide.body, cta: slide.cta || variantCopy.cta }, slideIndex: pageIndex, slideCount: input.slides }, plannedPage.id, plannedPage.name)) }] : [];
         });
         const conceptMessage = "message" in variantCopy ? variantCopy.message : undefined;
-        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use approved raster asset IDs only. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. ${conceptMessage ? `Approved concept message: ${JSON.stringify(conceptMessage)}. ` : ""}Page copy: ${JSON.stringify(variantCopy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}.${examples.length ? ` Hand-designed reference layouts at this canvas size: learn their margins, hierarchy, spacing and restraint, and adapt rather than copy them: ${JSON.stringify(examples)}.` : ""} Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
+        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use only approved image/logo asset IDs in image layers; reference assets are visual guidance only and must never be placed. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. ${conceptMessage ? `Approved concept message: ${JSON.stringify(conceptMessage)}. ` : ""}Page copy: ${JSON.stringify(variantCopy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}.${examples.length ? ` Hand-designed reference layouts at this canvas size: learn their margins, hierarchy, spacing and restraint, and adapt rather than copy them: ${JSON.stringify(examples)}.` : ""} Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
         if (!title) title = composition.title;
         pages.push({ ...composition.pages[0], id: plannedPage.id });
       }
