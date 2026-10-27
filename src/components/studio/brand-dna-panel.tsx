@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowClockwise,
   CheckCircle,
   LinkSimple,
   Palette,
@@ -8,8 +9,10 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Image from "next/image";
+import { useState } from "react";
 import { StudioActionBar } from "@/components/studio/studio-action-bar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { BrandProfile, ScanResult } from "@/lib/contracts";
@@ -21,13 +24,18 @@ export function BrandDnaPanel({
   onChange,
   onBack,
   onContinue,
+  onRescan,
+  rescanResetsWork = false,
 }: {
   scan: ScanResult;
   brand: BrandProfile;
   onChange: (brand: BrandProfile) => void;
   onBack: () => void;
   onContinue: () => void;
+  onRescan?: () => void;
+  rescanResetsWork?: boolean;
 }) {
+  const [confirmingRescan, setConfirmingRescan] = useState(false);
   const approvedCount = brand.claims.filter(
     (claim) => claim.approvalState !== "rejected",
   ).length;
@@ -81,6 +89,27 @@ export function BrandDnaPanel({
       </div>
       <details className="mt-6">
         <summary className="cursor-pointer text-sm font-semibold text-accent">Review or edit website details and sources (optional)</summary>
+      {onRescan && (
+        <div className="mt-6 flex flex-col gap-3 rounded-container border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-muted">
+            {confirmingRescan
+              ? `Rescanning replaces these colors, fonts, details and the screenshot with what the website shows now, including any edits you made here.${rescanResetsWork ? " This campaign's generated posts and concepts will start over." : ""}`
+              : "These details are saved with the project and reused for every campaign. Rescan when the website changes."}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            {confirmingRescan ? (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmingRescan(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => { setConfirmingRescan(false); onRescan(); }}>Rescan now</Button>
+              </>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setConfirmingRescan(true)}>
+                <ArrowClockwise size={14} aria-hidden="true" /> Rescan website
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {brand.brandIntelligence && (
         <section
           aria-labelledby="brand-interpretation-title"

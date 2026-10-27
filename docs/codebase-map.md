@@ -95,6 +95,15 @@ asset project with its own instructions, not the SaaS runtime.
 - Export API and worker share `compositionImageUrls`: validate images used by
   the active canvas, not unused legacy mockups. Remote rendering needs a public
   app origin; localhost cannot receive Browserless requests.
+- A project's brand is scanned once and reused by every campaign. `brand_profiles`
+  holds the profile (colors, fonts, claims, visual system) and, since migration
+  `0030_project_brand_capture.sql`, `capture_asset_id`: the stored website
+  screenshot. Brand-step edits and the stored screenshot are saved through
+  `PUT /api/projects/[id]/brand`; `GET /api/projects/[id]` returns them, falling
+  back to a live `/api/capture` URL when no screenshot is stored (screenshots
+  need S3 object storage). New campaigns load this project brand rather than an
+  older draft's copy. The brand step's "Rescan website" button re-runs the scan
+  for the project's URL and replaces the profile, edits included.
 - Project URL identity reuses projects; dashboard groups saved campaigns under
   their product. Migration `0027_project_url_identity.sql` implements this identity.
 - Studio snapshots use database revision checks plus device-local fallback.

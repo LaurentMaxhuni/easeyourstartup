@@ -21,10 +21,13 @@ export async function GET(
     const context = await requireWorkspaceContext();
     const [project] = await context.database`
       select p.id, p.name, p.public_url, p.status,
-        bp.profile, bp.scan_mode
+        bp.profile, bp.scan_mode, capture.id as capture_asset_id
       from public.projects p
       left join public.brand_profiles bp
         on bp.project_id = p.id and bp.workspace_id = p.workspace_id
+      left join public.stored_assets capture
+        on capture.id = bp.capture_asset_id and capture.project_id = p.id
+        and capture.workspace_id = p.workspace_id
       where p.id = ${id}::uuid
         and p.workspace_id = ${context.workspaceId}
       limit 1
@@ -58,7 +61,12 @@ export async function GET(
           profile,
           pages,
           readiness: [],
-          desktopCaptureUrl: null,
+          // Without a stored screenshot (for example, no object storage), capture the site live.
+          desktopCaptureUrl: project.capture_asset_id
+            ? `/api/assets/${project.capture_asset_id}`
+            : project.public_url
+              ? `/api/capture?${new URLSearchParams({ target: project.public_url, viewport: "desktop", projectId: project.id })}`
+              : null,
           mobileCaptureUrl: null,
           warnings: [],
           mode: project.scan_mode === "demo" ? "demo" : "live",

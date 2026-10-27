@@ -162,7 +162,16 @@ async function storeProjectImage(source: string, projectId: string) {
   return result.url;
 }
 
-type StudioSaveStatus = "idle" | "saving" | "saved" | "local" | "error";
+async function saveProjectBrand(projectId: string, update: { brand?: BrandProfile; captureAssetId?: string }) {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/brand`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+  if (!response.ok) throw new Error("Brand details could not be saved to the project.");
+}
+
+type StudioSaveStatus ="idle" | "saving" | "saved" | "local" | "error";
 type StudioPlan = "free" | "pro_lite" | "pro";
 type StudioEvent =
   | "scan_started"
@@ -332,6 +341,8 @@ export function StudioShell({
   const requestedCampaignId = searchParams.get("campaignId");
   const autoStarted = useRef(false);
   const hydrating = useRef(true);
+  // Set only by edits in the brand step, so loading a brand never writes it back.
+  const brandEdited = useRef(false);
   const storageKey = useRef<string | null>("easeyourstartup:guest-studio");
   const saveRevision = useRef<number | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -531,6 +542,7 @@ export function StudioShell({
       let savedState: StudioState | null = null;
       let activeJob: RecoverableJob | null = null;
       let hasProjectBrand = false;
+      let loadedProjectBrand = false;
       let persistence: "database" | "local" = "local";
       const guestStorageKey = storageKey.current;
       try {
@@ -721,6 +733,7 @@ export function StudioShell({
             const project = await projectResponse.json() as { scan?: ScanResult };
             if (project.scan) {
               hasProjectBrand = true;
+              loadedProjectBrand = true;
               setScan(project.scan);
               setBrand(project.scan.profile);
               setStep("brand");
@@ -731,9 +744,9 @@ export function StudioShell({
         }
       }
 
-      if (!cancelled && newCampaign && requestedProjectId && !activeJob && !hasProjectBrand) {
-        // A saved draft from before the scan finished has no brand. A new
-        // campaign still starts from the project's scanned brand, not its URL.
+      if (!cancelled && newCampaign && requestedProjectId && !activeJob && !loadedProjectBrand) {
+        // A saved draft may predate the scan or later brand edits. A new
+        // campaign starts from the project's saved brand and screenshot.
         try {
           const projectResponse = await fetch(`/api/projects/${requestedProjectId}`, { cache: "no-store" });
           if (!cancelled && projectResponse.ok) {
@@ -1184,7 +1197,23 @@ export function StudioShell({
     return () => window.clearTimeout(timer);
   }, [brand, campaignId, composition, design, draft, generation, hydrated, jobId, jobType, outputs, persistStudioState, projectId, scan, selectedCreativeId, startFresh, step]);
 
+  useEffect(() => {
+    if (!hydrated || !brandEdited.current || !brand || !projectId) return;
+    const timer = window.setTimeout(() => {
+      brandEdited.current = false;
+      // Campaign drafts keep their own copy; this only seeds future campaigns.
+      void saveProjectBrand(projectId, { brand }).catch(() => { brandEdited.current = true; });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [brand, hydrated, projectId]);
+
+  const editBrand = useCallback((next: BrandProfile) => {
+    brandEdited.current = true;
+    setBrand(next);
+  }, []);
+
   const applyScanResult = useCallback((data: ScanResult, nextProjectId: string | null) => {
+    brandEdited.current = false;
     if (designJobId) {
       void fetch("/api/design-studio", {
         method: "POST",
@@ -1271,13 +1300,20 @@ export function StudioShell({
     if (nextProjectId && imageCandidates.length > 0 && !storedAssetId(scanImage)) {
       void (async () => {
         let storedUrl: string | null = null;
+        let storedCapture = false;
         for (const candidate of imageCandidates) {
           try {
             storedUrl = await storeProjectImage(candidate, nextProjectId);
+            storedCapture = Boolean(withProjectCaptures.desktopCaptureUrl) && candidate === scanImage;
             break;
           } catch {
             // Try the source image if the managed browser capture is unavailable.
           }
+        }
+        const captureAssetId = storedUrl && storedCapture ? storedAssetId(storedUrl) : null;
+        if (captureAssetId) {
+          // Later campaigns reuse this screenshot instead of capturing the site again.
+          void saveProjectBrand(nextProjectId, { captureAssetId }).catch(() => {});
         }
         if (storedUrl) {
           setComposition((current) => current.screenshotUrl !== scanImage ? current : ({
@@ -1437,6 +1473,23 @@ export function StudioShell({
       if (pollingJobId.current === activeJobId) pollingJobId.current = null;
     }
   }, [applyScanResult, buildStudioState, initialAuthenticated, persistStudioState, projectId]);
+
+  const rescanProject = useCallback(async () => {
+    if (!projectId) return;
+    brandEdited.current = false;
+    setStep("scan");
+    setScanStatus("loading");
+    setScanError("");
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { cache: "no-store" });
+      const data = await response.json() as { project?: { publicUrl?: string | null }; error?: string };
+      if (!response.ok || !data.project?.publicUrl) throw new Error(data.error || "The project's website could not be found.");
+      await runScan(data.project.publicUrl);
+    } catch (error) {
+      setScanStatus("error");
+      setScanError(error instanceof Error ? error.message : "The website could not be rescanned.");
+    }
+  }, [projectId, runScan]);
 
   useEffect(() => {
     if (!hydrated || autoStarted.current) return;
@@ -2323,9 +2376,17 @@ export function StudioShell({
           <BrandDnaPanel
             scan={scan}
             brand={brand}
-            onChange={setBrand}
+            onChange={editBrand}
             onBack={() => setStep("scan")}
-            onContinue={() => setStep("campaign")}
+            onContinue={() => {
+              if (brandEdited.current && projectId) {
+                brandEdited.current = false;
+                void saveProjectBrand(projectId, { brand }).catch(() => {});
+              }
+              setStep("campaign");
+            }}
+            onRescan={initialAuthenticated && projectId ? () => void rescanProject() : undefined}
+            rescanResetsWork={Boolean(generation || outputs.length || concepts.length)}
           />
         )}
         {step === "campaign" && brand && (
