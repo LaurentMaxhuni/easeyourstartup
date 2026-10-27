@@ -17,6 +17,7 @@ const copySchema = z.object({
   headline: z.string().min(1).max(180), supportingCopy: z.string().max(400), cta: z.string().max(100),
   slides: z.array(z.object({ headline: z.string().max(180), body: z.string().max(400), cta: z.string().max(100) })).min(1).max(9),
 });
+const directionalCopySchema = copySchema.extend({ message: z.string().trim().min(1).max(500) });
 const directionSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{1,50}$/), name: z.string().max(120), concept: z.string().max(1200),
   typography: z.string().max(600), colorRelationships: z.string().max(600), grid: z.string().max(600),
@@ -58,7 +59,7 @@ const referenceAnalysisSchema = z.object({
   colorRelationships: z.string().max(1000), principles: z.array(z.string().max(500)).max(8),
 });
 export type DesignFeedback = { round: number; deterministic: RenderIssue[]; vision: z.infer<typeof critiqueSchema> | null; visionStatus: "available" | "unavailable" | "failed"; warning?: string };
-export type DesignVariant = { id: string; name: string; direction?: z.infer<typeof directionSchema>; document: DesignDocument; feedback: DesignFeedback[]; visionAvailable: boolean };
+export type DesignVariant = { id: string; name: string; direction?: z.infer<typeof directionSchema>; message?: string; document: DesignDocument; feedback: DesignFeedback[]; visionAvailable: boolean };
 export type PipelineResult = { variants: DesignVariant[]; usage: AiUsage[]; warnings: string[] };
 export type PipelineCheckpoint = { result?: PipelineResult; preview?: { dataUrl: string; pageId: string } };
 export function resolveDesignTokenBudget(requested: number) {
@@ -265,27 +266,33 @@ export async function runDesignPipeline(raw: DesignJobInput, services: PipelineS
       }
     } else if (referenceAssets.length) result.warnings.push("Reference vision analysis is unavailable; written reference descriptions are used.");
     const brief = await ask("brief", `Interpret the creative request. Extract purpose, audience, message, mood, inspiration, required information, CTA and constraints. Supply sensible defaults. Never invent product facts, metrics, customer quotes or capabilities. User request: ${JSON.stringify(input.prompt)}. Selected brand: ${brandContext}. Reference principles: ${references}. Canvas ${input.width}x${input.height}; ${input.slides} slides.`, briefSchema);
-    const copy = await ask("copy", `Write concise, credible advertising copy for a professional poster. Aim for a punchy 4-9 word headline; required information can be in the supporting copy. Avoid repeating the headline in the supporting copy. A stated factual message is not necessarily an exact headline. Preserve exact headline/CTA wording ONLY when the user explicitly requests it. Never invent claims, metrics, testimonials or capabilities. Return exactly ${input.slides} slide messages. Brief: ${JSON.stringify(brief)}. Original request: ${JSON.stringify(input.prompt)}. Brand: ${brandContext}.`, copySchema);
-    if (copy.slides.length !== input.slides) throw new Error("The copy did not match the requested slide count.");
+    const copy = input.distinctCopyPerDirection ? undefined : await ask("copy", `Write concise, credible advertising copy for a professional poster. Aim for a punchy 4-9 word headline; required information can be in the supporting copy. Avoid repeating the headline in the supporting copy. A stated factual message is not necessarily an exact headline. Preserve exact headline/CTA wording ONLY when the user explicitly requests it. Never invent claims, metrics, testimonials or capabilities. Return exactly ${input.slides} slide messages. Brief: ${JSON.stringify(brief)}. Original request: ${JSON.stringify(input.prompt)}. Brand: ${brandContext}.`, copySchema);
+    if (copy && copy.slides.length !== input.slides) throw new Error("The copy did not match the requested slide count.");
+    const seenMessages = new Set<string>();
     // One direction from the hand-designed library: the model only chooses a
     // template and fits approved copy into its slots; geometry is code.
-    async function runTemplateDirection(brief: z.infer<typeof briefSchema>, approved: z.infer<typeof copySchema>) {
+    async function runTemplateDirection(brief: z.infer<typeof briefSchema>, approved?: z.infer<typeof copySchema>) {
       if (input.action !== "generate") return undefined;
       const templates = availableTemplates(input.assets);
       const fillSchema = z.object({
         templateId: z.enum(templates.map((template) => template.id) as [string, ...string[]]), reason: z.string().max(400),
+        ...(input.distinctCopyPerDirection ? { message: z.string().trim().min(1).max(500) } : {}),
         slides: z.array(z.object({ kicker: z.string().trim().min(1).max(32), headline: z.string().trim().min(1).max(90), body: z.string().max(220), cta: z.string().trim().min(1).max(28) })).length(input.slides),
       }).superRefine((fill, context) => {
         const limit = templates.find((template) => template.id === fill.templateId)?.headlineMaxChars ?? 90;
         fill.slides.forEach((slide, index) => { if (slide.headline.length > limit) context.addIssue({ code: "custom", path: ["slides", index, "headline"], message: `This template fits headlines up to ${limit} characters.` }); });
       });
       await checkpoint("Planning layout");
-      const fill = await ask("copy", `Choose the hand-designed poster template that best fits this brief, brand and message, then fit the approved copy into its slots for exactly ${input.slides} slides. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words and must not repeat the slide headline; if the approved copy repeats them, keep the headline and vary the CTA. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Brand: ${brandContext}.`, fillSchema);
+      const fillPrompt = input.distinctCopyPerDirection
+        ? `Choose the hand-designed poster template that best fits this brief, brand and message, then write a distinct campaign message and fit it into its slots for exactly ${input.slides} slides. Return message as a concise approved 1-2 sentence message angle that agrees with the slide copy and can guide channel copy; do not invent claims or facts. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words and must not repeat the slide headline; if the approved copy repeats them, keep the headline and vary the CTA. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Original request: ${JSON.stringify(input.prompt)}. Brand: ${brandContext}.`
+        : `Choose the hand-designed poster template that best fits this brief, brand and message, then fit the approved copy into its slots for exactly ${input.slides} slides. kicker is a 1-4 word label such as a launch moment or category. Keep each headline within the template's character limit by tightening wording, never by changing meaning. body may be empty when the headline says enough; cta is 1-4 words and must not repeat the slide headline; if the approved copy repeats them, keep the headline and vary the CTA. Never invent facts, metrics, quotes or capabilities. Templates:\n${TEMPLATE_CATALOG(templates)}\nBrief: ${JSON.stringify(brief)}. Approved copy: ${JSON.stringify(approved)}. Brand: ${brandContext}.`;
+      const fill = await ask("copy", fillPrompt, fillSchema);
+      if (input.distinctCopyPerDirection) seenMessages.add((fill as { message: string }).message.toLowerCase().replace(/\s+/g, " ").trim());
       const template = templates.find((item) => item.id === fill.templateId)!;
       await checkpoint("Building composition");
       const pages = buildTemplateSlides(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets }, fill.slides as TemplateCopy[], (index) => input.slides > 1 ? `Slide ${index + 1}` : "Poster");
       const document = designDocumentSchema.parse({ version: 1, title: fill.slides[0].headline.slice(0, 180), brand: input.brand, assets: input.assets, pages });
-      const variant: DesignVariant = { id: `template-${template.id}`, name: `Template · ${template.name}`, document, feedback: [], visionAvailable: false };
+      const variant: DesignVariant = { id: `template-${template.id}`, name: `Template · ${template.name}`, ...(input.distinctCopyPerDirection ? { message: (fill as { message: string }).message } : {}), document, feedback: [], visionAvailable: false };
       const firstRender = await renderAndFit(variant, `${variant.id}-validation`);
       result.variants.push(variant);
       await checkpoint("Evaluating design", { result: structuredClone(result), preview: { pageId: firstRender[0].pageId, dataUrl: firstRender[0].dataUrl } });
@@ -301,11 +308,20 @@ ${TEMPLATE_CATALOG(availableTemplates(input.assets))} Brief: ${JSON.stringify(br
     if (new Set(directionSet.directions.map((direction) => direction.id)).size !== input.variants) throw new Error("Each art direction must have a unique ID.");
     const seen = new Set<string>(templateSignature ? [templateSignature] : []);
     for (const direction of directionSet.directions) {
+      const variantCopy = input.distinctCopyPerDirection
+        ? await ask("copy", `Write concise, credible advertising copy for this professional poster direction. Return headline, supportingCopy, cta for the first slide, a distinct approved message angle, and exactly ${input.slides} slide messages. The message must summarize a customer-facing point supported by the brief, agree with the headline and supporting copy, and guide later channel copy. Make the angle and copy materially different from prior concepts while preserving the same announcement and approved facts. Aim for a punchy 4-9 word headline; avoid repeating it in supporting copy. Never invent claims, metrics, testimonials or capabilities. Brief: ${JSON.stringify(brief)}. Original request: ${JSON.stringify(input.prompt)}. Direction: ${JSON.stringify(direction)}. Prior approved concept messages: ${JSON.stringify([...seenMessages])}. Brand: ${brandContext}.`, directionalCopySchema)
+        : copy!;
+      if (variantCopy.slides.length !== input.slides) throw new Error("The copy did not match the requested slide count.");
+      if (input.distinctCopyPerDirection) {
+        const messageKey = (variantCopy as z.infer<typeof directionalCopySchema>).message.toLowerCase().replace(/\s+/g, " ").trim();
+        if (seenMessages.has(messageKey)) throw new Error("The model repeated a concept message. Existing successful variants are preserved; retry to explore a different message.");
+        seenMessages.add(messageKey);
+      }
       await checkpoint("Planning layout");
       const boundedPlanSchema = planSchema.superRefine((plan, context) => {
         if (plan.pages.length !== input.slides) context.addIssue({ code: "custom", path: ["pages"], message: `Return exactly ${input.slides} pages.` });
       });
-      const plan = await ask("plan", `Translate this art direction into exactly ${input.slides} pages at ${input.width}x${input.height}. Set explicit pixel coordinate zones, alignments, typography sizes, backgrounds, negative space, brand-name and CTA placement. Verify every zone stays inside the canvas: x+width<=${input.width}, y+height<=${input.height}, all coordinates nonnegative. Give text enough height for all wrapped lines, and inset CTA text from its shape. Design the complete poster silhouette rather than a web-page stack. Each carousel page serves a distinct narrative purpose. Every major element needs a purpose. Brief: ${JSON.stringify(brief)}. Copy: ${JSON.stringify(copy)}. Direction: ${JSON.stringify(direction)}. Brand: ${brandContext}. Prior variant geometry signatures to avoid: ${JSON.stringify([...seen])}`, boundedPlanSchema);
+      const plan = await ask("plan", `Translate this art direction into exactly ${input.slides} pages at ${input.width}x${input.height}. Set explicit pixel coordinate zones, alignments, typography sizes, backgrounds, negative space, brand-name and CTA placement. Verify every zone stays inside the canvas: x+width<=${input.width}, y+height<=${input.height}, all coordinates nonnegative. Give text enough height for all wrapped lines, and inset CTA text from its shape. Design the complete poster silhouette rather than a web-page stack. Each carousel page serves a distinct narrative purpose. Every major element needs a purpose. Brief: ${JSON.stringify(brief)}. Copy: ${JSON.stringify(variantCopy)}. Direction: ${JSON.stringify(direction)}. Brand: ${brandContext}. Prior variant geometry signatures to avoid: ${JSON.stringify([...seen])}`, boundedPlanSchema);
       // Correct minor coordinate excursions without discarding the art direction
       // or spending another model call on arithmetic. Final rendered geometry
       // still goes through the browser's actual boundary/layout checks.
@@ -322,10 +338,11 @@ ${TEMPLATE_CATALOG(availableTemplates(input.assets))} Brief: ${JSON.stringify(br
         const continuity = pages.map((page) => ({ background: page.background, typography: page.nodes.filter((node) => node.role === "headline" || node.role === "body").slice(0, 3).map((node) => ({ role: node.role, fontFamily: node.fontFamily, fontSize: node.fontSize, fill: node.fill })) }));
         const examples = (direction.referenceTemplates ?? []).flatMap((id) => {
           const template = availableTemplates(input.assets).find((item) => item.id === id);
-          const slide = copy.slides[pageIndex];
-          return template ? [{ template: template.name, page: compactPage(buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: { kicker: "Label", headline: slide.headline, body: slide.body, cta: slide.cta || copy.cta }, slideIndex: pageIndex, slideCount: input.slides }, plannedPage.id, plannedPage.name)) }] : [];
+          const slide = variantCopy.slides[pageIndex];
+          return template ? [{ template: template.name, page: compactPage(buildTemplatePage(template, { width: input.width, height: input.height, brand: input.brand, assets: input.assets, copy: { kicker: "Label", headline: slide.headline, body: slide.body, cta: slide.cta || variantCopy.cta }, slideIndex: pageIndex, slideCount: input.slides }, plannedPage.id, plannedPage.name)) }] : [];
         });
-        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use approved raster asset IDs only. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. Page copy: ${JSON.stringify(copy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}.${examples.length ? ` Hand-designed reference layouts at this canvas size: learn their margins, hierarchy, spacing and restraint, and adapt rather than copy them: ${JSON.stringify(examples)}.` : ""} Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
+        const conceptMessage = "message" in variantCopy ? variantCopy.message : undefined;
+        const composition = await ask("composition", `Author an outstanding editable poster for page ${pageIndex + 1} of ${input.slides}. Return EXACTLY ONE page at ${input.width}x${input.height}, compiled to HTML/CSS/SVG. Use text/rect/ellipse/line/path/image layers; array order is back-to-front. Use valid numeric SVG paths, no scripts/raw HTML/CSS/external resources. Use approved raster asset IDs only. Fonts: ${FONT_GUIDE}. Use the direction's fonts (heading ${direction.headingFont ?? input.brand.headingFont}, body ${direction.bodyFont ?? input.brand.bodyFont}) and stay inside each font's weight range. ${STYLE_GUIDE} All text stays editable. Set fontSize, weight, lineHeight and fill intentionally; honor the planned display typography. Assign semantic roles and meaningful layer names. Omit unused/default fields to keep JSON compact. Allow enough height for wrapped text, inset CTA labels, keep all layers inside the canvas, and show the brand name. No fabricated logos, facts or metrics. Preserve approved wording and brand colors. Brief: ${JSON.stringify(brief)}. ${conceptMessage ? `Approved concept message: ${JSON.stringify(conceptMessage)}. ` : ""}Page copy: ${JSON.stringify(variantCopy.slides[pageIndex])}. Direction: ${JSON.stringify(direction)}. Page plan: ${JSON.stringify(plannedPage)}.${examples.length ? ` Hand-designed reference layouts at this canvas size: learn their margins, hierarchy, spacing and restraint, and adapt rather than copy them: ${JSON.stringify(examples)}.` : ""} Brand: ${brandContext}. Prior page typography for continuity: ${JSON.stringify(continuity)}. Avoid prior variant signatures: ${JSON.stringify([...seen])}`, pageSchema);
         if (!title) title = composition.title;
         pages.push({ ...composition.pages[0], id: plannedPage.id });
       }
@@ -337,7 +354,7 @@ ${TEMPLATE_CATALOG(availableTemplates(input.assets))} Brief: ${JSON.stringify(br
       const signature = fingerprint(document);
       if (seen.has(signature)) throw new Error("The model repeated an existing layout. Existing successful variants are preserved; retry to explore another direction.");
       seen.add(signature);
-      const variant: DesignVariant = { id: direction.id, name: direction.name, direction, document, feedback: [], visionAvailable: false };
+      const variant: DesignVariant = { id: direction.id, name: direction.name, direction, ...(input.distinctCopyPerDirection ? { message: (variantCopy as z.infer<typeof directionalCopySchema>).message } : {}), document, feedback: [], visionAvailable: false };
       // Publish a variant only after it can actually be rendered.
       const firstRender = await renderAndFit(variant, `${direction.id}-validation`);
       result.variants.push(variant);

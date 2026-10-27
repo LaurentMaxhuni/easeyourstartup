@@ -7,6 +7,8 @@ export const generationInputSchema = z.object({
   width: z.number().int().min(320).max(4096).default(1080), height: z.number().int().min(320).max(4096).default(1350),
   // Custom AI directions; zero is allowed when a template direction runs.
   variants: z.number().int().min(0).max(3).default(1), slides: z.number().int().min(1).max(9).default(1),
+  // Pre-campaign concepts can opt into a separate approved message per direction.
+  distinctCopyPerDirection: z.boolean().default(false),
   // Adds one direction built from a hand-designed layout template.
   templateDirection: z.boolean().default(false),
   revisionLimit: z.number().int().min(0).max(3).default(3), tokenBudget: z.number().int().min(1000).max(200000).default(60000),

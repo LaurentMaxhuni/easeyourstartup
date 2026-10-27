@@ -76,6 +76,50 @@ describe("creative production pipeline", () => {
     expect(result.variants.every((variant) => variant.feedback[0].vision === null && !variant.visionAvailable)).toBe(true);
     expect(events).not.toContain("critique");
   });
+  it("generates and composes a distinct approved message for each pre-campaign direction", async () => {
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 2, distinctCopyPerDirection: true, revisionLimit: 0 });
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const messages = [
+      { message: "Connect your workspace in minutes.", headline: "Connect in minutes", body: "Bring every tool together.", cta: "Try it" },
+      { message: "Keep every launch moving with less busywork.", headline: "Less busywork", body: "Spend more time shipping.", cta: "Get started" },
+    ];
+    const outputs: Record<string, unknown> = {
+      brief: { purpose: "Announce", audience: "Founders", message: "Integration is here", mood: "Confident", inspiration: "Editorial", requiredInformation: [], cta: "Try it", constraints: [] },
+      direction: { directions: ["editorial", "premium"].map((id) => ({ id, name: id, concept: id, typography: "Bold", colorRelationships: "Brand palette", grid: "Asymmetric", focalPoint: "Headline", hierarchy: "Headline first", decoration: "None", brandIntegration: "Name", spacing: "Generous" })) },
+      plan: { pages: [{ id: "page-1", name: "Poster", background: "#f5f3ef", zones: [{ purpose: "Headline", x: 80, y: 120, width: 800, height: 400, typographySize: 88, alignment: "left" }], instructions: "Clear type" }] },
+    };
+    const calls: { task: string; prompt: string }[] = [];
+    let copyIndex = 0;
+    let compositionIndex = 0;
+    const result = await runDesignPipeline(input, {
+      visionAvailable: false, checkpoint: async () => {},
+      render: async () => ({ png, width: 1080, height: 1350, issues: [] }),
+      generate: async (task, prompt, schema) => {
+        calls.push({ task, prompt });
+        let data: unknown = outputs[task];
+        if (task === "copy") data = { message: messages[copyIndex].message, headline: messages[copyIndex].headline, supportingCopy: messages[copyIndex].body, cta: messages[copyIndex].cta, slides: [{ headline: messages[copyIndex].headline, body: messages[copyIndex].body, cta: messages[copyIndex].cta }] };
+        if (task === "composition") {
+          const page = emptyDesignDocument().pages[0];
+          page.nodes = page.nodes.map((node) => node.role === "headline" ? { ...node, x: 80 + compositionIndex * 120, width: 600, text: messages[compositionIndex].headline } : node);
+          compositionIndex++;
+          data = { title: "Concept", pages: [page] };
+        }
+        if (task === "copy") copyIndex++;
+        return { data: schema.parse(data), usage: { provider: "test", model: "test", inputTokens: 40, outputTokens: 40, latencyMs: 1, fallbacks: 0 } };
+      },
+    });
+    const copyCalls = calls.filter((call) => call.task === "copy");
+    expect(copyCalls).toHaveLength(2);
+    expect(calls.findIndex((call) => call.task === "direction")).toBeLessThan(calls.findIndex((call) => call.task === "copy"));
+    expect(copyCalls[1].prompt).toContain(messages[0].message.toLowerCase());
+    expect(result.variants.map((variant) => variant.message)).toEqual(messages.map((copy) => copy.message));
+    expect(result.variants.map((variant) => variant.document.pages[0].nodes.find((node) => node.role === "headline")?.text)).toEqual(messages.map((copy) => copy.headline));
+    const compositionCalls = calls.filter((call) => call.task === "composition");
+    expect(compositionCalls[0].prompt).toContain(`Approved concept message: "${messages[0].message}"`);
+    expect(compositionCalls[0].prompt).toContain(`Page copy: {"headline":"${messages[0].headline}"`);
+    expect(compositionCalls[1].prompt).toContain(`Approved concept message: "${messages[1].message}"`);
+    expect(compositionCalls[1].prompt).toContain(`Page copy: {"headline":"${messages[1].headline}"`);
+  });
   it("builds a template direction from model-chosen slots without custom directions", async () => {
     const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
     const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0, templateDirection: true, slides: 2, revisionLimit: 0 });
@@ -103,6 +147,25 @@ describe("creative production pipeline", () => {
     expect(headline.text).toBe("Set up in one click");
     expect(headline.fontFamily).toBe("Anton");
     expect(result.variants[0].document.pages[1].nodes.some((node) => node.id === "slide-counter" && node.text === "02 / 02")).toBe(true);
+    expect(result.variants[0].message).toBeUndefined();
+  });
+  it("exposes a distinct message for an opted-in template concept", async () => {
+    const input = generationInputSchema.parse({ action: "generate", prompt: "Announce our new integration", brand: {}, variants: 0, templateDirection: true, distinctCopyPerDirection: true, revisionLimit: 0 });
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const tasks: string[] = [];
+    const result = await runDesignPipeline(input, {
+      visionAvailable: false, checkpoint: async () => {},
+      render: async () => ({ png, width: 1080, height: 1350, issues: [] }),
+      generate: async (task, _prompt, schema) => {
+        tasks.push(task);
+        const data = task === "brief"
+          ? { purpose: "Announce", audience: "Founders", message: "Integration is here", mood: "Confident", inspiration: "Editorial", requiredInformation: [], cta: "Try it", constraints: [] }
+          : { templateId: "big-type", reason: "Short copy", message: "Connect your workspace in minutes.", slides: [{ kicker: "New", headline: "Connect in minutes", body: "Bring every tool together.", cta: "Try it" }] };
+        return { data: schema.parse(data), usage: { provider: "test", model: "test", inputTokens: 40, outputTokens: 40, latencyMs: 1, fallbacks: 0 } };
+      },
+    });
+    expect(tasks).toEqual(["brief", "copy"]);
+    expect(result.variants[0].message).toBe("Connect your workspace in minutes.");
   });
   it("records vision critique on template variants without rearranging them on vision alone", async () => {
     const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ffffff" } }).png().toBuffer();

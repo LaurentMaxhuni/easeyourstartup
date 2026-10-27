@@ -203,6 +203,8 @@ asset project with its own instructions, not the SaaS runtime.
   can be unavailable/failed and never receives a fabricated score. Partial
   results publish only after successful rendering; successful decisions survive
   provider failures. Input, token and revision budgets bound work.
+- Pre-campaign concepts can opt into `distinctCopyPerDirection`; variants expose
+  their approved messages and their compositions use the matching copy.
 - `renderer.ts` uses Playwright Core with local Chromium or a dedicated CDP /
   Browserless service. Fresh contexts disable JavaScript, network, service
   workers and downloads. Trusted measurement code checks actual layout/fonts/
