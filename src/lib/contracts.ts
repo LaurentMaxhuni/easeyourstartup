@@ -514,6 +514,7 @@ const studioStepSchema = z.enum([
   "scan",
   "brand",
   "campaign",
+  "concepts",
   "creative",
 ]);
 
@@ -529,6 +530,17 @@ const studioDraftSchema = z.object({
 });
 
 export type StudioDraft = z.infer<typeof studioDraftSchema>;
+
+export const studioConceptSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().min(1).max(80),
+  message: z.string().min(1).max(2000),
+  description: z.string().max(500).optional(),
+  designId: z.uuid(),
+  designRevision: z.number().int().positive(),
+});
+
+export type StudioConcept = z.infer<typeof studioConceptSchema>;
 
 export const studioStateSchema = z.object({
   step: studioStepSchema,
@@ -547,6 +559,12 @@ export const studioStateSchema = z.object({
   // The campaign's visual: a design studio document at a saved revision.
   // Exports render exactly this revision.
   design: z.object({ id: z.uuid(), revision: z.number().int().positive() }).nullable().default(null),
+  // Pre-campaign concept work stays in this project-scoped snapshot. Documents
+  // are loaded by ID; keep full documents and previews out of the state payload.
+  designJobId: z.uuid().nullable().default(null),
+  concepts: z.array(studioConceptSchema).max(3).default([]),
+  selectedConceptId: z.string().max(64).nullable().default(null),
+  conceptsSourceFingerprint: z.string().max(64).nullable().default(null),
 });
 
 export type StudioState = z.infer<typeof studioStateSchema>;
