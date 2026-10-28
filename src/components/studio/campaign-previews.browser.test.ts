@@ -41,6 +41,9 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
   let snapshotGate: Promise<void> | undefined;
   let releaseSnapshot: (() => void) | undefined;
   let snapshotHeld = false;
+  let cancellationGate: Promise<void> | undefined;
+  let releaseCancellation: (() => void) | undefined;
+  let aiPolls = 0;
   const designs = new Map<string, { id: string; revision: number; document: DesignDocument; title: string }>();
   const errors: string[] = [];
   const directory = path.resolve("output/instant-campaign-previews/studio");
@@ -81,9 +84,13 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
           return json({ revision: row.revision });
         }
         if (url.pathname === "/api/entitlements") return json({ plan: "pro", canExportLaunchKit: true });
+        if (url.pathname === `/api/projects/${PROJECT_ID}`) return json({ project: { publicUrl: "https://demo.easeyourstartup.com" } });
+        if (url.pathname === "/api/jobs/scan") return json({ error: "Durable jobs are not configured." }, 503);
+        if (url.pathname === "/api/scan") return json({ ...DEMO_SCAN, profile: { ...brand, projectName: "Rescanned brand" }, desktopCaptureUrl: null, mobileCaptureUrl: null, projectId: PROJECT_ID });
         if (url.pathname === "/api/studio/suggest") return json({ channels: ["linkedin"], updateDetails: state.draft.updateDetails });
         if (url.pathname.startsWith("/api/capture")) { captureRequests++; return json({ error: "No capture in fixture" }, 503); }
         if (url.pathname.startsWith("/api/design-studio/jobs/")) {
+          aiPolls++;
           const first = [...designs.values()][0];
           const document = first ? structuredClone(first.document) : undefined;
           if (document) document.pages[0].nodes.find((node) => node.role === "headline")!.text = "A custom AI direction";
@@ -97,7 +104,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
           }
           const data = await body();
           if (data.action === "generate") { generationRequests.push(data); return json({ job: { id: AI_JOB_ID, status: "queued" } }); }
-          if (data.action === "cancel") { aiStatus = "cancelled"; return json({}); }
+          if (data.action === "cancel") { if (cancellationGate) await cancellationGate; aiStatus = "cancelled"; return json({}); }
           if (data.action === "save") {
             const attempt = ++saveAttempts;
             if (saveGate && !data.id) await saveGate;
@@ -132,17 +139,19 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
   beforeEach(async () => {
     releaseSaves?.();
     releaseSnapshot?.();
+    releaseCancellation?.();
     await page?.close();
     state = initialState(); revision = 1; sequence = 0; saveAttempts = 0; failSave = 0;
     saveGate = undefined; releaseSaves = undefined; generationRequests = []; campaignRequest = undefined; captureRequests = 0; aiStatus = "running";
     designs.clear(); errors.length = 0; snapshots.length = 0; rows.clear();
     rows.set(PROJECT_ID, { state, revision });
     snapshotGate = undefined; releaseSnapshot = undefined; snapshotHeld = false;
+    cancellationGate = undefined; releaseCancellation = undefined; aiPolls = 0;
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     page.setDefaultTimeout(10_000);
     page.on("pageerror", (error) => errors.push(error.message));
   });
-  afterAll(async () => { releaseSaves?.(); releaseSnapshot?.(); await browser?.close(); if (server) await new Promise<void>((resolve) => server.close(() => resolve())); });
+  afterAll(async () => { releaseSaves?.(); releaseSnapshot?.(); releaseCancellation?.(); await browser?.close(); if (server) await new Promise<void>((resolve) => server.close(() => resolve())); });
   afterEach(async () => {
     if (!page?.isClosed()) {
       await writeFile(path.join(directory, "diagnostics.json"), JSON.stringify({ errors, text: await page.locator("body").innerText() }, null, 2));
@@ -156,7 +165,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     await page.getByRole("heading", { name: "Choose a post concept", exact: true }).waitFor();
   }
   async function waitForSavedTemplates() {
-    await page.waitForFunction(() => document.querySelectorAll('input[name="campaign-concept"]:enabled').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('button[aria-label^="Edit concept:"]:enabled').length === 3);
   }
 
   it("shows three previews before saves finish and makes no AI or capture request on the default path", async () => {
@@ -164,13 +173,15 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     await openTemplates();
     await page.getByRole("img", { name: /Preview of/ }).first().waitFor();
     expect(await page.getByRole("img", { name: /Preview of/ }).count()).toBe(3);
-    expect(await page.getByRole("radio").first().isDisabled()).toBe(true);
+    expect(await page.getByRole("radio").first().isEnabled()).toBe(true);
+    await page.getByRole("radio").nth(2).check();
+    const selectedBeforeSave = await page.getByRole("radio").nth(2).getAttribute("value");
     expect(generationRequests).toHaveLength(0);
     expect(captureRequests).toBe(0);
     releaseSaves!(); saveGate = undefined;
     await waitForSavedTemplates();
     expect(state.concepts).toHaveLength(3);
-    expect(state.selectedConceptId).toBe(state.concepts[0].id);
+    expect(state.selectedConceptId).toBe(selectedBeforeSave);
     for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 1100 });
       await page.screenshot({ path: path.join(directory, `ready-${width}.png`), fullPage: true });
@@ -241,7 +252,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
       await page.getByRole("button", { name: "Back to announcement", exact: true }).click();
       await page.getByLabel("What should people know?", { exact: true }).fill(message);
       await page.getByRole("button", { name: "Choose a post concept", exact: true }).click();
-      await expect.poll(() => state.concepts[0]?.message).toBe(message);
+      await expect.poll(() => state.concepts[0]?.message.includes(message.split(".")[0])).toBe(true);
     }
     const all = [...state.concepts, ...state.previousConcepts];
     expect(all).toHaveLength(9);
@@ -326,9 +337,108 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     const selected = await radio.getAttribute("value");
     await radio.check();
     releaseSnapshot!(); snapshotGate = undefined;
-    await page.waitForFunction(() => document.querySelectorAll('input[name="campaign-concept"]:enabled').length === 6);
+    await page.waitForFunction(() => document.querySelectorAll('button[aria-label^="Edit concept:"]:enabled').length === 6);
     expect(await page.locator(`input[value="${selected}"]`).isChecked()).toBe(true);
     await expect.poll(() => state.selectedConceptId).toBe(selected);
+    expect(errors).toEqual([]);
+  }, 30_000);
+
+  it("lets the founder browse and choose any template without invoking AI or saving the whole catalog", async () => {
+    await openTemplates(); await waitForSavedTemplates();
+    await page.getByRole("button", { name: "Browse all templates", exact: true }).click();
+    const library = page.getByRole("dialog", { name: "All templates", exact: true });
+    await library.waitFor();
+    const choices = library.getByRole("button", { name: /^Use template:/ });
+    expect(await choices.count()).toBeGreaterThan(3);
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1100 });
+      expect(await library.evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth + 1)).toBe(true);
+      await page.screenshot({ path: path.join(directory, `library-${width}.png`) });
+    }
+    const recommended = new Set(state.concepts.map((concept) => concept.label));
+    let choice = choices.first();
+    for (const candidate of await choices.all()) {
+      if (!recommended.has((await candidate.getAttribute("aria-label"))!.replace("Use template: ", ""))) { choice = candidate; break; }
+    }
+    const name = (await choice.getAttribute("aria-label"))!.replace("Use template: ", "");
+    await choice.click();
+    await library.waitFor({ state: "hidden" });
+    await page.getByRole("radio", { name: `Selected ${name}`, exact: true }).waitFor();
+    await expect.poll(() => state.concepts.find((concept) => concept.id === state.selectedConceptId)?.label).toBe(name);
+    expect(saveAttempts).toBe(4);
+    expect(generationRequests).toHaveLength(0);
+    expect(errors).toEqual([]);
+  }, 30_000);
+
+  it("does not resume legacy AI jobs or wait for their cancellation to build and choose templates", async () => {
+    state = studioStateSchema.parse({ ...state, designJobId: AI_JOB_ID });
+    rows.set(PROJECT_ID, { state, revision });
+    cancellationGate = new Promise<void>((resolve) => { releaseCancellation = resolve; });
+    await openTemplates();
+    await expect.poll(() => saveAttempts).toBe(3);
+    await waitForSavedTemplates();
+    expect(aiPolls).toBe(0);
+    expect(generationRequests).toHaveLength(0);
+    await page.getByRole("radio").nth(1).check();
+    expect(await page.getByRole("radio").nth(1).isChecked()).toBe(true);
+    releaseCancellation!(); cancellationGate = undefined;
+    expect(errors).toEqual([]);
+  }, 30_000);
+
+  it("drops an unfinished catalog choice when the announcement changes and new recommendations are requested", async () => {
+    await openTemplates(); await waitForSavedTemplates();
+    await page.getByRole("button", { name: "Browse all templates", exact: true }).click();
+    const library = page.getByRole("dialog", { name: "All templates", exact: true });
+    const recommended = new Set(state.concepts.map((concept) => concept.label));
+    saveGate = new Promise<void>((resolve) => { releaseSaves = resolve; });
+    for (const candidate of await library.getByRole("button", { name: /^Use template:/ }).all()) {
+      if (!recommended.has((await candidate.getAttribute("aria-label"))!.replace("Use template: ", ""))) { await candidate.click(); break; }
+    }
+    await expect.poll(() => saveAttempts).toBe(4);
+    await page.getByRole("button", { name: "Back to announcement", exact: true }).click();
+    await page.getByLabel("What should people know?", { exact: true }).fill("Announce a different feature for the workspace. Share it with the team.");
+    await page.getByRole("button", { name: "Choose a post concept", exact: true }).click();
+    await expect.poll(() => saveAttempts).toBe(7);
+    releaseSaves!(); saveGate = undefined;
+    await expect.poll(() => state.concepts[0]?.message.includes("Announce a different feature")).toBe(true);
+    expect(await page.getByText("Saving template", { exact: true }).count()).toBe(0);
+    expect(state.concepts.some((concept) => concept.id === state.selectedConceptId)).toBe(true);
+  }, 30_000);
+
+  it("can choose a catalog template after a recommendation save fails without leaving broken preview cards", async () => {
+    failSave = 2;
+    await openTemplates();
+    await page.getByRole("alert").filter({ hasText: "Template save temporarily unavailable" }).waitFor();
+    await page.getByRole("button", { name: "Browse all templates", exact: true }).click();
+    const library = page.getByRole("dialog", { name: "All templates", exact: true });
+    const choice = library.getByRole("button", { name: /^Use template:/ }).first();
+    const name = (await choice.getAttribute("aria-label"))!.replace("Use template: ", "");
+    await choice.click();
+    await expect.poll(() => state.concepts.find((concept) => concept.id === state.selectedConceptId)?.label).toBe(name);
+    expect(await page.getByRole("img", { name: /Preview of/ }).count()).toBe(1);
+    expect(await page.getByRole("button", { name: "Generate posts", exact: true }).isEnabled()).toBe(true);
+    expect(generationRequests).toHaveLength(0);
+    expect(errors).toEqual([]);
+  }, 30_000);
+
+  it("starts new template choices after a rescan without waiting for the previous scan's pending saves", async () => {
+    saveGate = new Promise<void>((resolve) => { releaseSaves = resolve; });
+    await openTemplates();
+    await expect.poll(() => saveAttempts).toBe(3);
+    await page.getByRole("button", { name: "Back to announcement", exact: true }).click();
+    await page.getByRole("button", { name: "Review website details", exact: true }).click();
+    await page.getByText("Review or edit website details and sources (optional)", { exact: true }).click();
+    await page.getByRole("button", { name: "Rescan website", exact: true }).click();
+    await page.getByRole("button", { name: "Rescan now", exact: true }).click();
+    await page.getByText("Rescanned brand", { exact: true }).first().waitFor();
+    await page.getByRole("button", { name: "Write my announcement", exact: true }).click();
+    await page.getByRole("button", { name: "Choose a post concept", exact: true }).click();
+    await expect.poll(() => saveAttempts).toBe(6);
+    releaseSaves!(); saveGate = undefined;
+    await waitForSavedTemplates();
+    expect(state.brand?.projectName).toBe("Rescanned brand");
+    expect(state.concepts).toHaveLength(3);
+    expect(generationRequests).toHaveLength(0);
     expect(errors).toEqual([]);
   }, 30_000);
 });

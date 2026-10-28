@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { DesignPagePreview } from "@/components/design-studio/design-page-preview";
 import { Button } from "@/components/ui/button";
 import type { DesignDocument } from "@/lib/design-studio/document";
@@ -31,6 +31,9 @@ export type CampaignConceptsProps = {
   onRetry: () => void;
   onRefreshTemplates: () => void;
   onGenerateAi: () => void;
+  templateLibrary: CampaignConcept[];
+  onBrowseTemplates: () => void;
+  onChooseTemplate: (id: string) => void;
   onBack: () => void;
   onContinue: () => void;
 };
@@ -49,10 +52,21 @@ export function CampaignConcepts({
   onRetry,
   onRefreshTemplates,
   onGenerateAi,
+  templateLibrary,
+  onBrowseTemplates,
+  onChooseTemplate,
   onBack,
   onContinue,
 }: CampaignConceptsProps) {
   const headingId = useId();
+  const libraryHeadingId = useId();
+  const libraryDialog = useRef<HTMLDialogElement>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  useEffect(() => {
+    const dialog = libraryDialog.current;
+    if (libraryOpen && dialog && !dialog.open) dialog.showModal();
+    if (!libraryOpen && dialog?.open) dialog.close();
+  }, [libraryOpen]);
   const selectedConcept = concepts.find((concept) => concept.id === selectedId);
   const selectedReady = Boolean(
     selectedConcept?.document?.pages[0] && selectedConcept.designId
@@ -75,15 +89,35 @@ export function CampaignConcepts({
         Three designs matched to your brand and announcement. Choose your favorite, or make it your own in the editor.
       </p>
 
-      <div className="mt-6 flex flex-col gap-4 rounded-container border border-line bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold">Have another direction in mind?</p>
-          <p className="mt-1 text-sm leading-5 text-muted">Let AI create custom alternatives. Your saved designs stay available.</p>
-        </div>
-        <Button type="button" variant="secondary" disabled={loading || saving || campaignJobPending} onClick={onGenerateAi} className="shrink-0">
-          {loading ? "Creating with AI…" : "Create with AI"}
-        </Button>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+        {concepts[0]?.document && <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span>Your brand</span>
+          {[...new Set([concepts[0].document.brand.primary, concepts[0].document.brand.secondary, concepts[0].document.brand.background])].map((color) => (
+            <span key={color} title={color} aria-label={`Brand color ${color}`} className="size-5 rounded-full border border-line" style={{ background: color }} />
+          ))}
+          <span className="ml-1">{[...new Set([concepts[0].document.brand.headingFont, concepts[0].document.brand.bodyFont])].join(" + ")}</span>
+        </div>}
+        <Button type="button" variant="secondary" disabled={campaignJobPending} onClick={() => { onBrowseTemplates(); setLibraryOpen(true); }}>Browse all templates</Button>
       </div>
+
+      <dialog ref={libraryDialog} aria-labelledby={libraryHeadingId} onCancel={() => setLibraryOpen(false)} onClose={() => setLibraryOpen(false)} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-6xl overflow-y-auto rounded-container border border-line bg-canvas p-5 text-ink shadow-xl backdrop:bg-black/50 sm:p-7">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-line bg-canvas pb-4">
+          <div><h2 id={libraryHeadingId} className="text-xl font-semibold">All templates</h2><p className="mt-1 text-sm text-muted">Every layout, using your brand and announcement.</p></div>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setLibraryOpen(false)}>Close templates</Button>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {templateLibrary.map((template) => {
+            const document = template.document;
+            const page = document?.pages[0];
+            return document && page ? <article key={template.id} className="min-w-0 rounded-container border border-line bg-surface p-4">
+              <h3 className="mb-3 text-sm font-semibold">{template.name}</h3>
+              <div className="overflow-hidden rounded-control"><DesignPagePreview page={page} assets={document.assets} label={`Preview of ${document.title}`} /></div>
+              <p className="mt-3 min-h-10 text-xs leading-5 text-muted">{template.description}</p>
+              <Button type="button" variant="secondary" className="mt-3 w-full" aria-label={`Use template: ${template.name}`} onClick={() => { onChooseTemplate(template.id); setLibraryOpen(false); }}>Use this template</Button>
+            </article> : null;
+          })}
+        </div>
+      </dialog>
 
       {loading && (
         <p role="status" className="mt-5 rounded-control border border-line bg-surface-raised px-4 py-3 text-sm text-muted">
@@ -123,6 +157,7 @@ export function CampaignConcepts({
             const page = concept.document?.pages[0];
             const ready = Boolean(page);
             const editable = ready && Boolean(concept.designId) && concept.status !== "partial" && concept.status !== "generating" && concept.status !== "queued" && concept.status !== "saving";
+            const selectable = ready && (Boolean(concept.designId) || concept.id.startsWith("template-")) && concept.status !== "partial" && concept.status !== "generating" && concept.status !== "queued";
             const selected = selectedId === concept.id;
             const pending = concept.status === "queued" || concept.status === "generating" || (!page && concept.status !== "error" && concept.status !== "partial");
             const previewStatus = concept.status === "saving" ? "Saving template"
@@ -155,7 +190,7 @@ export function CampaignConcepts({
                   </span>
                 </div>
 
-                <div className="mt-4 overflow-hidden rounded-control border border-line bg-canvas">{preview}</div>
+                <button type="button" aria-label={`Choose preview: ${concept.name}`} disabled={!selectable || campaignJobPending} onClick={() => onSelect(concept.id)} className="mt-4 block w-full overflow-hidden rounded-control border border-line bg-canvas text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">{preview}</button>
                 {concept.description && <p className="mt-3 text-xs leading-5 text-muted">{concept.description}</p>}
 
                 {concept.message && (
@@ -170,7 +205,7 @@ export function CampaignConcepts({
                 </p>
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-                  <label htmlFor={`${concept.id}-select`} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control px-1 text-sm font-semibold ${editable ? "" : "cursor-not-allowed opacity-60"}`}>
+                  <label htmlFor={`${concept.id}-select`} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control px-1 text-sm font-semibold ${selectable ? "" : "cursor-not-allowed opacity-60"}`}>
                     <input
                       id={`${concept.id}-select`}
                       type="radio"
@@ -178,7 +213,7 @@ export function CampaignConcepts({
                       value={concept.id}
                       aria-label={`${selected ? "Selected" : "Choose"} ${concept.name}`}
                       checked={selected}
-                      disabled={!editable || campaignJobPending}
+                      disabled={!selectable || campaignJobPending}
                       onChange={() => onSelect(concept.id)}
                       className="size-4 accent-[var(--accent)]"
                     />
@@ -194,6 +229,16 @@ export function CampaignConcepts({
           })}
         </div>
       </fieldset>
+
+      <div className="mt-6 flex flex-col gap-4 rounded-container border border-line bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Have another direction in mind?</p>
+          <p className="mt-1 text-sm leading-5 text-muted">Let AI create custom alternatives. Your saved designs stay available.</p>
+        </div>
+        <Button type="button" variant="secondary" disabled={loading || saving || campaignJobPending} onClick={onGenerateAi} className="shrink-0">
+          {loading ? "Creating with AI…" : "Create with AI"}
+        </Button>
+      </div>
 
       <div className="sticky bottom-0 z-20 mt-10 flex flex-col gap-3 border-t border-line bg-canvas/95 py-4 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="ghost" size="sm" onClick={onBack} className="shrink-0 whitespace-nowrap">Back to announcement</Button>

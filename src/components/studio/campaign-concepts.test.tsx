@@ -20,6 +20,9 @@ function renderConcepts(input: Partial<React.ComponentProps<typeof CampaignConce
     onRetry={vi.fn()}
     onRefreshTemplates={vi.fn()}
     onGenerateAi={vi.fn()}
+    onBrowseTemplates={vi.fn()}
+    onChooseTemplate={vi.fn()}
+    templateLibrary={[]}
     onBack={vi.fn()}
     onContinue={vi.fn()}
     {...input}
@@ -111,12 +114,20 @@ describe("CampaignConcepts", () => {
     expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>Creating with AI…<\/button>/);
   });
 
-  it("shows local previews while saving but cannot select or continue with an unsaved design", () => {
-    const markup = renderConcepts({ concepts: [{ ...concept("unsaved", "Swiss grid"), designId: undefined, status: "saving" }], selectedId: "unsaved" });
+  it("allows choosing a local template immediately while saving, but waits to edit or generate until it is saved", () => {
+    const markup = renderConcepts({ concepts: [{ ...concept("template-unsaved", "Swiss grid"), designId: undefined, status: "saving" }], selectedId: "template-unsaved" });
     expect(markup).toContain('role="img"');
     expect(markup).toContain("Saving template");
-    expect(markup).toMatch(/<input id="unsaved-select"[^>]*disabled=""/);
+    expect(markup.match(/<input id="template-unsaved-select"[^>]*disabled=""/)).toBeNull();
+    expect(markup).toMatch(/<button[^>]*aria-label="Edit concept: Swiss grid"[^>]*disabled=""/);
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>Generate posts<\/button>/);
+  });
+
+  it("offers the full template library independently of AI work", () => {
+    const markup = renderConcepts({ loading: true });
+    const browse = markup.match(/<button[^>]*>Browse all templates<\/button>/)?.[0];
+    expect(browse).toBeDefined();
+    expect(browse).not.toContain("disabled=");
   });
 
   it("locks selection while a saved campaign job is pending and offers resume", () => {

@@ -172,7 +172,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const { u, M } = metrics(context);
       const bg = solid(brand.background, "#f5f3ef"), ink = inkOn(bg, brand), primary = solid(brand.primary, "#f05228"), secondary = solid(brand.secondary, ink);
       const textWidth = W - 2 * M, footerY = H - M - 84 * u;
-      const bodyType: Type = { font: fonts.body, lineHeight: 1.4 }, bodySize = Math.round(27 * u), bodyWidth = Math.min(textWidth * 0.86, 820 * u);
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.4 }, bodySize = Math.round(24 * u), bodyWidth = Math.min(textWidth * 0.92, 900 * u);
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const top = H * 0.46, textBottom = footerY - 28 * u - bodyHeight;
       const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.035, lineHeight: 0.98 };
@@ -207,11 +207,11 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bg = solid(brand.background, "#f5f3ef"), ink = inkOn(bg, brand), primary = solid(brand.primary, "#f05228"), secondary = solid(brand.secondary, ink);
       const panelWidth = Math.min(W * 0.34, 420 * u), panelHeight = Math.min(H * 0.34, 360 * u), panelX = W - M - panelWidth, panelY = H * 0.31;
       const textWidth = Math.min(W - 2 * M, W * 0.54), top = H * 0.25, footerY = H - M - 84 * u;
-      const bodyType: Type = { font: fonts.body, lineHeight: 1.5 }, bodySize = Math.round(25 * u), bodyWidth = Math.min(textWidth, 620 * u);
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.5 }, bodySize = Math.round(24 * u), bodyWidth = Math.min(textWidth, 620 * u);
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const bodyBottom = footerY - 28 * u - bodyHeight;
       const headType: Type = { font: fonts.heading, weight: 600, tracking: -0.03, lineHeight: 1.02 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(126 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - top - 26 * u });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(100 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - top - 26 * u });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const headlineY = Math.max(top, bodyBottom - bodyHeight - 26 * u - headlineHeight);
       const bodyY = headlineY + headlineHeight + 26 * u;
@@ -246,7 +246,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const bodyBottom = footerY - 28 * u - bodyHeight;
       const headType: Type = { font: fonts.heading, weight: 800, uppercase: true, tracking: -0.025, lineHeight: 0.98 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(178 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - titleTop - 26 * u });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(84 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - titleTop - 26 * u });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const headlineY = Math.max(titleTop, bodyBottom - bodyHeight - 26 * u - headlineHeight);
       const bodyY = headlineY + headlineHeight + 26 * u;
@@ -277,11 +277,12 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const textWidth = W - 2 * M;
       const footerY = H - M - 44 * u;
       const bodyType: Type = { font: fonts.body, lineHeight: 1.35 }, bodyWidth = Math.min(textWidth * 0.66, 760 * u) - 32 * u;
-      const bodySize = Math.round(30 * u), bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
+      const bodySize = Math.round(27 * u), bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const bodyY = footerY - 72 * u - bodyHeight;
       const top = M + 150 * u;
       const headType: Type = { font: fonts.heading, weight: 800, tracking: -0.035, lineHeight: 0.95 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(210 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyY - 64 * u - top });
+      const maxHeadlineSize = copy.headline.length > 80 ? 68 * u : 210 * u;
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(maxHeadlineSize, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyY - 64 * u - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       const headlineY = Math.max(top, Math.min(H * 0.24, bodyY - 64 * u - headlineHeight));
       return { background: bg, nodes: [
@@ -381,7 +382,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const ctaWidth = Math.max(240 * u, estimateWidth(copy.cta, ctaSize, ctaType) + ctaSize * 3);
       // The body shares the bottom band with the CTA; wide CTAs stack above it.
       const sideBySide = textWidth - ctaWidth - 48 * u >= textWidth * 0.42;
-      const bodyType: Type = { font: fonts.body, weight: 500, lineHeight: 1.3 }, bodySize = Math.round(30 * u);
+      const bodyType: Type = { font: fonts.body, weight: 500, lineHeight: 1.3 }, bodySize = Math.round(24 * u);
       const bodyWidth = sideBySide ? Math.min(textWidth - ctaWidth - 48 * u, 640 * u) : Math.min(textWidth, 720 * u);
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const bodyY = H - M - (sideBySide ? bodyHeight : bodyHeight + ctaHeight + 32 * u);
@@ -389,7 +390,8 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bandTop = Math.min(bodyY, ctaY) - 72 * u;
       const top = M + 90 * u;
       const headType: Type = { font: fonts.heading, uppercase: true, lineHeight: 1.1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(330 * u, context.maxHeadlineSize ?? Infinity), maxLines: 6, maxHeight: bandTop - top });
+      const maxHeadlineSize = copy.headline.length > 80 ? 68 * u : 330 * u;
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(maxHeadlineSize, context.maxHeadlineSize ?? Infinity), maxLines: 6, maxHeight: bandTop - top });
       return { background: bg, nodes: [
         textLayer("kicker", "label", "Kicker", copy.kicker, M, M, textWidth * 0.6, 26 * u, { font: fonts.body, weight: 800, uppercase: true, tracking: 0.1 }, ink),
         brandMark(context, "brand", W / 2, M, 26 * u, ink, fonts.body, "right", W / 2 - M),
@@ -409,7 +411,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const bg = solid(brand.background, "#f5f3ef"), ink = inkOn(bg, brand, 7), accent = solid(brand.primary, "#f05228");
       const frame = Math.round(M / 2), pad = M, textWidth = W - 2 * pad, barHeight = 72 * u;
       const ctaHeight = 96 * u, ctaY = H - frame - 60 * u - ctaHeight;
-      const bodyType: Type = { font: fonts.body, lineHeight: 1.45 }, bodySize = Math.round(26 * u), bodyWidth = Math.min(textWidth * 0.85, 840 * u);
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.45 }, bodySize = Math.round(23 * u), bodyWidth = Math.min(textWidth * 0.85, 840 * u);
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const top = frame + barHeight + Math.max(72 * u, H * 0.1);
       const bottom = ctaY - 64 * u - bodyHeight - (has(copy.body) ? 48 * u : 0);
@@ -471,11 +473,12 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const accent = contrastRatio(primary, bg) >= 4.5 ? primary : mix(primary, "#ffffff", 0.45);
       const textWidth = W - 2 * M;
       const ctaHeight = 84 * u, ctaY = H - M - ctaHeight;
-      const bodyType: Type = { font: fonts.body, lineHeight: 1.5 }, bodySize = Math.round(26 * u), bodyWidth = Math.min(textWidth * 0.85, 860 * u);
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.5 }, bodySize = Math.round(23 * u), bodyWidth = Math.min(textWidth * 0.85, 860 * u);
       const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
       const top = Math.max(M + 160 * u, H * 0.26), bottom = ctaY - 64 * u - bodyHeight - (has(copy.body) ? 40 * u : 0);
       const headType: Type = { font: fonts.heading, weight: 600, tracking: -0.03, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(160 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
+      const maxHeadlineSize = copy.headline.length > 80 ? 68 * u : 160 * u;
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(maxHeadlineSize, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       return { background: bg, nodes: [
         { id: "grid", type: "rect", name: "Grid", x: 0, y: 0, width: W, height: H, fill: "transparent", pattern: { kind: "grid", color: "#ffffff", opacity: 0.07, size: 54 * u } },
@@ -505,7 +508,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const ctaHeight = 92 * u, top = M + 110 * u, bottom = H - M - 40 * u;
       const fixed = chipHeight + 48 * u + 40 * u + bodyHeight + 64 * u + ctaHeight;
       const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.03, lineHeight: 1 };
-      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(150 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top - fixed });
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(132 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bottom - top - fixed });
       const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
       let y = Math.max(top, (H - fixed - headlineHeight) / 2);
       const chipY = y; y += chipHeight + 48 * u;

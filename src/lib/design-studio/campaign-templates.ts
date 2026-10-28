@@ -61,18 +61,12 @@ function recommendationCopy(index: number, brand: BrandProfile, draft: StudioDra
   return { ...base, headline: excerpt(headline, 110), body: excerpt(body, 220) };
 }
 
-function copyForTemplate(templateId: string, brand: BrandProfile, draft: StudioDraft, base: ReturnType<typeof templateCopy>) {
-  const angle = GRAPHIC_TEMPLATE_IDS.indexOf(templateId as (typeof GRAPHIC_TEMPLATE_IDS)[number]);
-  return angle < 0 ? base : recommendationCopy(angle, brand, draft, base);
-}
-
-function messageForTemplate(templateId: string, brand: BrandProfile, draft: StudioDraft, copy: ReturnType<typeof templateCopy>) {
+function messageForAngle(angle: number, brand: BrandProfile, draft: StudioDraft, base: ReturnType<typeof templateCopy>) {
   const original = draft.updateDetails.trim();
   if (!original || original.length > 2000) return original.slice(0, 2000);
-  const angle = GRAPHIC_TEMPLATE_IDS.indexOf(templateId as (typeof GRAPHIC_TEMPLATE_IDS)[number]);
-  if (angle < 0 || angle === 0) return original;
+  if (angle === 0) return original;
   const parts = sentences(original);
-  const headline = copyForTemplate(templateId, brand, draft, copy).headline;
+  const headline = recommendationCopy(angle, brand, draft, base).headline;
   const headingSentence = parts.find((sentence) => excerpt(sentence, 110) === headline);
   if (headingSentence && parts.length > 1) {
     const ordered = [headingSentence, ...parts.filter((sentence) => sentence !== headingSentence)];
@@ -118,11 +112,13 @@ function buildConcept(template: ReturnType<typeof availableTemplates>[number], b
 /** Local, deterministic catalog of every template eligible for this brand and asset set. */
 export function campaignTemplateCatalog({ brand, draft, assets = [] }: CampaignTemplateInput): CampaignTemplateConcept[] {
   const availableAssets = sourceAssets(assets);
+  const recommended = new Map(campaignTemplateConcepts({ brand, draft, assets: availableAssets }).map((concept) => [concept.id, concept]));
   const baseCopy = templateCopy(brand, draft);
   const fontNotes = campaignFontSubstitutions(brand);
   return availableTemplates(availableAssets).map((template) => {
-    const copy = copyForTemplate(template.id, brand, draft, baseCopy);
-    return buildConcept(template, brand, availableAssets, copy, messageForTemplate(template.id, brand, draft, baseCopy), fontNotes);
+    const recommendation = recommended.get(template.id);
+    if (recommendation) return recommendation;
+    return buildConcept(template, brand, availableAssets, baseCopy, draft.updateDetails.trim().slice(0, 2000), fontNotes);
   });
 }
 
@@ -160,8 +156,8 @@ export function campaignTemplateConcepts({ brand, draft, assets = [] }: Campaign
     families.add(family);
     return true;
   }).slice(0, 3);
-  return selected.map(({ template }) => {
-    const conceptCopy = copyForTemplate(template.id, brand, draft, copy);
-    return buildConcept(template, brand, availableAssets, conceptCopy, messageForTemplate(template.id, brand, draft, copy), fontNotes);
+  return selected.map(({ template }, index) => {
+    const conceptCopy = recommendationCopy(index, brand, draft, copy);
+    return buildConcept(template, brand, availableAssets, conceptCopy, messageForAngle(index, brand, draft, copy), fontNotes);
   });
 }

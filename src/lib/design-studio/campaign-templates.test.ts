@@ -98,7 +98,11 @@ describe("instant campaign templates", () => {
     expect(referencesOnly.some((concept) => concept.id === "product-hero")).toBe(false);
     const withImage = campaignTemplateConcepts({ brand, draft, assets: [image] });
     expect(withImage[0].id).toBe("product-hero");
+    expect(new Set(withImage.map((concept) => concept.document.pages[0].nodes.find((node) => node.role === "headline")?.text)).size).toBe(3);
+    expect(new Set(withImage.map((concept) => concept.message)).size).toBe(3);
     expect(withImage[0].document.pages[0].nodes.some((node) => node.type === "image" && node.assetId === "shot")).toBe(true);
+    const catalogById = new Map(campaignTemplateCatalog({ brand, draft, assets: [image] }).map((concept) => [concept.id, concept]));
+    for (const concept of withImage) expect(concept.document).toEqual(catalogById.get(concept.id)?.document);
   });
 
   it("bounds unbroken and long announcements while preserving the full approved message", () => {

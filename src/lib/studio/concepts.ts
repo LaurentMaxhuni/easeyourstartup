@@ -17,6 +17,7 @@ function sourceHash(value: string) {
 /** Stable staleness key for the announcement, scanned reference, brand, and assets. */
 export function getStudioConceptsSourceFingerprint(source: StudioConceptSource) {
   return sourceHash(JSON.stringify({
+    templateVersion: 2,
     scan: source.scan,
     brand: source.brand,
     draft: {

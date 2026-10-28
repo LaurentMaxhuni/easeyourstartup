@@ -6,6 +6,7 @@ import type { AccountProfile } from "@/components/account/account-avatar-link";
 import {
   generateJobResultSchema,
   scanJobResultSchema,
+  scanResultSchema,
   studioStateSchema,
   type StudioConcept,
   type StudioState,
@@ -47,7 +48,7 @@ import {
   conceptCampaignDetails,
 } from "@/lib/design-studio/campaign-seed";
 import { designDocumentSchema, type DesignAsset, type DesignDocument } from "@/lib/design-studio/document";
-import { campaignTemplateConcepts } from "@/lib/design-studio/campaign-templates";
+import { campaignTemplateCatalog, campaignTemplateConcepts } from "@/lib/design-studio/campaign-templates";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 import {
@@ -379,9 +380,15 @@ export function StudioShell({
   const savingConcepts = useRef(new Set<string>());
   const savedConceptRecords = useRef<Record<string, StudioConcept>>({});
   const [conceptLoading, setConceptLoading] = useState(false);
+  const [conceptMode, setConceptMode] = useState<StudioState["conceptMode"]>("templates");
+  const aiConceptOperation = useRef(0);
   const [templatePreviews, setTemplatePreviews] = useState<CampaignConcept[]>([]);
   const [savingTemplates, setSavingTemplates] = useState(false);
   const templateOperation = useRef(0);
+  const templateBatchTask = useRef<Promise<void>>(Promise.resolve());
+  const libraryPickVersion = useRef(0);
+  const [templateLibrary, setTemplateLibrary] = useState<CampaignConcept[]>([]);
+  const [librarySelection, setLibrarySelection] = useState<(CampaignConcept & { templateId: string }) | null>(null);
   const [conceptJobStatus, setConceptJobStatus] = useState<RecoverableDesignJob["status"] | null>(null);
   const [partialDesignVariants, setPartialDesignVariants] = useState<{ jobId: string; variants: DesignJobVariant[] } | null>(null);
   const [conceptMonitorVersion, setConceptMonitorVersion] = useState(0);
@@ -437,12 +444,13 @@ export function StudioShell({
       composition,
       design,
       designJobId,
+      conceptMode,
       concepts,
       previousConcepts,
       selectedConceptId,
       conceptsSourceFingerprint,
     });
-  }, [brand, campaignId, composition, concepts, conceptsSourceFingerprint, design, designJobId, draft, generation, jobId, jobType, outputs, previousConcepts, projectId, scan, selectedConceptId, selectedCreativeId, step]);
+  }, [brand, campaignId, composition, conceptMode, concepts, conceptsSourceFingerprint, design, designJobId, draft, generation, jobId, jobType, outputs, previousConcepts, projectId, scan, selectedConceptId, selectedCreativeId, step]);
   const buildStudioStateRef = useRef(buildStudioState);
   useEffect(() => { buildStudioStateRef.current = buildStudioState; }, [buildStudioState]);
 
@@ -548,7 +556,12 @@ export function StudioShell({
     let cancelled = false;
     hydrating.current = true;
     templateOperation.current += 1;
+    aiConceptOperation.current += 1;
+    libraryPickVersion.current += 1;
     setTemplatePreviews([]);
+    setTemplateLibrary([]);
+    setLibrarySelection(null);
+    setPartialDesignVariants(null);
     setSavingTemplates(false);
     startingConcepts.current = false;
     saveRevision.current = null;
@@ -655,6 +668,7 @@ export function StudioShell({
         setOutputs([]);
         setDesign(null);
         setDesignJobId(null);
+        setConceptMode("templates");
         replaceConcepts([]);
         replacePreviousConcepts([]);
         savedConceptRecords.current = {};
@@ -705,6 +719,7 @@ export function StudioShell({
         replacePreviousConcepts(savedState.previousConcepts);
         setSelectedConceptId(savedState.selectedConceptId);
         setConceptsSourceFingerprint(savedState.conceptsSourceFingerprint);
+        setConceptMode(savedState.conceptMode);
         replaceConceptDocuments({});
         setConceptLoading(false);
         setConceptJobStatus(null);
@@ -861,7 +876,7 @@ export function StudioShell({
   }, [cacheConceptDocument, concepts, conceptMonitorVersion, design?.id, design?.revision, hydrated, persistStudioSnapshot, previousConcepts, replaceConcepts, replacePreviousConcepts]);
 
   useEffect(() => {
-    if (!hydrated || !designJobId) return;
+    if (!hydrated || !designJobId || conceptMode !== "ai") return;
     let cancelled = false;
     const controller = new AbortController();
     const jobId = designJobId;
@@ -1058,7 +1073,7 @@ export function StudioShell({
       cancelled = true;
       controller.abort();
     };
-  }, [cacheConceptDocument, conceptMonitorVersion, conceptsSourceFingerprint, designJobId, hydrated, persistStudioSnapshot, replaceConcepts, replacePreviousConcepts]);
+  }, [cacheConceptDocument, conceptMode, conceptMonitorVersion, conceptsSourceFingerprint, designJobId, hydrated, persistStudioSnapshot, replaceConcepts, replacePreviousConcepts]);
 
   useEffect(() => {
     if (!hydrated || !jobId || pollingJobId.current === jobId) return;
@@ -1232,8 +1247,22 @@ export function StudioShell({
     setBrand(next);
   }, []);
 
-  const applyScanResult = useCallback((data: ScanResult, nextProjectId: string | null) => {
+  const applyScanResult = useCallback((result: ScanResult, nextProjectId: string | null) => {
+    // Direct scan responses also carry routing metadata such as projectId.
+    // Keep that outside the scan value used by persisted source fingerprints.
+    const data = scanResultSchema.parse(result);
     brandEdited.current = false;
+    templateOperation.current += 1;
+    aiConceptOperation.current += 1;
+    libraryPickVersion.current += 1;
+    templateBatchTask.current = Promise.resolve();
+    startingConcepts.current = false;
+    setTemplatePreviews([]);
+    setSavingTemplates(false);
+    setTemplateLibrary([]);
+    setLibrarySelection(null);
+    setPartialDesignVariants(null);
+    setConceptMode("templates");
     if (designJobId) {
       void fetch("/api/design-studio", {
         method: "POST",
@@ -1556,8 +1585,31 @@ export function StudioShell({
     return readyDraft;
   }
 
+  function stopConceptAi() {
+    aiConceptOperation.current += 1;
+    startingConcepts.current = false;
+    setConceptMode("templates");
+    setConceptLoading(false);
+    setConceptJobStatus(null);
+    setPartialDesignVariants(null);
+    setDesignJobId(null);
+    if (designJobId) {
+      // A legacy/custom AI job must never gate local template selection.
+      void fetch("/api/design-studio", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", jobId: designJobId }),
+      }).catch(() => {});
+    }
+  }
+
+  function startTemplateConcepts(refresh = false) {
+    const task = runTemplateConcepts(refresh);
+    templateBatchTask.current = task;
+    return task;
+  }
+
   async function runTemplateConcepts(refresh = false) {
-    if (!brand || startingConcepts.current || conceptLoading || hasPendingCampaignJob(jobType, jobId)) return;
+    if (!brand || savingTemplates || hasPendingCampaignJob(jobType, jobId)) return;
     const readyDraft = validateCampaignDraft();
     if (!readyDraft) return;
     if (!initialAuthenticated) {
@@ -1570,8 +1622,11 @@ export function StudioShell({
       setGenerateError("Save this project before creating concepts.");
       return;
     }
+    libraryPickVersion.current += 1;
+    setLibrarySelection(null);
+    stopConceptAi();
     const sourceFingerprint = getStudioConceptsSourceFingerprint({ scan, brand, draft: readyDraft });
-    if (!refresh && !templatePreviews.length && conceptsRef.current.length && conceptsSourceFingerprint === sourceFingerprint) {
+    if (!refresh && !templatePreviews.length && conceptsRef.current.length && conceptsRef.current.every((concept) => concept.id.startsWith("template-")) && conceptsSourceFingerprint === sourceFingerprint) {
       setStep("concepts");
       return;
     }
@@ -1608,17 +1663,6 @@ export function StudioShell({
     setGenerateStatus("idle");
     setStep("concepts");
     try {
-      if (designJobId) {
-        const response = await fetch("/api/design-studio", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "cancel", jobId: designJobId }),
-        });
-        if (operation !== templateOperation.current) return;
-        if (!response.ok) throw new Error("The previous AI job could not be stopped. Retry before replacing its concepts.");
-        setDesignJobId(null);
-        setConceptJobStatus(null);
-        setPartialDesignVariants(null);
-      }
       const results = await Promise.allSettled(previews.map(async (preview): Promise<StudioConcept> => {
         const cached = savedConceptRecords.current[preview.id];
         if (cached) return cached;
@@ -1655,7 +1699,7 @@ export function StudioShell({
         ? currentSelectedId : nextConcepts[0].id;
       const saved = await persistStudioSnapshot({
         step: current.step, draft: readyDraft, concepts: nextConcepts, previousConcepts: history,
-        selectedConceptId: nextSelectedId, conceptsSourceFingerprint: sourceFingerprint, designJobId: null,
+        selectedConceptId: nextSelectedId, conceptsSourceFingerprint: sourceFingerprint, designJobId: null, conceptMode: "templates",
       }, true);
       if (operation !== templateOperation.current) return;
       if (!saved) throw new Error("Your previews are ready, but project sync failed. Retry saving before continuing.");
@@ -1690,6 +1734,83 @@ export function StudioShell({
     }
   }
 
+  function browseTemplates() {
+    if (!brand) return;
+    const assets = Object.values(conceptDocumentsRef.current).flatMap((document) => document.assets)
+      .filter((asset, index, all) => all.findIndex((item) => item.id === asset.id) === index);
+    setTemplateLibrary(campaignTemplateCatalog({ brand, draft: campaignDraftWithDefaults(draft, brand), assets }).map((template) => ({
+      id: template.id, name: template.label, message: template.message, description: template.description, document: template.document, status: "ready",
+    })));
+  }
+
+  async function chooseLibraryTemplate(templateId: string) {
+    if (!brand || !scan || !projectId || hasPendingCampaignJob(jobType, jobId)) return;
+    const option = templateLibrary.find((template) => template.id === templateId);
+    if (!option?.document || !option.message) return;
+    const sourceFingerprint = getStudioConceptsSourceFingerprint({ scan, brand, draft });
+    const version = ++libraryPickVersion.current;
+    const previousSelection = selectedConceptRef.current;
+    const id = `template-${sourceFingerprint}-${templateId}-${crypto.randomUUID().slice(0, 8)}`.slice(0, 64);
+    stopConceptAi();
+    setConceptError("");
+    setLibrarySelection({ ...option, id, templateId, status: "saving" });
+    setSelectedConceptId(id);
+    selectedConceptRef.current = id;
+    const stillCurrent = () => {
+      if (version !== libraryPickVersion.current) return false;
+      if (getStudioConceptsSourceFingerprint(buildStudioStateRef.current()) === sourceFingerprint) return true;
+      setLibrarySelection(null);
+      if (selectedConceptRef.current === id) { selectedConceptRef.current = previousSelection; setSelectedConceptId(previousSelection); }
+      return false;
+    };
+    try {
+      // Picking never waits to update the preview; only persistence queues here.
+      await templateBatchTask.current;
+      if (!stillCurrent()) return;
+      const prefix = `template-${sourceFingerprint}-${templateId}-`;
+      let saved = [...conceptsRef.current, ...previousConceptsRef.current].find((concept) => concept.id.startsWith(prefix));
+      let document = saved ? conceptDocumentsRef.current[saved.id] : option.document;
+      if (!saved) {
+        const response = await fetch("/api/design-studio", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", document: option.document }),
+        });
+        const payload = await response.json() as { design?: { id: string; revision: number }; error?: string };
+        if (!response.ok || !payload.design) throw new Error(payload.error || "This template could not be saved. Choose it again to retry.");
+        saved = { id, label: option.name, message: option.message, description: option.description, designId: payload.design.id, designRevision: payload.design.revision };
+      }
+      if (!stillCurrent()) return;
+      if (!document) document = (await fetchSavedDesign(saved.designId)).document;
+      if (!stillCurrent()) return;
+      cacheConceptDocument(saved.id, document);
+      const current = conceptsRef.current;
+      let next = current;
+      let history = previousConceptsRef.current;
+      if (!current.some((concept) => concept.id === saved.id) && !history.some((concept) => concept.id === saved.id)) {
+        const pristine = current.find((concept) => concept.designRevision === 1 && concept.id.startsWith(`template-${sourceFingerprint}-`));
+        const replacing = current.length >= 3 ? pristine ?? current[0] : undefined;
+        if (replacing && !pristine) {
+          const appended = appendStudioConceptsToHistory({ concepts: [replacing], previousConcepts: history });
+          if (!appended) throw new Error("Your edited concept history is full. Start a new campaign to keep all saved edits.");
+          history = appended;
+        }
+        next = [...current.filter((concept) => concept.id !== replacing?.id), saved];
+      }
+      replaceConcepts(next);
+      replacePreviousConcepts(history);
+      setSelectedConceptId(saved.id);
+      selectedConceptRef.current = saved.id;
+      setConceptsSourceFingerprint(sourceFingerprint);
+      setLibrarySelection(null);
+      setTemplatePreviews([]);
+      const synced = await persistStudioSnapshot({ concepts: next, previousConcepts: history, selectedConceptId: saved.id, conceptsSourceFingerprint: sourceFingerprint, conceptMode: "templates", designJobId: null }, true);
+      if (!synced && version === libraryPickVersion.current) setConceptNotice("This template is saved on this device, but account sync is unavailable.");
+    } catch (error) {
+      if (version !== libraryPickVersion.current) return;
+      setConceptError(error instanceof Error ? error.message : "The template could not be saved. Choose it again to retry.");
+      setLibrarySelection({ ...option, id, templateId, status: "error" });
+    }
+  }
+
   async function runAiConceptGeneration() {
     if (!brand || startingConcepts.current) return;
     const readyDraft = validateCampaignDraft();
@@ -1705,6 +1826,8 @@ export function StudioShell({
       setConceptError("Save this project before creating concepts.");
       return;
     }
+    setConceptMode("ai");
+    const aiOperation = ++aiConceptOperation.current;
 
     const sourceFingerprint = getStudioConceptsSourceFingerprint({ scan, brand, draft: readyDraft });
     if (designJobId && conceptsSourceFingerprint === sourceFingerprint && conceptJobStatus !== "cancelled" && conceptJobStatus !== "failed") {
@@ -1740,10 +1863,13 @@ export function StudioShell({
           body: JSON.stringify({ action: "cancel", jobId: designJobId }),
         }).catch(() => {});
       }
+      if (aiOperation !== aiConceptOperation.current) return;
       const snapshotSaved = await persistStudioSnapshot({
         step: "concepts",
         draft: readyDraft,
+        conceptMode: "ai",
       }, true);
+      if (aiOperation !== aiConceptOperation.current) return;
       if (!snapshotSaved) throw new Error("Save the project before starting concepts so the job can resume safely.");
       setDraft(readyDraft);
       setPartialDesignVariants(null);
@@ -1783,6 +1909,7 @@ export function StudioShell({
       ].join("\n\n").slice(0, 6000);
       let response: Response;
       let payload: { job?: RecoverableDesignJob; error?: string };
+      if (aiOperation !== aiConceptOperation.current) return;
       try {
         response = await fetch("/api/design-studio", {
           method: "POST",
@@ -1806,6 +1933,10 @@ export function StudioShell({
       } catch {
         throw new Error("We couldn't confirm whether concept generation started. The job may still be running; check before retrying to avoid starting a duplicate.");
       }
+      if (aiOperation !== aiConceptOperation.current) {
+        if (payload.job?.id) void fetch("/api/design-studio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel", jobId: payload.job.id }) }).catch(() => {});
+        return;
+      }
       if (!response.ok || !payload.job?.id) {
         throw new Error(response.status >= 500
           ? "We couldn't confirm whether concept generation started. It may still be running; retrying may create a second job."
@@ -1825,19 +1956,21 @@ export function StudioShell({
         draft: readyDraft,
         designJobId: payload.job.id,
         conceptsSourceFingerprint: sourceFingerprint,
+        conceptMode: "ai",
       });
       if (!synced) {
         setConceptNotice((notice) => [notice, "The job is saved on this device, but project sync is unavailable."].filter(Boolean).join(" "));
       }
       setConceptMonitorVersion((version) => version + 1);
     } catch (error) {
+      if (aiOperation !== aiConceptOperation.current) return;
       setConceptLoading(false);
       setGenerateStatus("error");
       const message = error instanceof Error ? error.message : "Concept generation failed.";
       setGenerateError(message);
       setConceptError(message);
     } finally {
-      startingConcepts.current = false;
+      if (aiOperation === aiConceptOperation.current) startingConcepts.current = false;
     }
   }
 
@@ -2401,11 +2534,12 @@ export function StudioShell({
     : "";
   const campaignJobPending = hasPendingCampaignJob(jobType, jobId);
   const resumePendingJob = campaignJobPending && generateStatus === "error";
+  const activeAiJobId = conceptMode === "ai" ? designJobId : null;
   const conceptsStale = areStudioConceptsStale(
-    { concepts, designJobId, conceptsSourceFingerprint },
+    { concepts, designJobId: activeAiJobId, conceptsSourceFingerprint },
     currentConceptFingerprint,
   );
-  const activeConceptJobPrefix = designJobId ? `concept-${designJobId.replaceAll("-", "").slice(0, 8)}-` : "";
+  const activeConceptJobPrefix = activeAiJobId ? `concept-${activeAiJobId.replaceAll("-", "").slice(0, 8)}-` : "";
   const conceptCards: CampaignConcept[] = concepts.map((concept) => ({
     id: concept.id,
     name: concept.label,
@@ -2415,7 +2549,7 @@ export function StudioShell({
     description: concept.description,
     document: conceptDocuments[concept.id],
     status: conceptDocuments[concept.id]
-      ? designJobId && concept.id.startsWith(activeConceptJobPrefix)
+      ? activeAiJobId && concept.id.startsWith(activeConceptJobPrefix)
         ? conceptJobStatus === "failed" || conceptJobStatus === "cancelled" ? "partial" : "generating"
         : "ready"
       : "error",
@@ -2431,6 +2565,7 @@ export function StudioShell({
     status: conceptDocuments[concept.id] ? "ready" as const : "error" as const,
   })));
   if (templatePreviews.length) conceptCards.unshift(...templatePreviews);
+  if (librarySelection) conceptCards.unshift(librarySelection);
   if (partialDesignVariants) {
     conceptCards.push(...partialDesignVariants.variants.map((variant) => ({
       id: `partial-${partialDesignVariants.jobId}-${variant.id}`,
@@ -2560,7 +2695,7 @@ export function StudioShell({
             onBack={() => setStep("brand")}
             onGenerate={shouldResumeCampaignJob(resumePendingJob, jobType, jobId)
               ? resumePendingCampaignGeneration
-              : () => runTemplateConcepts()}
+              : () => startTemplateConcepts()}
           />
         )}
         {step === "concepts" && editingConcept && brand && (
@@ -2584,17 +2719,23 @@ export function StudioShell({
           <CampaignConcepts
             concepts={conceptCards}
             selectedId={selectedConceptId}
-            loading={conceptLoading}
+            loading={conceptMode === "ai" && conceptLoading}
             error={conceptError}
             stale={conceptsStale}
             notice={conceptNotice}
             campaignGenerated={Boolean(generation && campaignId)}
             campaignJobPending={campaignJobPending}
             onEdit={setEditingConceptId}
-            onSelect={(id) => { setSelectedConceptId(id); selectedConceptRef.current = id; }}
-            onRetry={() => { void (templatePreviews.length ? runTemplateConcepts(true) : retryConceptGeneration()); }}
-            onRefreshTemplates={() => { void runTemplateConcepts(true); }}
+            onSelect={(id) => {
+              if (librarySelection && librarySelection.id !== id) { libraryPickVersion.current += 1; setLibrarySelection(null); }
+              setSelectedConceptId(id); selectedConceptRef.current = id;
+            }}
+            onRetry={() => { void (librarySelection ? chooseLibraryTemplate(librarySelection.templateId) : templatePreviews.length || conceptMode !== "ai" ? startTemplateConcepts(true) : retryConceptGeneration()); }}
+            onRefreshTemplates={() => { void startTemplateConcepts(true); }}
             onGenerateAi={() => { if (!savingTemplates) void runAiConceptGeneration(); }}
+            templateLibrary={templateLibrary}
+            onBrowseTemplates={browseTemplates}
+            onChooseTemplate={(id) => { void chooseLibraryTemplate(id); }}
             onBack={() => setStep(generation && campaignId ? "creative" : "campaign")}
             onContinue={() => { void runGeneration(); }}
           />

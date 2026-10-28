@@ -220,13 +220,22 @@ asset project with its own instructions, not the SaaS runtime.
   provider failures. Input, token and revision budgets bound work.
 - Pre-campaign concepts can opt into `distinctCopyPerDirection`; variants expose
   their approved messages and their compositions use the matching copy.
-- After the announcement, `campaign-templates.ts` locally matches three distinct
-  square layouts to brand character, campaign kind, copy length, and already
-  imported images. Previews render before concurrent design saves complete; the
-  default path makes no AI or capture request. Failed saves retain previews and
+- After the announcement, `campaign-templates.ts` locally matches three graphic
+  square layouts with distinct approved copy emphasis. `campaignTemplateCatalog`
+  builds every eligible layout for `Browse all templates`. Previews can be chosen
+  immediately, before concurrent saves complete; editing and campaign generation
+  require a saved document. Catalog picks save only the chosen additional design;
+  pristine same-brief choices can be replaced without filling edited history.
+  The default path makes no AI or capture request. Failed saves retain previews and
   reuse successful records on retry. Each explicit refresh gets a distinct batch
   ID so returning to an earlier brief cannot alias its edited designs.
-- `Create with AI` optionally runs the existing three-concept pipeline. Its
+- Current palette swatches own color roles; stale scanned visual roles cannot
+  override edited colors. Campaign layouts retain recognized brand fonts, even
+  explicit Outfit; family-list/Variable aliases resolve locally, and unsupported
+  families name their deterministic substitution. Graphic layouts need no image.
+- `conceptMode` defaults to `templates`, so legacy AI jobs do not automatically
+  resume or block the picker. Cancellation runs independently of template saves.
+  Only `Create with AI` sets mode `ai` and runs the three-concept pipeline. Its
   capture imports use the viewport-only `preview=1` route with the active project
   ID. Ready designs remain selectable/editable during independent AI work;
   partial job results stay locked while retryable, and campaign generation locks

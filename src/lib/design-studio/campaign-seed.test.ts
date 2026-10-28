@@ -56,6 +56,18 @@ describe("campaign design seed", () => {
     const fallback = { ...brand, fonts: ["Acme Grotesk, Arial"], visualSystem: undefined };
     expect(campaignBrandKit(fallback).headingFont).toBe("Arial");
     expect(campaignFontSubstitutions(fallback)).toContain("Heading font Acme Grotesk → Arial.");
+
+    const privateFont = {
+      ...brand,
+      fonts: ["Inter"],
+      visualSystem: {
+        backgroundColor: "#ffffff", foregroundColor: "#111111", accentColor: "#f02c65",
+        radius: 8, spacing: 16, headingFont: "Private Brand Sans", bodyFont: "Inter",
+        density: "comfortable" as const, usesGradient: false,
+      },
+    };
+    expect(campaignBrandKit(privateFont).headingFont).toBe("Inter");
+    expect(campaignFontSubstitutions(privateFont)).toContain("Heading font Private Brand Sans → Inter.");
   });
 
   it("builds one editable page carrying the campaign's own headline and CTA", () => {

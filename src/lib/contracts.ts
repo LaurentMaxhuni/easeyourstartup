@@ -564,6 +564,7 @@ export const studioStateSchema = z.object({
   // Pre-campaign concept work stays in this project-scoped snapshot. Documents
   // are loaded by ID; keep full documents and previews out of the state payload.
   designJobId: z.uuid().nullable().default(null),
+  conceptMode: z.enum(["templates", "ai"]).default("templates"),
   concepts: z.array(studioConceptSchema).max(3).default([]),
   previousConcepts: z.array(studioConceptSchema).max(MAX_PREVIOUS_STUDIO_CONCEPTS).default([]),
   selectedConceptId: z.string().max(64).nullable().default(null),
