@@ -285,7 +285,7 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
       const ctaY = H - M - ctaHeight;
       const bandTop = Math.min(bodyY, ctaY) - 72 * u;
       const top = M + 90 * u;
-      const headType: Type = { font: fonts.heading, uppercase: true, lineHeight: 0.9 };
+      const headType: Type = { font: fonts.heading, uppercase: true, lineHeight: 1.1 };
       const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(330 * u, context.maxHeadlineSize ?? Infinity), maxLines: 6, maxHeight: bandTop - top });
       return { background: bg, nodes: [
         textLayer("kicker", "label", "Kicker", copy.kicker, M, M, textWidth * 0.6, 26 * u, { font: fonts.body, weight: 800, uppercase: true, tracking: 0.1 }, ink),

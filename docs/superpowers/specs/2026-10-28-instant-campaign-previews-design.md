@@ -1,6 +1,6 @@
 # Instant campaign previews
 
-Status: proposed.
+Status: approved by the user on 2026-10-28.
 
 ## Intent
 
