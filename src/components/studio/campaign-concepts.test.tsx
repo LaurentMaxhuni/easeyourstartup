@@ -18,6 +18,8 @@ function renderConcepts(input: Partial<React.ComponentProps<typeof CampaignConce
     onEdit={vi.fn()}
     onSelect={vi.fn()}
     onRetry={vi.fn()}
+    onRefreshTemplates={vi.fn()}
+    onGenerateAi={vi.fn()}
     onBack={vi.fn()}
     onContinue={vi.fn()}
     {...input}
@@ -40,7 +42,7 @@ describe("CampaignConcepts", () => {
     expect(markup).toContain("Generate posts");
   });
 
-  it("keeps completed previews visible and locks their controls while announcing loading, stale, and failure states", () => {
+  it("keeps ready designs usable while optional AI work, stale, and failure states are announced", () => {
     const markup = renderConcepts({
     concepts: [concept("ready", "Ready concept"), { id: "pending", name: "Pending concept", status: "generating" }, concept("failed", "Failed concept", "error")],
       selectedId: "ready",
@@ -57,14 +59,14 @@ describe("CampaignConcepts", () => {
     expect(markup).toContain("Visual style analysis is unavailable. You can still edit these concepts.");
     expect(markup).toContain("Your brief or brand details changed");
     expect(markup).toContain("Continuing pairs its visual with your current announcement");
-    expect(markup).toContain("Creating concepts");
+    expect(markup).toContain("Creating custom AI concepts");
     const readyRadio = markup.match(/<input id="ready-select"[^>]*>/)?.[0];
     expect(readyRadio).toContain('checked=""');
-    expect(readyRadio).toContain("disabled=");
+    expect(readyRadio).not.toContain("disabled=");
     expect(markup).toMatch(/<input id="pending-select"[^>]*disabled=""/);
     const failedRadio = markup.match(/<input id="failed-select"[^>]*>/)?.[0];
     expect(failedRadio).toBeDefined();
-    expect(failedRadio).toContain("disabled=");
+    expect(failedRadio).not.toContain("disabled=");
   });
 
   it("allows visual alternatives after generation without promising copy changes", () => {
@@ -93,11 +95,28 @@ describe("CampaignConcepts", () => {
     expect(markup).toContain("Partial result saved; retry to complete");
   });
 
-  it("disables ready-card edits while generation is active", () => {
+  it("allows editing and continuing with a saved design while an independent AI job runs", () => {
     const markup = renderConcepts({ loading: true });
 
-    expect(markup.match(/<input id="proof-select"[^>]*disabled=""/)).not.toBeNull();
-    expect(markup.match(/<button[^>]*aria-label="Edit concept: Customer proof"[^>]*disabled=""/)).not.toBeNull();
+    expect(markup.match(/<input id="proof-select"[^>]*disabled=""/)).toBeNull();
+    expect(markup.match(/<button[^>]*aria-label="Edit concept: Customer proof"[^>]*disabled=""/)).toBeNull();
+    expect(markup.match(/<button[^>]*disabled=""[^>]*>Generate posts<\/button>/)).toBeNull();
+  });
+
+  it("offers custom AI as a separate action and a local refresh when the brief changes", () => {
+    const markup = renderConcepts({ stale: true });
+    expect(markup).toMatch(/<button[^>]*>Create with AI<\/button>/);
+    expect(markup).toMatch(/<button[^>]*>Refresh templates<\/button>/);
+    const busy = renderConcepts({ loading: true });
+    expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>Creating with AI…<\/button>/);
+  });
+
+  it("shows local previews while saving but cannot select or continue with an unsaved design", () => {
+    const markup = renderConcepts({ concepts: [{ ...concept("unsaved", "Swiss grid"), designId: undefined, status: "saving" }], selectedId: "unsaved" });
+    expect(markup).toContain('role="img"');
+    expect(markup).toContain("Saving template");
+    expect(markup).toMatch(/<input id="unsaved-select"[^>]*disabled=""/);
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>Generate posts<\/button>/);
   });
 
   it("locks selection while a saved campaign job is pending and offers resume", () => {

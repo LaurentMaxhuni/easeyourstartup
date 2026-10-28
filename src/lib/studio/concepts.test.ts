@@ -106,6 +106,18 @@ describe("studio concepts state", () => {
     expect(updateStudioConceptRevision(advanced, concept.id, concept.designId, 0)).toBe(advanced);
   });
 
+  it("keeps current templates fresh while an optional AI job runs, without blessing templates from an older brief", () => {
+    const state = makeStudioState();
+    const fingerprint = getStudioConceptsSourceFingerprint(state);
+    const current = {
+      concepts: [{ ...concept, id: `template-${fingerprint}-swiss-grid` }],
+      designJobId: "22222222-2222-4222-8222-222222222222",
+      conceptsSourceFingerprint: fingerprint,
+    };
+    expect(areStudioConceptsStale(current, fingerprint)).toBe(false);
+    expect(areStudioConceptsStale({ ...current, concepts: [{ ...concept, id: "template-older-swiss-grid" }] }, fingerprint)).toBe(true);
+  });
+
   it("preserves concept references before replacement and refuses to exceed history capacity", () => {
     const previous = { ...concept, id: "prior-editorial", designRevision: 5 };
     const state = studioStateSchema.parse({

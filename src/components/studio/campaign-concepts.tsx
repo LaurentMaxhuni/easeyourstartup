@@ -5,7 +5,7 @@ import { DesignPagePreview } from "@/components/design-studio/design-page-previe
 import { Button } from "@/components/ui/button";
 import type { DesignDocument } from "@/lib/design-studio/document";
 
-export type CampaignConceptStatus = "queued" | "generating" | "partial" | "ready" | "error";
+export type CampaignConceptStatus = "queued" | "generating" | "saving" | "partial" | "ready" | "error";
 export type CampaignConcept = {
   id: string;
   name: string;
@@ -13,6 +13,7 @@ export type CampaignConcept = {
   designId?: string;
   revision?: number;
   message?: string;
+  description?: string;
   status?: CampaignConceptStatus;
 };
 
@@ -28,6 +29,8 @@ export type CampaignConceptsProps = {
   onEdit: (id: string) => void;
   onSelect: (id: string) => void;
   onRetry: () => void;
+  onRefreshTemplates: () => void;
+  onGenerateAi: () => void;
   onBack: () => void;
   onContinue: () => void;
 };
@@ -44,33 +47,47 @@ export function CampaignConcepts({
   onEdit,
   onSelect,
   onRetry,
+  onRefreshTemplates,
+  onGenerateAi,
   onBack,
   onContinue,
 }: CampaignConceptsProps) {
   const headingId = useId();
   const selectedConcept = concepts.find((concept) => concept.id === selectedId);
   const selectedReady = Boolean(
-    selectedConcept?.document?.pages[0]
+    selectedConcept?.document?.pages[0] && selectedConcept.designId
       && selectedConcept.status !== "partial"
       && selectedConcept.status !== "generating"
-      && selectedConcept.status !== "queued",
+      && selectedConcept.status !== "queued"
+      && selectedConcept.status !== "saving",
   );
+  const saving = concepts.some((concept) => concept.status === "saving");
   const failedCount = concepts.filter((concept) => concept.status === "error").length;
   const errorMessage = error || (failedCount > 0
     ? `${failedCount} concept ${failedCount === 1 ? "update failed" : "updates failed"}. Completed previews remain available.`
     : "");
 
   return (
-    <section aria-labelledby={headingId} aria-busy={loading} className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
+    <section aria-labelledby={headingId} aria-busy={loading || saving} className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
       <p className="text-xs font-semibold uppercase tracking-wide text-accent">Create your posts</p>
       <h1 id={headingId} className="mt-3 text-balance text-3xl font-semibold sm:text-4xl">Choose a post concept</h1>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-        Compare three editable designs. Choose one to shape the rest of your campaign, or edit any concept first.
+        Three designs matched to your brand and announcement. Choose your favorite, or make it your own in the editor.
       </p>
+
+      <div className="mt-6 flex flex-col gap-4 rounded-container border border-line bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Have another direction in mind?</p>
+          <p className="mt-1 text-sm leading-5 text-muted">Let AI create custom alternatives. Your saved designs stay available.</p>
+        </div>
+        <Button type="button" variant="secondary" disabled={loading || saving || campaignJobPending} onClick={onGenerateAi} className="shrink-0">
+          {loading ? "Creating with AI…" : "Create with AI"}
+        </Button>
+      </div>
 
       {loading && (
         <p role="status" className="mt-5 rounded-control border border-line bg-surface-raised px-4 py-3 text-sm text-muted">
-          Creating concepts. Editing and selection pause until the job finishes to protect saved designs.
+          Creating custom AI concepts. You can keep editing or continue with any ready design.
         </p>
       )}
 
@@ -84,8 +101,8 @@ export function CampaignConcepts({
       {stale && (
         <div role="status" className="mt-4 flex flex-col gap-3 rounded-control border border-accent/30 bg-accent/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p>Your brief or brand details changed. These concepts may be out of date; your edits are still available.</p>
-          <Button type="button" variant="secondary" size="sm" disabled={loading} onClick={onRetry} className="shrink-0">
-            Regenerate concepts
+          <Button type="button" variant="secondary" size="sm" disabled={loading || saving || campaignJobPending} onClick={onRefreshTemplates} className="shrink-0">
+            Refresh templates
           </Button>
         </div>
       )}
@@ -93,24 +110,26 @@ export function CampaignConcepts({
       {errorMessage && (
         <div role="alert" className="mt-4 flex flex-col gap-3 rounded-control border border-danger/30 bg-surface p-4 text-sm text-danger sm:flex-row sm:items-center sm:justify-between">
           <p>{errorMessage}</p>
-          <Button type="button" variant="secondary" size="sm" disabled={loading} onClick={onRetry} className="shrink-0">
-            Retry concepts
+          <Button type="button" variant="secondary" size="sm" disabled={loading || saving || campaignJobPending} onClick={onRetry} className="shrink-0">
+            Retry
           </Button>
         </div>
       )}
 
-      <fieldset className="mt-7">
+      <fieldset className="mt-7 min-w-0">
         <legend className="sr-only">Choose one concept</legend>
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {concepts.map((concept, index) => {
             const page = concept.document?.pages[0];
             const ready = Boolean(page);
+            const editable = ready && Boolean(concept.designId) && concept.status !== "partial" && concept.status !== "generating" && concept.status !== "queued" && concept.status !== "saving";
             const selected = selectedId === concept.id;
             const pending = concept.status === "queued" || concept.status === "generating" || (!page && concept.status !== "error" && concept.status !== "partial");
-            const previewStatus = concept.status === "partial"
+            const previewStatus = concept.status === "saving" ? "Saving template"
+              : concept.status === "partial"
               ? page ? "Partial result saved; retry to complete" : "Partial preview unavailable"
               : concept.status === "error"
-              ? page ? "Last saved preview" : "Preview unavailable"
+              ? page ? concept.designId ? "Last saved preview" : "Preview not saved" : "Preview unavailable"
               : pending && page
                 ? "Saved preview while updating"
                 : pending
@@ -137,6 +156,7 @@ export function CampaignConcepts({
                 </div>
 
                 <div className="mt-4 overflow-hidden rounded-control border border-line bg-canvas">{preview}</div>
+                {concept.description && <p className="mt-3 text-xs leading-5 text-muted">{concept.description}</p>}
 
                 {concept.message && (
                   <div className="mt-4">
@@ -150,7 +170,7 @@ export function CampaignConcepts({
                 </p>
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-                  <label htmlFor={`${concept.id}-select`} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control px-1 text-sm font-semibold ${ready ? "" : "cursor-not-allowed opacity-60"}`}>
+                  <label htmlFor={`${concept.id}-select`} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control px-1 text-sm font-semibold ${editable ? "" : "cursor-not-allowed opacity-60"}`}>
                     <input
                       id={`${concept.id}-select`}
                       type="radio"
@@ -158,14 +178,14 @@ export function CampaignConcepts({
                       value={concept.id}
                       aria-label={`${selected ? "Selected" : "Choose"} ${concept.name}`}
                       checked={selected}
-                      disabled={!ready || loading || campaignJobPending || concept.status === "partial" || concept.status === "generating" || concept.status === "queued"}
+                      disabled={!editable || campaignJobPending}
                       onChange={() => onSelect(concept.id)}
                       className="size-4 accent-[var(--accent)]"
                     />
                     <span className="sr-only">Select {concept.name}</span>
                     {selected ? "Selected" : "Choose"}
                   </label>
-                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit concept: ${concept.name}`} disabled={!ready || loading || campaignJobPending || concept.status === "partial" || concept.status === "generating" || concept.status === "queued"} onClick={() => onEdit(concept.id)}>
+                  <Button type="button" variant="secondary" size="sm" aria-label={`Edit concept: ${concept.name}`} disabled={!editable || campaignJobPending} onClick={() => onEdit(concept.id)}>
                     Edit concept
                   </Button>
                 </div>
@@ -191,7 +211,7 @@ export function CampaignConcepts({
                 ? `${selectedConcept?.name} selected. You can edit it or choose another.`
                 : "Choose a ready concept to continue."}
           </p>
-          <Button type="button" onClick={onContinue} disabled={(!selectedReady && !campaignJobPending) || loading} size="lg" className="w-full shrink-0 whitespace-nowrap sm:w-auto">
+          <Button type="button" onClick={onContinue} disabled={!selectedReady && !campaignJobPending} size="lg" className="w-full shrink-0 whitespace-nowrap sm:w-auto">
             {campaignJobPending ? "Resume campaign generation" : campaignGenerated ? "Use this concept in your campaign" : "Generate posts"}
           </Button>
         </div>

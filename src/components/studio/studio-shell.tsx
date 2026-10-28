@@ -47,6 +47,7 @@ import {
   conceptCampaignDetails,
 } from "@/lib/design-studio/campaign-seed";
 import { designDocumentSchema, type DesignAsset, type DesignDocument } from "@/lib/design-studio/document";
+import { campaignTemplateConcepts } from "@/lib/design-studio/campaign-templates";
 import { getLaunchKitReadiness } from "@/lib/launch-kit";
 import { parseDurableJobResult } from "@/lib/job-results";
 import {
@@ -377,6 +378,9 @@ export function StudioShell({
   const savingConcepts = useRef(new Set<string>());
   const savedConceptRecords = useRef<Record<string, StudioConcept>>({});
   const [conceptLoading, setConceptLoading] = useState(false);
+  const [templatePreviews, setTemplatePreviews] = useState<CampaignConcept[]>([]);
+  const [savingTemplates, setSavingTemplates] = useState(false);
+  const templateOperation = useRef(0);
   const [conceptJobStatus, setConceptJobStatus] = useState<RecoverableDesignJob["status"] | null>(null);
   const [partialDesignVariants, setPartialDesignVariants] = useState<{ jobId: string; variants: DesignJobVariant[] } | null>(null);
   const [conceptMonitorVersion, setConceptMonitorVersion] = useState(0);
@@ -536,6 +540,10 @@ export function StudioShell({
     }
     let cancelled = false;
     hydrating.current = true;
+    templateOperation.current += 1;
+    setTemplatePreviews([]);
+    setSavingTemplates(false);
+    startingConcepts.current = false;
     saveRevision.current = null;
 
     async function hydrateStudioState() {
@@ -965,7 +973,10 @@ export function StudioShell({
             setConceptError("Your saved concept history is full. Existing concepts remain available; the new previews can be retried after starting a new project.");
             return;
           }
-          const nextSelectedId = nextConcepts[0].id;
+          const currentSelectedId = selectedConceptRef.current;
+          const nextSelectedId = [...nextConcepts, ...nextPreviousConcepts].some((concept) => concept.id === currentSelectedId)
+            ? currentSelectedId
+            : nextConcepts[0].id;
           const synced = await persistStudioSnapshot({
             concepts: nextConcepts,
             previousConcepts: nextPreviousConcepts,
@@ -1536,7 +1547,126 @@ export function StudioShell({
     return readyDraft;
   }
 
-  async function runConceptGeneration() {
+  async function runTemplateConcepts(refresh = false) {
+    if (!brand || startingConcepts.current || conceptLoading || hasPendingCampaignJob(jobType, jobId)) return;
+    const readyDraft = validateCampaignDraft();
+    if (!readyDraft) return;
+    if (!initialAuthenticated) {
+      await persistStudioSnapshot({ draft: readyDraft }, true);
+      router.push(`/login?next=${encodeURIComponent("/studio")}`);
+      return;
+    }
+    if (!projectId || !scan) {
+      setGenerateStatus("error");
+      setGenerateError("Save this project before creating concepts.");
+      return;
+    }
+    const sourceFingerprint = getStudioConceptsSourceFingerprint({ scan, brand, draft: readyDraft });
+    if (!refresh && !templatePreviews.length && conceptsRef.current.length && conceptsSourceFingerprint === sourceFingerprint) {
+      setStep("concepts");
+      return;
+    }
+    const history = appendStudioConceptsToHistory({ concepts: conceptsRef.current, previousConcepts: previousConceptsRef.current });
+    if (!history) {
+      setGenerateStatus("error");
+      setGenerateError("Your saved concept history is full. Keep these concepts and start a new project before replacing them.");
+      setConceptError("Your saved concept history is full. Your edits are still available.");
+      return;
+    }
+
+    startingConcepts.current = true;
+    const operation = ++templateOperation.current;
+    const selectionAtStart = selectedConceptRef.current;
+    // Only reuse already imported images. Never wait on a fresh website capture.
+    const assets = Object.values(conceptDocumentsRef.current).flatMap((document) => document.assets)
+      .filter((asset, index, all) => all.findIndex((item) => item.id === asset.id) === index);
+    const retrying = templatePreviews.length > 0 && templatePreviews.every((preview) => preview.id.startsWith(`template-${sourceFingerprint}-`));
+    const batchId = crypto.randomUUID().slice(0, 8);
+    const previews: CampaignConcept[] = retrying
+      ? templatePreviews.map((preview) => ({ ...preview, status: "saving" }))
+      : campaignTemplateConcepts({ brand, draft: readyDraft, assets }).map((concept) => ({
+      id: `template-${sourceFingerprint}-${concept.id}-${batchId}`,
+      name: concept.label,
+      message: concept.message,
+      description: concept.description,
+      document: concept.document,
+      status: "saving",
+    }));
+    setTemplatePreviews(previews);
+    setSavingTemplates(true);
+    setConceptError("");
+    setConceptNotice("");
+    setGenerateError("");
+    setGenerateStatus("idle");
+    setStep("concepts");
+    try {
+      if (designJobId) {
+        const response = await fetch("/api/design-studio", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel", jobId: designJobId }),
+        });
+        if (!response.ok) throw new Error("The previous AI job could not be stopped. Retry before replacing its concepts.");
+        setDesignJobId(null);
+        setConceptJobStatus(null);
+        setPartialDesignVariants(null);
+      }
+      const results = await Promise.allSettled(previews.map(async (preview): Promise<StudioConcept> => {
+        const cached = savedConceptRecords.current[preview.id];
+        if (cached) return cached;
+        const response = await fetch("/api/design-studio", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save", document: preview.document }),
+        });
+        const payload = await response.json() as { design?: { id: string; revision: number }; error?: string };
+        if (!response.ok || !payload.design) throw new Error(payload.error || "A template preview could not be saved. Retry to continue.");
+        const saved: StudioConcept = {
+          id: preview.id, label: preview.name, message: preview.message!, description: preview.description,
+          designId: payload.design.id, designRevision: payload.design.revision,
+        };
+        if (operation === templateOperation.current) {
+          savedConceptRecords.current[preview.id] = saved;
+          cacheConceptDocument(preview.id, preview.document!);
+        }
+        return saved;
+      }));
+      if (operation !== templateOperation.current) return;
+      const current = buildStudioStateRef.current();
+      if (current.projectId !== projectId || getStudioConceptsSourceFingerprint(current) !== sourceFingerprint) {
+        setTemplatePreviews([]);
+        return;
+      }
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      const nextConcepts = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      const currentSelectedId = selectedConceptRef.current;
+      const nextSelectedId = currentSelectedId && currentSelectedId !== selectionAtStart
+        && [...nextConcepts, ...history].some((concept) => concept.id === currentSelectedId)
+        ? currentSelectedId : nextConcepts[0].id;
+      const saved = await persistStudioSnapshot({
+        step: current.step, draft: readyDraft, concepts: nextConcepts, previousConcepts: history,
+        selectedConceptId: nextSelectedId, conceptsSourceFingerprint: sourceFingerprint, designJobId: null,
+      }, true);
+      if (operation !== templateOperation.current) return;
+      if (!saved) throw new Error("Your previews are ready, but project sync failed. Retry saving before continuing.");
+      replacePreviousConcepts(history);
+      replaceConcepts(nextConcepts);
+      setSelectedConceptId(nextSelectedId);
+      selectedConceptRef.current = nextSelectedId;
+      setConceptsSourceFingerprint(sourceFingerprint);
+      setTemplatePreviews([]);
+    } catch (error) {
+      if (operation !== templateOperation.current) return;
+      setConceptError(error instanceof Error ? error.message : "Template previews could not be saved. Retry to continue.");
+      setTemplatePreviews(previews.map((preview) => ({ ...preview, status: "error" })));
+    } finally {
+      if (operation === templateOperation.current) {
+        setSavingTemplates(false);
+        startingConcepts.current = false;
+      }
+    }
+  }
+
+  async function runAiConceptGeneration() {
     if (!brand || startingConcepts.current) return;
     const readyDraft = validateCampaignDraft();
     if (!readyDraft) return;
@@ -1703,7 +1833,7 @@ export function StudioShell({
       designJobId && concepts.some((concept) => concept.id.startsWith(activeJobPrefix)),
     );
     if (designJobId && currentFingerprint === conceptsSourceFingerprint && conceptJobStatus === "failed" && hasSavedPartialFromFailedJob) {
-      await runConceptGeneration();
+      await runAiConceptGeneration();
       return;
     }
     if (designJobId && currentFingerprint === conceptsSourceFingerprint && conceptJobStatus === "failed") {
@@ -1731,7 +1861,7 @@ export function StudioShell({
       setConceptMonitorVersion((version) => version + 1);
       return;
     }
-    await runConceptGeneration();
+    await runAiConceptGeneration();
   }
 
   async function resolveSelectedConcept() {
@@ -2258,6 +2388,7 @@ export function StudioShell({
     designId: concept.designId,
     revision: concept.designRevision,
     message: concept.message,
+    description: concept.description,
     document: conceptDocuments[concept.id],
     status: conceptDocuments[concept.id]
       ? designJobId && concept.id.startsWith(activeConceptJobPrefix)
@@ -2271,9 +2402,11 @@ export function StudioShell({
     designId: concept.designId,
     revision: concept.designRevision,
     message: concept.message,
+    description: concept.description,
     document: conceptDocuments[concept.id],
     status: conceptDocuments[concept.id] ? "ready" as const : "error" as const,
   })));
+  if (templatePreviews.length) conceptCards.unshift(...templatePreviews);
   if (partialDesignVariants) {
     conceptCards.push(...partialDesignVariants.variants.map((variant) => ({
       id: `partial-${partialDesignVariants.jobId}-${variant.id}`,
@@ -2403,7 +2536,7 @@ export function StudioShell({
             onBack={() => setStep("brand")}
             onGenerate={shouldResumeCampaignJob(resumePendingJob, jobType, jobId)
               ? resumePendingCampaignGeneration
-              : runConceptGeneration}
+              : () => runTemplateConcepts()}
           />
         )}
         {step === "concepts" && editingConcept && brand && (
@@ -2435,7 +2568,9 @@ export function StudioShell({
             campaignJobPending={campaignJobPending}
             onEdit={setEditingConceptId}
             onSelect={(id) => { setSelectedConceptId(id); selectedConceptRef.current = id; }}
-            onRetry={() => { void retryConceptGeneration(); }}
+            onRetry={() => { void (templatePreviews.length ? runTemplateConcepts(true) : retryConceptGeneration()); }}
+            onRefreshTemplates={() => { void runTemplateConcepts(true); }}
+            onGenerateAi={() => { if (!savingTemplates) void runAiConceptGeneration(); }}
             onBack={() => setStep(generation && campaignId ? "creative" : "campaign")}
             onContinue={() => { void runGeneration(); }}
           />

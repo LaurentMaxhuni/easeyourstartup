@@ -39,6 +39,7 @@ export function areStudioConceptsStale(
   if (!hasConceptWork) return false;
   if (state.conceptsSourceFingerprint !== currentSourceFingerprint) return true;
   if (!state.designJobId || state.concepts.length === 0) return false;
+  if (state.concepts.every((concept) => concept.id.startsWith(`template-${currentSourceFingerprint}-`))) return false;
   return !areStudioConceptsFromJob(state.concepts, state.designJobId);
 }
 

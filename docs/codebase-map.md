@@ -218,13 +218,19 @@ asset project with its own instructions, not the SaaS runtime.
   provider failures. Input, token and revision budgets bound work.
 - Pre-campaign concepts can opt into `distinctCopyPerDirection`; variants expose
   their approved messages and their compositions use the matching copy.
-- Studio asks for three square concepts after the announcement. Website capture
-  is imported as visual guidance; editable designs and selected message are saved
-  with the draft and carried into campaign generation. Earlier concept references
-  are retained in bounded history; partial job results stay locked while retryable.
-  Switching concepts after generation changes the visual, not existing channel copy.
-  Concept captures use the viewport-only `preview=1` route, with the active
-  project ID, to avoid unnecessary full-page capture work.
+- After the announcement, `campaign-templates.ts` locally matches three distinct
+  square layouts to brand character, campaign kind, copy length, and already
+  imported images. Previews render before concurrent design saves complete; the
+  default path makes no AI or capture request. Failed saves retain previews and
+  reuse successful records on retry. Each explicit refresh gets a distinct batch
+  ID so returning to an earlier brief cannot alias its edited designs.
+- `Create with AI` optionally runs the existing three-concept pipeline. Its
+  capture imports use the viewport-only `preview=1` route with the active project
+  ID. Ready designs remain selectable/editable during independent AI work;
+  partial job results stay locked while retryable, and campaign generation locks
+  selection. Completion preserves the founder's selection and archives previous
+  concepts in bounded history. Selected messages/designs still feed campaign
+  generation; switching after generation changes the visual, not saved channel copy.
 - `reference` assets guide vision analysis only; pipeline output validation
   rejects them from image layers, including on edits.
 - `renderer.ts` uses Playwright Core with local Chromium or a dedicated CDP /
