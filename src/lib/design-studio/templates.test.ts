@@ -17,6 +17,11 @@ describe("layout templates", () => {
     expect(page.nodes.find((node) => node.id === "cta-arrow")?.type).toBe("path");
     expect(page.nodes.some((node) => node.text.includes("→"))).toBe(false);
   });
+  it("uses explicit brand fonts, including Outfit, when campaign rendering requests them", () => {
+    const brand = brandKitSchema.parse({ headingFont: "Outfit", bodyFont: "Outfit" });
+    const page = buildTemplatePage(LAYOUT_TEMPLATES[0], { ...context, brand, useBrandFonts: true }, "page-1", "Campaign");
+    expect(new Set(page.nodes.filter((node) => node.type === "text").map((node) => node.fontFamily))).toEqual(new Set(["Outfit"]));
+  });
   it("gives every carousel slide the same headline size", () => {
     const slides = [{ ...copy, headline: "Turn every ship into a campaign" }, { ...copy, headline: "Editable layers, real fonts, your brand" }, { ...copy, headline: "Try it" }];
     const pages = buildTemplateSlides(LAYOUT_TEMPLATES[0], { width: 1080, height: 1350, brand: context.brand, assets: [] }, slides, (index) => `Slide ${index + 1}`);

@@ -10,7 +10,7 @@ import { clampDesignFontWeight, designFont, type DesignFontFamily } from "./font
 // fitting in the pipeline repairs any residual overflow.
 export type TemplateCopy = { kicker: string; headline: string; body: string; cta: string };
 // maxHeadlineSize lets a carousel share one headline size across slides.
-export type TemplateContext = { width: number; height: number; brand: BrandKit; assets: DesignAsset[]; copy: TemplateCopy; slideIndex: number; slideCount: number; maxHeadlineSize?: number };
+export type TemplateContext = { width: number; height: number; brand: BrandKit; assets: DesignAsset[]; copy: TemplateCopy; slideIndex: number; slideCount: number; maxHeadlineSize?: number; useBrandFonts?: boolean };
 type NodeInput = Partial<DesignNode> & Pick<DesignNode, "id" | "type" | "x" | "y" | "width" | "height">;
 type Fonts = { heading: DesignFontFamily; body: DesignFontFamily };
 export type LayoutTemplate = {
@@ -164,6 +164,109 @@ const shadow = (x: number, y: number, blur: number, color: string, opacity: numb
 
 // --- Templates ---------------------------------------------------------------
 export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
+  {
+    id: "orbit-launch", name: "Orbit launch", mood: "A focused launch with a drawn orbit system", bestFor: "New products and announcements", headlineMaxChars: 72,
+    fonts: { heading: "Sora", body: "Inter" },
+    build(context, fonts) {
+      const { width: W, height: H, brand, copy } = context;
+      const { u, M } = metrics(context);
+      const bg = solid(brand.background, "#f5f3ef"), ink = inkOn(bg, brand), primary = solid(brand.primary, "#f05228"), secondary = solid(brand.secondary, ink);
+      const textWidth = W - 2 * M, footerY = H - M - 84 * u;
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.4 }, bodySize = Math.round(27 * u), bodyWidth = Math.min(textWidth * 0.86, 820 * u);
+      const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
+      const top = H * 0.46, textBottom = footerY - 28 * u - bodyHeight;
+      const headType: Type = { font: fonts.heading, weight: 700, tracking: -0.035, lineHeight: 0.98 };
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(142 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: textBottom - top - 30 * u });
+      const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
+      const headlineY = Math.max(top, textBottom - bodyHeight - 30 * u - headlineHeight);
+      const bodyY = headlineY + headlineHeight + 30 * u;
+      const centerX = W / 2, centerY = H * 0.275;
+      return { background: bg, nodes: [
+        brandMark(context, "brand", M, M, 28 * u, ink, fonts.body, "left", W * 0.45),
+        textLayer("kicker", "label", "Kicker", copy.kicker, W / 2, M, W / 2 - M, 23 * u, { font: fonts.body, weight: 700, uppercase: true, tracking: 0.12 }, ink, { align: "right" }),
+        { id: "orbit-outer", type: "ellipse", name: "Outer orbit", x: W * 0.24, y: H * 0.12, width: W * 0.52, height: H * 0.31, fill: "transparent", stroke: secondary, strokeWidth: 4 * u, opacity: 0.8 },
+        { id: "orbit-inner", type: "ellipse", name: "Tilted orbit", x: W * 0.31, y: H * 0.16, width: W * 0.38, height: H * 0.23, fill: "transparent", stroke: primary, strokeWidth: 3 * u, rotation: -18 },
+        { id: "orbit-trail", type: "path", name: "Orbit trail", x: W * 0.22, y: H * 0.25, width: W * 0.56, height: H * 0.08, fill: "transparent", stroke: secondary, strokeWidth: 2 * u, path: "M0 40 C180 0 420 80 605 28", opacity: 0.75 },
+        { id: "orbit-core", type: "rect", name: "Orbit core", x: centerX - 68 * u, y: centerY - 68 * u, width: 136 * u, height: 136 * u, fill: primary, radius: 36 * u, shadows: shadow(0, 12 * u, 28 * u, "#000000", 0.12) },
+        { id: "orbit-core-light", type: "ellipse", name: "Core detail", x: centerX - 22 * u, y: centerY - 22 * u, width: 44 * u, height: 44 * u, fill: bg },
+        { id: "orbit-satellite-1", type: "ellipse", name: "Orbit satellite", x: W * 0.25, y: H * 0.245, width: 34 * u, height: 34 * u, fill: primary, stroke: bg, strokeWidth: 5 * u },
+        { id: "orbit-satellite-2", type: "ellipse", name: "Orbit satellite", x: W * 0.68, y: H * 0.145, width: 26 * u, height: 26 * u, fill: secondary, stroke: bg, strokeWidth: 4 * u },
+        { id: "orbit-satellite-3", type: "rect", name: "Orbit marker", x: W * 0.72, y: H * 0.325, width: 28 * u, height: 28 * u, fill: primary, radius: 8 * u, rotation: 45 },
+        textLayer("headline", "headline", "Headline", copy.headline, M, headlineY, textWidth, size, headType, ink, { textWrap: "balance" }),
+        ...(has(copy.body) ? [textLayer("body", "body", "Body", copy.body, M, bodyY, bodyWidth, bodySize, bodyType, ink)] : []),
+        ...button("cta", copy.cta, M, H - M - 84 * u, 27 * u, { font: fonts.body, weight: 700 }, { fill: primary, ink: inkOn(primary, brand, 3) }, { minWidth: 280 * u, height: 84 * u, radius: 42 * u }),
+      ] };
+    },
+  },
+  {
+    id: "signal-grid", name: "Signal grid", mood: "A technical announcement with an editable network diagram", bestFor: "Feature updates and developer products", headlineMaxChars: 64,
+    fonts: { heading: "Space Grotesk", body: "JetBrains Mono" },
+    build(context, fonts) {
+      const { width: W, height: H, brand, copy } = context;
+      const { u, M } = metrics(context);
+      const bg = solid(brand.background, "#f5f3ef"), ink = inkOn(bg, brand), primary = solid(brand.primary, "#f05228"), secondary = solid(brand.secondary, ink);
+      const panelWidth = Math.min(W * 0.34, 420 * u), panelHeight = Math.min(H * 0.34, 360 * u), panelX = W - M - panelWidth, panelY = H * 0.31;
+      const textWidth = Math.min(W - 2 * M, W * 0.54), top = H * 0.25, footerY = H - M - 84 * u;
+      const bodyType: Type = { font: fonts.body, lineHeight: 1.5 }, bodySize = Math.round(25 * u), bodyWidth = Math.min(textWidth, 620 * u);
+      const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
+      const bodyBottom = footerY - 28 * u - bodyHeight;
+      const headType: Type = { font: fonts.heading, weight: 600, tracking: -0.03, lineHeight: 1.02 };
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(126 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - top - 26 * u });
+      const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
+      const headlineY = Math.max(top, bodyBottom - bodyHeight - 26 * u - headlineHeight);
+      const bodyY = headlineY + headlineHeight + 26 * u;
+      const px = panelWidth, py = panelHeight, traceWidth = panelWidth * 0.76, traceHeight = panelHeight * 0.62;
+      return { background: bg, nodes: [
+        { id: "signal-grid", type: "rect", name: "Grid field", x: 0, y: 0, width: W, height: H, fill: "transparent", pattern: { kind: "grid", color: primary, opacity: 0.12, size: 54 * u } },
+        brandMark(context, "brand", M, M, 27 * u, ink, fonts.body, "left", W * 0.46),
+        textLayer("kicker", "label", "Kicker", copy.kicker, W / 2, M, W / 2 - M, 22 * u, { font: fonts.body, weight: 600, uppercase: true, tracking: 0.08 }, ink, { align: "right" }),
+        { id: "diagram-panel", type: "rect", name: "Diagram frame", x: panelX, y: panelY, width: panelWidth, height: panelHeight, fill: bg, stroke: secondary, strokeWidth: 3 * u, radius: 22 * u },
+        { id: "diagram-trace", type: "path", name: "Signal route", x: panelX + px * 0.12, y: panelY + py * 0.2, width: traceWidth, height: traceHeight, fill: "transparent", stroke: primary, strokeWidth: 6 * u, path: `M0 ${traceHeight * 0.55} L${traceWidth * 0.22} ${traceHeight * 0.55} L${traceWidth * 0.38} ${traceHeight * 0.13} L${traceWidth * 0.62} ${traceHeight * 0.13} L${traceWidth * 0.78} ${traceHeight * 0.62} L${traceWidth} ${traceHeight * 0.62}` },
+        { id: "diagram-port-a", type: "ellipse", name: "Signal port", x: panelX + px * 0.08, y: panelY + py * 0.48, width: 42 * u, height: 42 * u, fill: bg, stroke: primary, strokeWidth: 6 * u },
+        { id: "diagram-port-b", type: "rect", name: "Signal node", x: panelX + px * 0.32, y: panelY + py * 0.28, width: 54 * u, height: 54 * u, fill: primary, radius: 12 * u },
+        { id: "diagram-port-c", type: "ellipse", name: "Signal port", x: panelX + px * 0.57, y: panelY + py * 0.07, width: 42 * u, height: 42 * u, fill: bg, stroke: secondary, strokeWidth: 6 * u },
+        { id: "diagram-port-d", type: "rect", name: "Signal node", x: panelX + px * 0.72, y: panelY + py * 0.5, width: 50 * u, height: 50 * u, fill: secondary, radius: 10 * u },
+        { id: "diagram-rule-1", type: "rect", name: "Diagram key", x: panelX + px * 0.1, y: panelY + py * 0.82, width: px * 0.28, height: 5 * u, fill: secondary, opacity: 0.7 },
+        { id: "diagram-rule-2", type: "rect", name: "Diagram key", x: panelX + px * 0.45, y: panelY + py * 0.82, width: px * 0.44, height: 5 * u, fill: primary, opacity: 0.7 },
+        textLayer("headline", "headline", "Headline", copy.headline, M, headlineY, textWidth, size, headType, ink, { textWrap: "balance" }),
+        ...(has(copy.body) ? [textLayer("body", "body", "Body", copy.body, M, bodyY, bodyWidth, bodySize, bodyType, ink)] : []),
+        ...button("cta", copy.cta, M, H - M - 84 * u, 25 * u, { font: fonts.body, weight: 700 }, { fill: primary, ink: inkOn(primary, brand, 3) }, { minWidth: 280 * u, height: 84 * u, radius: 10 * u }),
+      ] };
+    },
+  },
+  {
+    id: "modular-collage", name: "Modular collage", mood: "A bold color-field poster with a geometric illustration", bestFor: "Promotions, milestones and playful announcements", headlineMaxChars: 48,
+    fonts: { heading: "Bricolage Grotesque", body: "DM Sans" },
+    build(context, fonts) {
+      const { width: W, height: H, brand, copy } = context;
+      const { u, M } = metrics(context);
+      const bg = solid(brand.primary, "#f05228"), ink = inkOn(bg, brand, 3), paper = solid(brand.background, "#f5f3ef"), dark = solid(brand.secondary, ink);
+      const textWidth = Math.min(W - 2 * M, W * 0.54), footerY = H - M - 84 * u, titleTop = H * 0.29;
+      const bodyType: Type = { font: fonts.body, weight: 500, lineHeight: 1.4 }, bodySize = Math.round(27 * u), bodyWidth = textWidth;
+      const bodyHeight = has(copy.body) ? blockHeight(copy.body, bodyWidth, bodySize, bodyType) : 0;
+      const bodyBottom = footerY - 28 * u - bodyHeight;
+      const headType: Type = { font: fonts.heading, weight: 800, uppercase: true, tracking: -0.025, lineHeight: 0.98 };
+      const size = fitSize(copy.headline, textWidth, headType, { maxSize: Math.min(178 * u, context.maxHeadlineSize ?? Infinity), maxLines: 5, maxHeight: bodyBottom - titleTop - 26 * u });
+      const headlineHeight = blockHeight(copy.headline, textWidth, size, headType);
+      const headlineY = Math.max(titleTop, bodyBottom - bodyHeight - 26 * u - headlineHeight);
+      const bodyY = headlineY + headlineHeight + 26 * u;
+      const artX = W * 0.63, artY = H * 0.24, artW = Math.min(W * 0.29, 320 * u), artH = Math.min(H * 0.42, 450 * u);
+      return { background: bg, nodes: [
+        { id: "collage-band", type: "rect", name: "Color band", x: 0, y: 0, width: W, height: H * 0.12, fill: dark },
+        brandMark(context, "brand", M, M + 14 * u, 26 * u, inkOn(dark, brand, 3), fonts.body, "left", W * 0.48),
+        textLayer("kicker", "label", "Kicker", copy.kicker, W / 2, M + 14 * u, W / 2 - M, 21 * u, { font: fonts.body, weight: 700, uppercase: true, tracking: 0.14 }, inkOn(dark, brand, 3), { align: "right" }),
+        { id: "collage-frame", type: "rect", name: "Illustration frame", x: artX, y: artY, width: artW, height: artH, fill: "transparent", stroke: dark, strokeWidth: 4 * u, radius: 26 * u },
+        { id: "collage-block-a", type: "rect", name: "Color block", x: artX + artW * 0.16, y: artY + artH * 0.12, width: artW * 0.5, height: artH * 0.29, fill: paper, radius: 18 * u, rotation: -7 },
+        { id: "collage-block-b", type: "rect", name: "Color block", x: artX + artW * 0.42, y: artY + artH * 0.47, width: artW * 0.43, height: artH * 0.32, fill: dark, radius: 18 * u, rotation: 8 },
+        { id: "collage-disc", type: "ellipse", name: "Color disc", x: artX - artW * 0.05, y: artY + artH * 0.58, width: artW * 0.36, height: artW * 0.36, fill: paper },
+        { id: "collage-diamond", type: "path", name: "Diamond marker", x: artX + artW * 0.63, y: artY + artH * 0.13, width: artW * 0.24, height: artW * 0.24, fill: paper, path: "M50 0 L100 50 L50 100 L0 50 Z" },
+        { id: "collage-route", type: "path", name: "Rising route", x: artX + artW * 0.07, y: artY + artH * 0.2, width: artW * 0.82, height: artH * 0.68, fill: "transparent", stroke: inkOn(bg, brand, 3), strokeWidth: 5 * u, path: `M0 ${artH * 0.61} L${artW * 0.22} ${artH * 0.61} L${artW * 0.22} ${artH * 0.4} L${artW * 0.49} ${artH * 0.4} L${artW * 0.49} ${artH * 0.21} L${artW * 0.82} ${artH * 0.21}` },
+        textLayer("headline", "headline", "Headline", copy.headline, M, headlineY, textWidth, size, headType, ink, { textWrap: "balance" }),
+        ...(has(copy.body) ? [textLayer("body", "body", "Body", copy.body, M, bodyY, bodyWidth, bodySize, bodyType, ink)] : []),
+        ...button("cta", copy.cta, M, H - M - 84 * u, 27 * u, { font: fonts.body, weight: 700 }, { fill: dark, ink: inkOn(dark, brand, 3) }, { minWidth: 280 * u, height: 84 * u, radius: 42 * u }),
+      ] };
+    },
+  },
   {
     id: "swiss-grid", name: "Swiss grid", mood: "Precise, rational, confident", bestFor: "Feature launches and announcements with a strong headline", headlineMaxChars: 60,
     fonts: { heading: "Inter", body: "Inter" },
@@ -527,9 +630,9 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
 export function availableTemplates(assets: DesignAsset[]) {
   return LAYOUT_TEMPLATES.filter((template) => !template.requiresImage || assets.some((asset) => asset.kind === "image"));
 }
-export function templateFonts(template: LayoutTemplate, brand: BrandKit): Fonts {
+export function templateFonts(template: LayoutTemplate, brand: BrandKit, useBrandFonts = false): Fonts {
   // An untouched default kit defers to the template's tested pairing.
-  return brand.headingFont === "Outfit" && brand.bodyFont === "Outfit" ? template.fonts : { heading: brand.headingFont, body: brand.bodyFont };
+  return !useBrandFonts && brand.headingFont === "Outfit" && brand.bodyFont === "Outfit" ? template.fonts : { heading: brand.headingFont, body: brand.bodyFont };
 }
 const round = (value: number) => Math.round(value * 10) / 10;
 // Models often emit typographic hyphens and spaces that the self-hosted
@@ -537,7 +640,7 @@ const round = (value: number) => Math.round(value * 10) / 10;
 const normalizeSlot = (text: string) => text.replace(/[\u2010\u2011\u2012]/g, "-").replace(/[\u00a0\u2007\u202f]/g, " ");
 export function buildTemplatePage(template: LayoutTemplate, input: TemplateContext, pageId: string, name: string): DesignPage {
   const context = { ...input, copy: { kicker: normalizeSlot(input.copy.kicker), headline: normalizeSlot(input.copy.headline), body: normalizeSlot(input.copy.body), cta: normalizeSlot(input.copy.cta) } };
-  const fonts = templateFonts(template, context.brand);
+  const fonts = templateFonts(template, context.brand, context.useBrandFonts);
   const { background, nodes } = template.build(context, fonts);
   return designPageSchema.parse({ id: pageId, name, width: context.width, height: context.height, background, nodes: nodes.map((node) => ({
     ...node,

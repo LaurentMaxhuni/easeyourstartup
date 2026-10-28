@@ -7,18 +7,77 @@ export const CAMPAIGN_DESIGN_SIZE = { width: 1080, height: 1080 } as const;
 
 const SPACING = { compact: "compact", comfortable: "balanced", airy: "generous" } as const;
 
-function catalogFont(...names: (string | undefined)[]) {
-  for (const name of names) {
-    const family = name?.split(",")[0]?.replace(/["']/g, "").trim().toLowerCase();
-    const match = DESIGN_FONTS.find((font) => font.toLowerCase() === family);
-    if (match) return match;
+function familyNames(value: string) {
+  const names: string[] = [];
+  let quote = "";
+  let start = 0;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if ((character === "'" || character === '"') && (!quote || quote === character)) quote = quote ? "" : character;
+    else if (character === "," && !quote) {
+      names.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
   }
-  return "Outfit" as const;
+  names.push(value.slice(start).trim());
+  return names.map((name) => name.replace(/^(['"])(.*)\1$/, "$2").trim()).filter(Boolean);
+}
+
+function canonicalFamily(name: string) {
+  return name
+    .replace(/\s*[([]\s*(?:variable|var)(?:\s+font)?\s*[)\]]\s*$/i, "")
+    .replace(/\s+(?:variable(?:\s+font)?|var|vf)$/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+function supportedFont(name: string) {
+  const family = canonicalFamily(name);
+  return DESIGN_FONTS.find((font) => font.toLowerCase() === family);
+}
+
+function fallbackFont(name: string, role: "heading" | "body") {
+  const family = canonicalFamily(name);
+  if (/\b(?:serif|roman|didone)\b/.test(family)) return "Georgia" as const;
+  if (/\b(?:mono|monospace|typewriter|terminal|code)\b/.test(family)) return "Courier New" as const;
+  if (role === "heading" && /\b(?:condensed|narrow)\b/.test(family)) return "Bebas Neue" as const;
+  if (/\b(?:rounded|geometric|display)\b/.test(family)) return "Outfit" as const;
+  return "Inter" as const;
+}
+
+type FontMapping = { font: (typeof DESIGN_FONTS)[number]; substitution?: string };
+function catalogFont(role: "heading" | "body", defaultFont: (typeof DESIGN_FONTS)[number], ...values: (string | undefined)[]): FontMapping {
+  const names = values.filter(Boolean).flatMap((value) => familyNames(value!));
+  const requested = names.find((name) => !/^(?:serif|sans-serif|monospace|system-ui|cursive|fantasy)$/i.test(name));
+  for (const name of names) {
+    const font = supportedFont(name);
+    if (font) return { font, ...(requested && !supportedFont(requested) ? { substitution: `${requested} → ${font}` } : {}) };
+  }
+  return requested
+    ? { font: fallbackFont(requested, role), substitution: `${requested} → ${fallbackFont(requested, role)}` }
+    : { font: defaultFont };
+}
+
+function campaignFonts(brand: BrandProfile) {
+  const visual = brand.visualSystem;
+  const heading = catalogFont("heading", "Outfit", visual?.headingFont, brand.fonts[0], brand.fonts[1]);
+  const body = catalogFont("body", "Outfit", visual?.bodyFont, brand.fonts[1], brand.fonts[0]);
+  return { heading, body };
+}
+
+export function campaignFontSubstitutions(brand: BrandProfile) {
+  const { heading, body } = campaignFonts(brand);
+  return [heading.substitution && `Heading font ${heading.substitution}.`, body.substitution && `Body font ${body.substitution}.`].filter((note): note is string => Boolean(note));
 }
 
 function luminance(hex: string) {
   const [r, g, b] = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function chroma(hex: string) {
+  const channels = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+  return Math.max(...channels) - Math.min(...channels);
 }
 
 // Page titles often carry a tagline ("Name — What it does"); the brand slot
@@ -32,13 +91,16 @@ export function shortBrandName(projectName: string) {
 export function campaignBrandKit(brand: BrandProfile): BrandKit {
   const visual = brand.visualSystem;
   const byLightness = [...brand.colors].sort((a, b) => luminance(b) - luminance(a));
+  const paletteColor = (color: string | undefined) => brand.colors.find((candidate) => candidate.toLowerCase() === color?.toLowerCase());
+  const chromaticAccent = brand.colors.reduce((best, color) => chroma(color) > chroma(best) ? color : best, brand.colors[0]);
+  const fonts = campaignFonts(brand);
   return brandKitSchema.parse({
     name: shortBrandName(brand.projectName),
-    primary: visual?.accentColor ?? brand.colors[1] ?? brand.colors[0],
-    secondary: visual?.foregroundColor ?? byLightness.at(-1),
-    background: visual?.backgroundColor ?? byLightness[0],
-    headingFont: catalogFont(visual?.headingFont, brand.fonts[0]),
-    bodyFont: catalogFont(visual?.bodyFont, brand.fonts[1], brand.fonts[0]),
+    primary: paletteColor(visual?.accentColor) ?? (chroma(chromaticAccent) > 0 ? chromaticAccent : brand.colors[1] ?? brand.colors[0]),
+    secondary: paletteColor(visual?.foregroundColor) ?? byLightness.at(-1),
+    background: paletteColor(visual?.backgroundColor) ?? byLightness[0],
+    headingFont: fonts.heading.font,
+    bodyFont: fonts.body.font,
     personality: [...brand.voice, ...(brand.brandIntelligence?.tone ?? [])].join(", ").slice(0, 1000) || undefined,
     spacing: visual ? SPACING[visual.density] : undefined,
     formats: ["Social post · 1:1"],
@@ -88,7 +150,7 @@ export function campaignDesignDocument(input: {
   const assets = (input.assets ?? []).slice(0, 12);
   const copy = campaignDesignCopy(input.brand, input.direction, input.cta);
   const template = chooseCampaignTemplate(copy, kit, assets);
-  const page = buildTemplatePage(template, { ...CAMPAIGN_DESIGN_SIZE, brand: kit, assets, copy, slideIndex: 0, slideCount: 1 }, "page-1", "Launch post");
+  const page = buildTemplatePage(template, { ...CAMPAIGN_DESIGN_SIZE, brand: kit, assets, copy, slideIndex: 0, slideCount: 1, useBrandFonts: true }, "page-1", "Launch post");
   return designDocumentSchema.parse({
     version: 1,
     title: `${shortBrandName(input.brand.projectName)} launch visual`.slice(0, 180),
