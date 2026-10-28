@@ -112,6 +112,8 @@ asset project with its own instructions, not the SaaS runtime.
   their product. Migration `0027_project_url_identity.sql` implements this identity.
 - Studio snapshots use database revision checks plus device-local fallback.
   Preserve conflict handling and saved work when providers or sync fail.
+  Queued saves retain a revision context per hydrated scope; late responses from
+  another project/campaign cannot change the active scope's expected revision.
   The editor's own URL updates must not rehydrate an already loaded scope;
   that can race autosave and reset its expected revision.
 - Server-rendered session reads use the SDK's read-only context; cookie updates

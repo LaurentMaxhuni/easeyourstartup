@@ -37,6 +37,10 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
   let campaignRequest: { campaign?: { updateDetails: string } } | undefined;
   let captureRequests = 0;
   const snapshots: StudioState[] = [];
+  const rows = new Map<string, { state: StudioState; revision: number }>();
+  let snapshotGate: Promise<void> | undefined;
+  let releaseSnapshot: (() => void) | undefined;
+  let snapshotHeld = false;
   const designs = new Map<string, { id: string; revision: number; document: DesignDocument; title: string }>();
   const errors: string[] = [];
   const directory = path.resolve("output/instant-campaign-previews/studio");
@@ -47,7 +51,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     const css = path.resolve("src/app/globals.css").replaceAll("\\", "/");
     await writeFile(path.join(directory, "main.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{StudioShell}from ${JSON.stringify(source)};import ${JSON.stringify(css)};createRoot(document.getElementById('root')!).render(<StudioShell initialAuthenticated profile={{name:'Test founder',email:'founder@example.test',image:null}}/>);`);
     await writeFile(path.join(directory, "link.tsx"), "import React from 'react';export default function Link({prefetch,...props}:any){return <a {...props}/>} ");
-    await writeFile(path.join(directory, "navigation.ts"), `const params=new URLSearchParams('projectId=${PROJECT_ID}');const router={push:(url:string)=>window.history.pushState(null,'',url),replace:(url:string)=>window.history.replaceState(null,'',url),refresh:()=>{}};export const useRouter=()=>router;export const useSearchParams=()=>params;export const usePathname=()=>'/studio';`);
+    await writeFile(path.join(directory, "navigation.ts"), `import{useSyncExternalStore}from'react';let previous='',params=new URLSearchParams();const subscribe=(callback:()=>void)=>{addEventListener('popstate',callback);return()=>removeEventListener('popstate',callback)};const router={push:(url:string)=>{history.pushState(null,'',url);dispatchEvent(new PopStateEvent('popstate'))},replace:(url:string)=>{history.replaceState(null,'',url);dispatchEvent(new PopStateEvent('popstate'))},refresh:()=>{}};export const useRouter=()=>router;export const useSearchParams=()=>{const search=useSyncExternalStore(subscribe,()=>location.search);if(search!==previous){previous=search;params=new URLSearchParams(search)}return params};export const usePathname=()=>'/studio';`);
     const require = createRequire(import.meta.url);
     const vite = await import(createRequire(require.resolve("vitest/package.json")).resolve("vite"));
     await vite.build({ configFile: false, root: process.cwd(), logLevel: "error", define: { "process.env.NODE_ENV": '"development"' },
@@ -61,10 +65,20 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
         const json = (value: unknown, status = 200) => { response.statusCode = status; response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(value)); };
         const body = async () => { let text = ""; for await (const chunk of request) text += chunk; return JSON.parse(text); };
         if (url.pathname === "/api/studio/state") {
-          if (request.method === "GET") return json({ state, revision, storageKey: "preview-browser-test", persistence: "database" });
-          state = studioStateSchema.parse((await body()).state);
-          snapshots.push(state);
-          return json({ revision: ++revision });
+          if (request.method === "GET") {
+            const row = rows.get(url.searchParams.get("projectId") || PROJECT_ID)!;
+            state = row.state;
+            return json({ state: row.state, revision: row.revision, storageKey: "preview-browser-test", persistence: "database" });
+          }
+          const data = await body();
+          const incoming = studioStateSchema.parse(data.state);
+          const row = rows.get(incoming.projectId!)!;
+          if (data.expectedRevision !== row.revision) return json({ error: "This project changed in another tab" }, 409);
+          if (snapshotGate && incoming.projectId === PROJECT_ID && incoming.concepts.length === 3) { snapshotHeld = true; await snapshotGate; }
+          row.state = incoming; row.revision++;
+          if (state.projectId === incoming.projectId) state = incoming;
+          snapshots.push(incoming);
+          return json({ revision: row.revision });
         }
         if (url.pathname === "/api/entitlements") return json({ plan: "pro", canExportLaunchKit: true });
         if (url.pathname === "/api/studio/suggest") return json({ channels: ["linkedin"], updateDetails: state.draft.updateDetails });
@@ -86,7 +100,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
           if (data.action === "cancel") { aiStatus = "cancelled"; return json({}); }
           if (data.action === "save") {
             const attempt = ++saveAttempts;
-            if (saveGate) await saveGate;
+            if (saveGate && !data.id) await saveGate;
             if (attempt === failSave) return json({ error: "Template save temporarily unavailable" }, 503);
             const existing = data.id ? designs.get(data.id) : undefined;
             if (existing && existing.revision !== data.revision) return json({ error: "Revision conflict" }, 409);
@@ -117,15 +131,18 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
 
   beforeEach(async () => {
     releaseSaves?.();
+    releaseSnapshot?.();
     await page?.close();
     state = initialState(); revision = 1; sequence = 0; saveAttempts = 0; failSave = 0;
     saveGate = undefined; releaseSaves = undefined; generationRequests = []; campaignRequest = undefined; captureRequests = 0; aiStatus = "running";
-    designs.clear(); errors.length = 0; snapshots.length = 0;
+    designs.clear(); errors.length = 0; snapshots.length = 0; rows.clear();
+    rows.set(PROJECT_ID, { state, revision });
+    snapshotGate = undefined; releaseSnapshot = undefined; snapshotHeld = false;
     page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     page.setDefaultTimeout(10_000);
     page.on("pageerror", (error) => errors.push(error.message));
   });
-  afterAll(async () => { releaseSaves?.(); await browser?.close(); if (server) await new Promise<void>((resolve) => server.close(() => resolve())); });
+  afterAll(async () => { releaseSaves?.(); releaseSnapshot?.(); await browser?.close(); if (server) await new Promise<void>((resolve) => server.close(() => resolve())); });
   afterEach(async () => {
     if (!page?.isClosed()) {
       await writeFile(path.join(directory, "diagnostics.json"), JSON.stringify({ errors, text: await page.locator("body").innerText() }, null, 2));
@@ -196,7 +213,7 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     await openTemplates(); await waitForSavedTemplates();
     await page.getByRole("button", { name: "Create with AI", exact: true }).click();
     await page.getByText("Creating custom AI concepts.", { exact: false }).waitFor();
-    expect(generationRequests).toHaveLength(1);
+    await expect.poll(() => generationRequests.length).toBe(1);
     await page.getByRole("radio").nth(2).check();
     const selectedId = await page.getByRole("radio").nth(2).getAttribute("value");
     const selected = state.concepts.find((concept) => concept.id === selectedId)!;
@@ -256,5 +273,62 @@ describe.skipIf(process.env.RUN_DESIGN_BROWSER_TESTS !== "true")("instant campai
     await lastSave;
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     expect(snapshots.slice(beforeRelease).every((snapshot) => snapshot.draft.updateDetails === message && snapshot.step === "campaign")).toBe(true);
+  }, 30_000);
+
+  it("archives the latest edited message and revision when an older concept is edited during a template refresh", async () => {
+    await openTemplates(); await waitForSavedTemplates();
+    const original = state.concepts[0];
+    saveGate = new Promise<void>((resolve) => { releaseSaves = resolve; });
+    await page.getByRole("button", { name: "Back to announcement", exact: true }).click();
+    await page.getByLabel("What should people know?", { exact: true }).fill("Share the new workspace with your team. The new board is ready.");
+    await page.getByRole("button", { name: "Choose a post concept", exact: true }).click();
+    await page.getByRole("heading", { name: "Choose a post concept", exact: true }).waitFor();
+    await page.locator('button[aria-label^="Edit concept:"]:enabled').first().click();
+    await page.locator('[data-node-id="headline"]').click();
+    await page.getByLabel("Text", { exact: true }).fill("Edited while the new previews were saving");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForFunction(() => document.body.textContent?.includes("Saved revision 2."));
+    await page.getByRole("button", { name: "Back to my posts", exact: true }).click();
+    await expect.poll(() => state.concepts.find((concept) => concept.id === original.id)?.message).toContain("Edited while the new previews were saving");
+    releaseSaves!(); saveGate = undefined;
+    await expect.poll(() => state.previousConcepts.find((concept) => concept.id === original.id)?.message).toContain("Edited while the new previews were saving");
+    expect(state.previousConcepts.find((concept) => concept.id === original.id)?.designRevision).toBe(2);
+  }, 30_000);
+
+  it("does not let a late template snapshot response change the revision used to save another project", async () => {
+    const secondId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const second = studioStateSchema.parse({ ...initialState(), projectId: secondId, brand: { ...brand, projectName: "Second project" } });
+    rows.set(secondId, { state: second, revision: 41 });
+    snapshotGate = new Promise<void>((resolve) => { releaseSnapshot = resolve; });
+    await openTemplates();
+    await expect.poll(() => snapshotHeld).toBe(true);
+    await page.evaluate((id) => { history.pushState(null, "", `/studio?projectId=${id}`); dispatchEvent(new PopStateEvent("popstate")); }, secondId);
+    await page.getByText("Second project", { exact: true }).first().waitFor();
+    const oldResponse = page.waitForResponse((response) => response.url().includes("/api/studio/state") && response.request().method() === "PUT" && response.request().postDataJSON()?.state.projectId === PROJECT_ID);
+    releaseSnapshot!(); snapshotGate = undefined;
+    await oldResponse;
+    const newResponse = page.waitForResponse((response) => response.url().includes("/api/studio/state") && response.request().method() === "PUT" && response.request().postDataJSON()?.state.projectId === secondId);
+    await page.getByLabel("What should people know?", { exact: true }).fill("The second project has an updated announcement.");
+    expect((await newResponse).status()).toBe(200);
+    expect(rows.get(secondId)!.state.draft.updateDetails).toBe("The second project has an updated announcement.");
+    expect(rows.get(secondId)!.state.concepts).toHaveLength(0);
+    expect(errors).toEqual([]);
+  }, 30_000);
+
+  it("preserves a selection made while the refreshed template snapshot is still saving", async () => {
+    await openTemplates(); await waitForSavedTemplates();
+    snapshotGate = new Promise<void>((resolve) => { releaseSnapshot = resolve; });
+    await page.getByRole("button", { name: "Back to announcement", exact: true }).click();
+    await page.getByLabel("What should people know?", { exact: true }).fill("Share the new workspace with your team. The new board is ready.");
+    await page.getByRole("button", { name: "Choose a post concept", exact: true }).click();
+    await expect.poll(() => snapshotHeld).toBe(true);
+    const radio = page.locator('input[name="campaign-concept"]:enabled').nth(1);
+    const selected = await radio.getAttribute("value");
+    await radio.check();
+    releaseSnapshot!(); snapshotGate = undefined;
+    await page.waitForFunction(() => document.querySelectorAll('input[name="campaign-concept"]:enabled').length === 6);
+    expect(await page.locator(`input[value="${selected}"]`).isChecked()).toBe(true);
+    await expect.poll(() => state.selectedConceptId).toBe(selected);
+    expect(errors).toEqual([]);
   }, 30_000);
 });

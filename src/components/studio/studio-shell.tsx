@@ -346,6 +346,7 @@ export function StudioShell({
   const brandEdited = useRef(false);
   const storageKey = useRef<string | null>("easeyourstartup:guest-studio");
   const saveRevision = useRef<number | null>(null);
+  const saveContext = useRef<{ revision: number | null }>({ revision: null });
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const pollingJobId = useRef<string | null>(null);
   const applyScanResultRef = useRef<(data: ScanResult, nextProjectId: string | null) => void>(() => {});
@@ -462,6 +463,9 @@ export function StudioShell({
 
   const persistStudioState = useCallback(
     async (options: { manual?: boolean; state?: StudioState } = {}) => {
+      // Queued saves retain their own scope's revision even after navigation.
+      const context = saveContext.current;
+      context.revision = saveRevision.current;
       let state: StudioState;
       try {
         state = options.state ?? buildStudioState();
@@ -489,19 +493,22 @@ export function StudioShell({
         const response = await fetch("/api/studio/state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ state, expectedRevision: saveRevision.current }),
+          body: JSON.stringify({ state, expectedRevision: context.revision }),
         });
         const result = await response.json() as { error?: string; revision?: number };
         if (!response.ok) throw new Error(result.error || "Database persistence is unavailable.");
-        if (typeof result.revision === "number") saveRevision.current = result.revision;
+        if (typeof result.revision === "number") context.revision = result.revision;
+        if (context !== saveContext.current) return false;
+        saveRevision.current = context.revision;
         setSaveStatus("saved");
         setSaveError("");
-      });
-      saveQueue.current = save.catch(() => undefined);
-      try {
-        await save;
         return true;
+      });
+      saveQueue.current = save.then(() => undefined, () => undefined);
+      try {
+        return await save;
       } catch (error) {
+        if (context !== saveContext.current) return false;
         if (error instanceof Error && error.message.includes("changed in another tab")) {
           setSaveStatus("error");
           setSaveError(error.message);
@@ -545,6 +552,7 @@ export function StudioShell({
     setSavingTemplates(false);
     startingConcepts.current = false;
     saveRevision.current = null;
+    saveContext.current = { revision: null };
 
     async function hydrateStudioState() {
       let savedState: StudioState | null = null;
@@ -568,6 +576,7 @@ export function StudioShell({
             revision?: number | null;
             activeJob?: unknown;
           };
+          if (cancelled) return;
           saveRevision.current = typeof data.revision === "number" ? data.revision : null;
           persistence = data.persistence === "database" ? "database" : "local";
           savedState = studioStateSchema.safeParse(data.state).success
@@ -1566,8 +1575,7 @@ export function StudioShell({
       setStep("concepts");
       return;
     }
-    const history = appendStudioConceptsToHistory({ concepts: conceptsRef.current, previousConcepts: previousConceptsRef.current });
-    if (!history) {
+    if (!appendStudioConceptsToHistory({ concepts: conceptsRef.current, previousConcepts: previousConceptsRef.current })) {
       setGenerateStatus("error");
       setGenerateError("Your saved concept history is full. Keep these concepts and start a new project before replacing them.");
       setConceptError("Your saved concept history is full. Your edits are still available.");
@@ -1605,6 +1613,7 @@ export function StudioShell({
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "cancel", jobId: designJobId }),
         });
+        if (operation !== templateOperation.current) return;
         if (!response.ok) throw new Error("The previous AI job could not be stopped. Retry before replacing its concepts.");
         setDesignJobId(null);
         setConceptJobStatus(null);
@@ -1638,6 +1647,8 @@ export function StudioShell({
       const failed = results.find((result) => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
       const nextConcepts = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      const history = appendStudioConceptsToHistory({ concepts: conceptsRef.current, previousConcepts: previousConceptsRef.current });
+      if (!history) throw new Error("Your saved concept history is full. Your existing edits remain available.");
       const currentSelectedId = selectedConceptRef.current;
       const nextSelectedId = currentSelectedId && currentSelectedId !== selectionAtStart
         && [...nextConcepts, ...history].some((concept) => concept.id === currentSelectedId)
@@ -1648,12 +1659,25 @@ export function StudioShell({
       }, true);
       if (operation !== templateOperation.current) return;
       if (!saved) throw new Error("Your previews are ready, but project sync failed. Retry saving before continuing.");
-      replacePreviousConcepts(history);
+      // Ready designs remain editable while the snapshot is in flight.
+      const latestHistory = appendStudioConceptsToHistory({ concepts: conceptsRef.current, previousConcepts: previousConceptsRef.current });
+      if (!latestHistory) throw new Error("Your saved concept history is full. Your existing edits remain available.");
+      const latestSelection = selectedConceptRef.current;
+      const selected = latestSelection !== currentSelectedId && [...nextConcepts, ...latestHistory].some((concept) => concept.id === latestSelection)
+        ? latestSelection : nextSelectedId;
+      replacePreviousConcepts(latestHistory);
       replaceConcepts(nextConcepts);
-      setSelectedConceptId(nextSelectedId);
-      selectedConceptRef.current = nextSelectedId;
+      setSelectedConceptId(selected);
+      selectedConceptRef.current = selected;
       setConceptsSourceFingerprint(sourceFingerprint);
       setTemplatePreviews([]);
+      if (selected !== nextSelectedId || JSON.stringify(latestHistory) !== JSON.stringify(history)) {
+        const synced = await persistStudioSnapshot({
+          concepts: nextConcepts, previousConcepts: latestHistory, selectedConceptId: selected,
+          conceptsSourceFingerprint: sourceFingerprint, designJobId: null,
+        });
+        if (!synced && operation === templateOperation.current) setConceptNotice("Your latest changes are saved on this device, but account sync is unavailable.");
+      }
     } catch (error) {
       if (operation !== templateOperation.current) return;
       setConceptError(error instanceof Error ? error.message : "Template previews could not be saved. Retry to continue.");
